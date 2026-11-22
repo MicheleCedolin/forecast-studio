@@ -57,12 +57,46 @@ Vec m_imapa(const Vec& y, int h, int, int) { return tsf::imapa(y, h); }
 Vec m_dotm(const Vec& y, int h, int m, int) { return tsf::dotm_forecast(y, m, h, true); }
 Vec m_ces(const Vec& y, int h, int m, int) { return tsf::ces_forecast(y, m, h); }
 
+// SCUM (Petropoulos & Svetunkov 2020): pointwise median of ets, auto_ces, arima and dotm, as the Python engine's
+// forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
+// ets and arima reproduce R (the Python engine uses statsforecast's), auto_ces and dotm reproduce statsforecast.
+// ARIMA uses the Python engine's arima_max_season = 200 rule (non-seasonal above it).
+Vec m_scum(const Vec& y, int h, int m, int) {
+    std::vector<Vec> fcs;
+    std::string failed;
+    auto add = [&](const char* name, auto&& fn) {
+        try {
+            Vec f = fn();
+            bool ok = static_cast<int>(f.size()) >= h;
+            for (int k = 0; ok && k < h; ++k) ok = std::isfinite(f[k]);
+            if (ok) { f.resize(h); fcs.push_back(std::move(f)); return; }
+            failed += std::string(failed.empty() ? "" : "; ") + name + ": non-finite";
+        } catch (const std::exception& ex) {
+            failed += std::string(failed.empty() ? "" : "; ") + name + ": " + ex.what();
+        }
+    };
+    add("ets", [&] { return tsf::ets_auto(y, m, h).forecast; });
+    add("auto_ces", [&] { return tsf::ces_forecast(y, m, h); });
+    add("arima", [&] { return tsf::auto_arima_study(y, m <= 200 ? m : 1, h).forecast; });
+    add("dotm", [&] { return tsf::dotm_forecast(y, m, h, true); });
+    if (fcs.size() < 2) throw std::runtime_error("scum: fewer than two components succeeded (" + failed + ")");
+    Vec out(h);
+    const size_t k = fcs.size();
+    Vec col(k);
+    for (int j = 0; j < h; ++j) {                       // np.median: middle value, or the mean of the two middle ones
+        for (size_t c = 0; c < k; ++c) col[c] = fcs[c][j];
+        std::sort(col.begin(), col.end());
+        out[j] = (k % 2) ? col[k / 2] : (col[k / 2 - 1] + col[k / 2]) / 2.0;
+    }
+    return out;
+}
+
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
     {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets}, {"holt_winters", m_hw},
     {"arima", m_arima}, {"dhr_arima", m_dhr}, {"croston_classic", m_crc}, {"croston_sba", m_crs},
-    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces},
+    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum},
 };
 
 Fn find_method(const char* name) {
@@ -74,11 +108,11 @@ Fn find_method(const char* name) {
 }  // namespace
 
 TSF_API const char* tsf_version() {
-    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm, auto_ces)";
+    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm, auto_ces, scum)";
 }
 
 TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,holt_winters,arima,dhr_arima,"
-                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm,auto_ces"; }
+                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm,auto_ces,scum"; }
 
 // Test hook for auto.arima (the study's chain). info = {p, d, q, P, D, Q, period, drift, mean, step, loglik, aicc,
 // sigma2}. Returns 0, or 1 on error (message in msg).

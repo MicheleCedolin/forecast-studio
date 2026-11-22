@@ -187,6 +187,41 @@ def test_auto_ces_matches_python_engine(case):
     np.testing.assert_allclose(f, ref, rtol=1e-8, atol=0, err_msg=name)
 
 
+def test_scum_is_median_of_cpp_components():
+    """C++ scum = pointwise median of the C++ ets, auto_ces, arima and dotm forecasts (the Python engine's rule); the
+    components are the validated C++ ports (ets/arima reproduce R, auto_ces/dotm statsforecast)."""
+    d = G / "nn5_weekly"
+    train = [r[~np.isnan(r)] for r in _load(d, "train")][:40]
+    seas = (52.17857142857143,)
+    s, flags, _ = C.forecast_batch("scum", train, 8, seas)
+    assert not flags.any()
+    comps = [C.forecast_batch(mth, train, 8, seas)[0] for mth in ("ets", "auto_ces", "arima", "dotm")]
+    np.testing.assert_array_equal(s, np.median(np.stack(comps), axis=0))
+
+
+def test_scum_component_failures():
+    # short series: some components fail (ets needs > 6 observations, dotm > 3, auto_ces > 2); scum takes the median
+    # of those that succeed, and falls back (error) when fewer than two do
+    base = [10.0, 12, 11, 13, 12, 14]
+    seen_fallback = seen_partial = False
+    for n in range(2, 7):
+        y = [np.array(base[:n])]
+        s, flags, msg = C.forecast_batch("scum", y, 3, (1.0,))
+        comps = []
+        for mth in ("ets", "auto_ces", "arima", "dotm"):
+            f, fl, _ = C.forecast_batch(mth, y, 3, (1.0,))
+            if not fl[0]:
+                comps.append(f[0])
+        if len(comps) < 2:
+            assert flags[0] and "fewer than two" in msg, n
+            seen_fallback = True
+        else:
+            assert not flags[0], n
+            np.testing.assert_array_equal(s[0], np.median(np.stack(comps), axis=0))
+            seen_partial |= len(comps) < 4
+    assert seen_fallback and seen_partial
+
+
 INTERMITTENT = ["croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa"]
 
 
