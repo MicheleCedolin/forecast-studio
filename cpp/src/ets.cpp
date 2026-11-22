@@ -30,7 +30,7 @@ void ets_forecast_step(double l, double b, const double* s, int m, int trend, in
         else if (season == MULT) f[i] = f[i] * s[j];
         if (i < h - 1) {
             if (std::fabs(phi - 1.0) < TOL) phistar = phistar + 1.0;
-            else phistar = phistar + std::pow(phi, static_cast<double>(i + 1));
+            else phistar = phistar + std::pow(phi, static_cast<double>(i + 2));   // phi + phi^2 + ... (etscalc.c)
         }
     }
 }
@@ -444,6 +444,8 @@ EtsResult ets_auto(const Vec& y, int m, int h) {
     if (m > 24 || m < 1) m = 1;                                // R: "Seasonality will be ignored" for m > 24
     return ets_select(y, m, h, -1, -1, -1);
 }
+
+EtsResult ets_holt(const Vec& y, int h) { return ets_select(y, 1, h, ADD, ADD, NONE); }
 
 EtsResult ets_holt_winters(const Vec& y, int m, int h) {
     const int n = static_cast<int>(y.size());
