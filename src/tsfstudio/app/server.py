@@ -83,9 +83,25 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         self._dispatch("POST")
 
+    def _discard_body(self, limit: int = 1 << 20) -> None:
+        """Read and drop an unread request body before an early error reply. On Windows, closing a socket that still has
+        unread data sends a reset and the client can lose the response (seen as WinError 10053 in the tests)."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        if 0 < n <= limit:
+            try:
+                self.rfile.read(n)
+            except OSError:
+                pass
+        elif n > limit:
+            self.close_connection = True
+
     def _dispatch(self, method: str) -> None:
         try:
             if not self._host_ok():
+                self._discard_body()
                 return self._err(403, "Invalid Host header.")
             u = urlparse(self.path)
             path, qs = u.path, parse_qs(u.query)
@@ -94,8 +110,10 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and path.startswith("/static/"):
                 return self._static(path[len("/static/"):])
             if not path.startswith("/api/"):
+                self._discard_body()
                 return self._err(404, "Not found.")
             if not self._auth_ok(qs):
+                self._discard_body()
                 return self._err(403, "Invalid session token. Reload the page.")
             parts = [unquote(p) for p in path[len("/api/"):].split("/")]
             self._api(method, parts, qs)

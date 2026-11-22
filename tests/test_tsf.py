@@ -26,7 +26,8 @@ T2:8:2019-05-01 00-00-00:3,3,3
 
 def _write(tmp_path, text, name="a.tsf"):
     p = tmp_path / name
-    p.write_text(text, encoding="cp1252")
+    # newline="\n": keep LF on Windows too; the writer always emits LF, so the byte-stable roundtrip needs an LF fixture.
+    p.write_text(text, encoding="cp1252", newline="\n")
     return p
 
 

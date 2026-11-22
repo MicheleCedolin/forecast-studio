@@ -36,15 +36,17 @@ SEASONALITY_MAP: dict[str, tuple[float, ...]] = {
 
 # R: FREQ_MAP -> pandas karşılığı. Hafta = tam 7 gün (R'daki "1 week"), pandas "W" Pazar'a
 # sabitlediği için kullanılmaz.
+# Positional value + explicit unit: the keyword form (`pd.Timedelta(minutes=1)`) goes through NumPy's deprecated
+# 'generic' timedelta unit inside pandas 2.3 with NumPy >= 2.5 and will raise once NumPy removes it.
 _STEP: dict[str, object] = {
-    "4_seconds": pd.Timedelta(seconds=4),
-    "minutely": pd.Timedelta(minutes=1),
-    "10_minutes": pd.Timedelta(minutes=10),
-    "15_minutes": pd.Timedelta(minutes=15),
-    "half_hourly": pd.Timedelta(minutes=30),
-    "hourly": pd.Timedelta(hours=1),
-    "daily": pd.Timedelta(days=1),
-    "weekly": pd.Timedelta(days=7),
+    "4_seconds": pd.Timedelta(4, unit="s"),
+    "minutely": pd.Timedelta(1, unit="m"),
+    "10_minutes": pd.Timedelta(10, unit="m"),
+    "15_minutes": pd.Timedelta(15, unit="m"),
+    "half_hourly": pd.Timedelta(30, unit="m"),
+    "hourly": pd.Timedelta(1, unit="h"),
+    "daily": pd.Timedelta(1, unit="D"),
+    "weekly": pd.Timedelta(7, unit="D"),
     "monthly": pd.DateOffset(months=1),
     "quarterly": pd.DateOffset(months=3),
     "yearly": pd.DateOffset(years=1),

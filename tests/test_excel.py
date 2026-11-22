@@ -11,9 +11,9 @@ from tsfstudio.tsf import read_tsf
 def make_book(path, meta, long=None, wide=None):
     """meta: dict, long/wide: list-of-rows (ilk satır başlık)."""
     with pd.ExcelWriter(path, engine="openpyxl") as xw:
-        pd.DataFrame([["key", "value"]] + [[k, v] for k, v in meta.items()]).to_excel(xw, "Meta", header=False, index=False)
-        pd.DataFrame(long if long else [["series_name", "date", "value"]]).to_excel(xw, "Veri_Uzun", header=False, index=False)
-        pd.DataFrame(wide if wide else [["date", "S1"]]).to_excel(xw, "Veri_Genis", header=False, index=False)
+        pd.DataFrame([["key", "value"]] + [[k, v] for k, v in meta.items()]).to_excel(xw, sheet_name="Meta", header=False, index=False)
+        pd.DataFrame(long if long else [["series_name", "date", "value"]]).to_excel(xw, sheet_name="Veri_Uzun", header=False, index=False)
+        pd.DataFrame(wide if wide else [["date", "S1"]]).to_excel(xw, sheet_name="Veri_Genis", header=False, index=False)
     return path
 
 

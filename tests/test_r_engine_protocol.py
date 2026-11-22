@@ -51,11 +51,20 @@ json.dump({{"n_series": n, "horizon": H, "elapsed_sec": 1.5, "na_replaced": 2, "
 
 @pytest.fixture
 def engine(tmp_path):
-    stub = tmp_path / "Rscript"
-    stub.write_text(STUB.format(python=sys.executable))
-    stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
     worker = tmp_path / "worker.R"
     worker.write_text("# stub")
+    if os.name == "nt":
+        # Windows ignores shebangs: run the Python stub through a .cmd launcher (like the real Rscript.exe,
+        # it is a parent process that starts the actual worker as a child, which also exercises tree-kill on cancel).
+        script = tmp_path / "Rscript_stub.py"
+        script.write_text(STUB.format(python=sys.executable), encoding="utf-8")
+        stub = tmp_path / "Rscript.cmd"
+        py = sys.executable.replace("%", "%%")
+        stub.write_text(f'@echo off\r\n"{py}" "%~dp0Rscript_stub.py" %*\r\nexit /b %ERRORLEVEL%\r\n', encoding="ascii")
+    else:
+        stub = tmp_path / "Rscript"
+        stub.write_text(STUB.format(python=sys.executable))
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
     return REngine(rscript=str(stub), worker=worker, workdir=str(tmp_path))
 
 
@@ -117,7 +126,7 @@ def test_crash_without_error_file_shows_log_tail(engine, monkeypatch):
         engine.run(job())
 
 
-def test_cancel_terminates_worker(engine, monkeypatch):
+def test_cancel_terminates_worker(engine, monkeypatch, tmp_path):
     monkeypatch.setenv("STUB_MODE", "slow")
     ev = threading.Event()
     threading.Timer(1.0, ev.set).start()
@@ -125,6 +134,8 @@ def test_cancel_terminates_worker(engine, monkeypatch):
     with pytest.raises(EngineCancelled):
         engine.run(job(), cancel=ev)
     assert time.time() - t0 < 15
+    # A surviving (grand)child would still hold worker.log open and block the cleanup on Windows.
+    assert not [p for p in tmp_path.iterdir() if p.name.startswith("tsfjob_")]
 
 
 def test_unsupported_method_and_bad_jobs(engine):

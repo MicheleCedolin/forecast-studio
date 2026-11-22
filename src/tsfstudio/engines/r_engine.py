@@ -102,11 +102,7 @@ class REngine(Engine):
                 except subprocess.TimeoutExpired:
                     pass
                 if cancel is not None and cancel.is_set():
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
+                    self._terminate_tree(proc)
                     raise EngineCancelled("The job was cancelled by the user.")
                 last = self._report_progress(job_dir, progress, last)
         if progress:
@@ -114,6 +110,27 @@ class REngine(Engine):
         if rc != 0:
             raise EngineError(self._failure_text(job_dir, log_path, rc))
         return self._read_outputs(job_dir, job, time.time() - t0)
+
+    @staticmethod
+    def _terminate_tree(proc: subprocess.Popen) -> None:
+        """Stop the worker *and its children*.
+
+        On Windows `Rscript.exe` is a launcher that starts `R.exe` as a child; `terminate()` would only stop the
+        launcher and leave R running (and holding the job folder open), so the whole tree is killed with taskkill.
+        """
+        if os.name == "nt":
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                               capture_output=True, timeout=15)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if proc.poll() is None:
+            proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
 
     @staticmethod
     def _report_progress(job_dir: Path, progress, last):
