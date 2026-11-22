@@ -83,6 +83,22 @@ def test_comb_shd_matches_r_at_decision_level(case):
         assert abs(np.nanmean(a) - np.nanmean(b)) / np.nanmean(b) < 0.01, name
 
 
+def test_ets_reproduces_r_forecast_ets(case):
+    """C++ ets is a port of R forecast::ets (9.x). The study's R forecasts (tests/golden/<case>/forecasts_ets) are the
+    reference: on NN5 weekly (non-seasonal, m > 24) and daily (m = 7) the same model is chosen and forecasts agree to
+    machine precision, except where R's Nelder-Mead and ours drift apart over a long run (1 daily series)."""
+    name, seas, h, train, act = case
+    ref = _load(G / name, "forecasts_ets")
+    f, flags, _ = C.forecast_batch("ets", train, h, seas)
+    assert not flags.any()
+    rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
+    assert np.median(rel) < 1e-9, f"{name}: median relative difference {np.median(rel):.2e}"
+    assert int((rel.max(axis=1) > 1e-3).sum()) <= 2, name
+    m = M.r_frequency(seas)
+    d = abs(np.nanmean(mase(f, act, train, m)) - np.nanmean(mase(ref, act, train, m))) / np.nanmean(mase(ref, act, train, m))
+    assert d < 1e-3, name
+
+
 def test_engine_run_horizons_threads_and_fallback():
     eng = C.CppEngine()
     assert eng.available()[0]

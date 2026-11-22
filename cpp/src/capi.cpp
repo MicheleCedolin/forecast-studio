@@ -11,11 +11,13 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <thread>
 
 #include "basic.hpp"
+#include "ets.hpp"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -37,11 +39,12 @@ Vec m_naive2(const Vec& y, int h, int m) { return tsf::naive2(y, h, m); }
 Vec m_comb(const Vec& y, int h, int m) { return tsf::comb_shd(y, h, m); }
 Vec m_holt(const Vec& y, int h, int) { return tsf::holt_forecast(y, h, false); }
 Vec m_damped(const Vec& y, int h, int) { return tsf::holt_forecast(y, h, true); }
+Vec m_ets(const Vec& y, int h, int m) { return tsf::ets_auto(y, m, h).forecast; }
 
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
-    {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped},
+    {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets},
 };
 
 Fn find_method(const char* name) {
@@ -52,9 +55,45 @@ Fn find_method(const char* name) {
 
 }  // namespace
 
-TSF_API const char* tsf_version() { return "tsfcore 0.1.0 (phase 1: naive, snaive, drift, ses, theta, naive2, holt, comb_shd)"; }
+TSF_API const char* tsf_version() { return "tsfcore 0.2.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets)"; }
 
-TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped"; }
+TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets"; }
+
+// Diagnostic hook: one fixed ETS model; init gets the initial state (up to 26 values), par the smoothing parameters
+// (alpha, [beta], [gamma], [phi]); returns lik (Inf on failure).
+TSF_API double tsf_ets_debug(const double* y, int32_t n, int32_t m, int32_t e, int32_t t, int32_t s, int32_t d,
+                             double* init, int32_t* n_init, double* par, int32_t* n_par) {
+    try {
+        Vec iv, pv;
+        const double lik = tsf::ets_debug(Vec(y, y + n), m, e, t, s, d != 0, iv, pv);
+        *n_init = static_cast<int32_t>(std::min<size_t>(iv.size(), 26));
+        std::copy(iv.begin(), iv.begin() + *n_init, init);
+        *n_par = static_cast<int32_t>(pv.size());
+        std::copy(pv.begin(), pv.end(), par);
+        return lik;
+    } catch (...) {
+        *n_init = 0; *n_par = 0;
+        return std::numeric_limits<double>::infinity();
+    }
+}
+
+// Test hook for ETS: fits one series; info = {aicc, lik, alpha, beta, gamma, phi}; model gets "ETS(x,y,z)".
+// Returns 0 on success, 1 if no model could be fitted (message in model).
+TSF_API int tsf_ets_fit(const double* y, int32_t n, int32_t m, int32_t h, double* fc, double* info, char* model, int32_t len) {
+    try {
+        const tsf::EtsResult r = tsf::ets_auto(Vec(y, y + n), m, h);
+        std::copy(r.forecast.begin(), r.forecast.end(), fc);
+        const double v[6] = {r.aicc, r.lik, r.alpha, r.beta, r.gamma, r.phi};
+        std::copy(v, v + 6, info);
+        std::strncpy(model, r.model.c_str(), static_cast<size_t>(len - 1));
+        model[len - 1] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        std::strncpy(model, ex.what(), static_cast<size_t>(len - 1));
+        model[len - 1] = '\0';
+        return 1;
+    }
+}
 
 TSF_API int tsf_forecast_batch(const char* method, const double* values, const int64_t* offsets, int32_t n_series, int32_t h,
                                const int32_t* horizons, const double* periods, int32_t n_periods, int32_t n_threads,
