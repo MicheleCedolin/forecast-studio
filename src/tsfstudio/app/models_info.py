@@ -176,7 +176,7 @@ MODELS: dict[str, dict] = {
                "decomposition removes it; the last adjusted value is repeated and the seasonal indices are put back.",
         "use": "Needed to compute OWA; a seasonal benchmark that is less noisy than seasonal naive.",
         "caution": "The seasonality test uses R's default number of autocorrelation lags, so long periods (e.g. 365 in daily data) are treated as non-seasonal.",
-        "engines": {PY: "Built in (numpy), following the official M4 benchmark code."},
+        "engines": {PY: "Built in (numpy), following the official M4 benchmark code; identical to R on NN5 weekly and daily (docs/VALIDATION.md 1d)."},
         "params": [], "refs": ["makridakis2020"], "cost": "Instant.",
     },
     "comb_shd": {
@@ -185,8 +185,9 @@ MODELS: dict[str, dict] = {
         "how": "Seasonality is removed as in Naive2; SES, Holt (linear trend) and damped Holt forecasts are averaged and the seasonal indices are put back. "
                "Holt parameters are fitted by least squares within the R ets bounds.",
         "use": "The combination benchmark of the M3/M4 competitions; strong and hard to beat on yearly, quarterly and monthly data.",
-        "caution": "Same model family as R holt(), but our own optimiser: it has not been checked series by series against R.",
-        "engines": {PY: "Built in (numpy/scipy)."},
+        "caution": "Same model as R holt() (ets AAN / AAdN, least squares). On NN5 the mean SMAPE and MASE are within 0.4% of R; "
+                   "single series can differ slightly because R's optimiser sometimes stops at a worse fit (docs/VALIDATION.md 1d).",
+        "engines": {PY: "Built in (numpy/scipy); checked against R forecast 9.0.2 on NN5 weekly and daily."},
         "params": [], "refs": ["makridakis2020", "gardner1985"], "cost": "Fast.",
     },
     "dotm": {

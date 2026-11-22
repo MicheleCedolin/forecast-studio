@@ -51,6 +51,27 @@ Seri düzeyinde eşdeğerlik için eşleştirilmiş bir test (ör. seri başına
 yedeğe düştü (SMAPE 0,164 = SNaive). Düzeltildi (`season_length`, tam sayı dönemler); golden artık yedek sayısı > 0 ise nedenini yazar.
 Yeniden doğrulama gerekir. Günlük küme sonuçları (`golden_result.csv`) henüz incelenmedi.
 
+### 1d. Naive2 and Comb S-H-D against R (done 2026-11-22, Windows, R 4.6.2, forecast 9.0.2)
+Reference: `tools/r_reference/m4_benchmarks.R`, which follows the official M4 benchmark code (SeasonalityTest, `decompose`,
+`naive`, `ses`, `holt`, `holt(damped = TRUE)`). Comparison: `tools/r_reference/compare_m4_benchmarks.py`. Golden test:
+`tests/test_golden_m4_benchmarks.py` (fixtures `r_m4_naive2`, `r_m4_comb` in `tests/golden/nn5_*`).
+
+| Data | Method | median rel. diff. | >1e-3 series | ΔSMAPE (rel.) | ΔMASE (rel.) |
+|---|---|---|---|---|---|
+| weekly (m 52, h 8; no series seasonal) | naive2 | 0 | 0/111 | 0 | 0 |
+| weekly | comb_shd | 1.3×10⁻³ | 70/111 | −0.03% | −0.05% |
+| daily (m 7, h 56; all 111 seasonal) | naive2 | 8×10⁻¹⁶ | 0/111 | 0 | 0 |
+| daily | comb_shd | 5.5×10⁻⁴ | 55/111 | −0.31% | −0.35% |
+
+- The seasonality test agrees with R on 222/222 series.
+- **A first version of the Holt fit was wrong.** It optimised the initial level and trend numerically next to the smoothing
+  parameters, with a hard penalty for beta > alpha. It stopped early (on one series exactly at its starting point). Daily Holt
+  was 15% worse in SMAPE than R and Comb 5% worse. It was rewritten: for fixed (alpha, beta, phi) the initial state is solved
+  in closed form, and beta is searched as alpha·u with u in [0, 1].
+- After the fix, Python's in-sample MSE is lower than or equal to R's on every one of the 444 fits (111 series × 2 datasets ×
+  Holt and damped Holt). It is up to 7.8% lower, because R's Nelder-Mead stops before the optimum. This is the same
+  situation as SES in 1b. The remaining forecast differences are therefore R optimiser artefacts, not a different model.
+
 ## 2. R motoru — kullanıcının R tahminlerine karşı (yapıldı: Windows, yerel R, haftalık küme)
 Ortam: R 4.6.2 (ucrt, kullanıcı klasörüne kurulu), `forecast` 9.0.2, `jsonlite` 2.0.0; `python -m tsfstudio golden --engine r`
 (NN5 haftalık, h=8, 111 seri, 0 yedek). Referans: kullanıcının kendi R çıktıları (muhtemelen daha eski bir `forecast` sürümü).

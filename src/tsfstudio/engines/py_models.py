@@ -145,8 +145,9 @@ def theta_forecast(y: np.ndarray, h: int, m: int) -> np.ndarray:
 # ------------------------------------------------------------------------------------------------
 # M3/M4 kıyas yöntemleri (2026-11-22): drift, Naive2, Comb S-H-D
 #   Kaynak: M4 yarışmasının resmi kıyas kodu (Makridakis, Spiliotis & Assimakopoulos, 2020, IJF 36(1));
-#   `rwf(drift = TRUE)` (Hyndman & Athanasopoulos, FPP3). Holt / sönümlü Holt: forecast::holt ile aynı model sınıfı
-#   (ets "AAN"/"AAdN", opt.crit = "mse", R sınırları) ama kendi en iyileyicimiz; R ile birebir sınanmadı.
+#   `rwf(drift = TRUE)` (Hyndman & Athanasopoulos, FPP3). Holt / damped Holt: same model as forecast::holt
+#   (ets "AAN"/"AAdN", opt.crit = "mse", R bounds). Checked against R forecast 9.0.2 (tests/test_golden_m4_benchmarks.py):
+#   Naive2 identical; Comb S-H-D within 0.4% in mean SMAPE/MASE, with an in-sample fit at least as good as R's on every series.
 # ------------------------------------------------------------------------------------------------
 def drift(y: np.ndarray, h: int) -> np.ndarray:
     """Rastgele yürüyüş + sürüklenme: y_T + k (y_T - y_1)/(T - 1), k = 1..h (forecast::rwf(drift = TRUE))."""
@@ -189,48 +190,74 @@ def naive2(y: np.ndarray, h: int, m: int) -> np.ndarray:
     return naive(x, h) * si
 
 
-def _holt_sse(params: np.ndarray, y: np.ndarray, damped: bool) -> float:
-    alpha, beta, phi, l, b = params if damped else (*params[:2], 1.0, *params[2:])
-    if beta > alpha:                                         # ets sınırı: beta <= alpha
-        return 1e300
-    sse = 0.0
-    for yt in y:
-        f = l + phi * b
-        e = yt - f
-        sse += e * e
-        l_new = f + alpha * e
-        b = phi * b + beta * e
-        l = l_new
-    return sse
+def _holt_profile(y: np.ndarray, alpha: float, beta: float, phi: float) -> tuple[float, float, float]:
+    """For fixed (alpha, beta, phi): (SSE, l0*, b0*) with the initial level/trend solved in closed form.
+
+    Error-correction form: f_t = l + phi*b; e_t = y_t - f_t; l <- f_t + alpha*e_t; b <- phi*b + beta*e_t.
+    The one-step errors are linear in y and in the initial state x0 = (l0, b0):
+      e = H(z) y - C x0,  H(z) = (1 - z)(1 - phi z) / (1 - tr(F) z + det(F) z^2),  F = D - g w',
+    with D = [[1, phi], [0, phi]], g = (alpha, beta), w = (1, phi). Column j of C is w' F^(t-1) e_j, an AR(2) sequence
+    with the same denominator. So each SSE evaluation is three linear filters and a 2x2 least-squares solve,
+    instead of optimising l0 and b0 numerically next to the smoothing parameters (which got stuck; see VALIDATION)."""
+    F11, F12 = 1.0 - alpha, phi - alpha * phi
+    F21, F22 = -beta, phi - beta * phi
+    tr, det = F11 + F22, F11 * F22 - F12 * F21
+    den = np.array([1.0, -tr, det])
+    e0 = lfilter([1.0, -(1.0 + phi), phi], den, y)
+    n = len(y)
+    imp = np.zeros(n)
+    imp[0] = 1.0
+    cols = []
+    for v1, v2 in ((1.0, 0.0), (0.0, 1.0)):
+        a1 = v1 + phi * v2                                   # w'v
+        Fv1, Fv2 = F11 * v1 + F12 * v2, F21 * v1 + F22 * v2
+        a2 = Fv1 + phi * Fv2                                 # w'Fv
+        cols.append(lfilter([a1, a2 - tr * a1], den, imp))
+    C = np.column_stack(cols)
+    if not (np.all(np.isfinite(e0)) and np.all(np.isfinite(C))):
+        return np.inf, 0.0, 0.0
+    x0, *_ = np.linalg.lstsq(C, e0, rcond=None)
+    r = e0 - C @ x0
+    return float(r @ r), float(x0[0]), float(x0[1])
 
 
 def holt_forecast(y: np.ndarray, h: int, damped: bool = False) -> np.ndarray:
-    """Holt doğrusal eğilim (damped=True: sönümlü). SSE en küçüklenir (forecast::holt -> ets(opt.crit = "mse")).
+    """Holt linear trend (damped=True: damped trend), least squares (forecast::holt -> ets("AAN", opt.crit = "mse")).
 
-    Sınırlar R ets ile aynı: alfa in [1e-4, 0.9999], beta in [1e-4, alfa], phi in [0.8, 0.98]. Başlangıç düzeyi/eğimi de
-    serbest parametredir (ilk değerleri: ilk en fazla 10 gözlem üzerinde doğrusal regresyon, ets gibi)."""
+    Bounds as in R ets: alpha in [1e-4, 0.9999], beta in [1e-4, alpha], phi in [0.8, 0.98]. The initial level and trend
+    are solved exactly for every parameter value (`_holt_profile`); beta is searched as alpha * u, u in [0, 1], so the
+    beta <= alpha constraint needs no penalty. A coarse grid picks the start, then bounded L-BFGS-B refines it."""
     from scipy.optimize import minimize
 
     y = np.asarray(y, dtype=np.float64)
     n = len(y)
     if n < 3 or float(np.ptp(y)) == 0.0:
         return drift(y, h) if n > 1 else naive(y, h)
-    k = min(10, n)
-    b0, l0 = np.polyfit(np.arange(1, k + 1, dtype=np.float64), y[:k], 1)
-    l0 = float(l0)
-    b0 = float(b0)
-    scale = max(float(np.std(y)), 1e-8)
-    best = None
-    starts = [(0.5, 0.1), (0.2, 0.05), (0.9, 0.3)]
-    for a0, be0 in starts:
-        x0 = [a0, be0] + ([0.95] if damped else []) + [l0, b0]
-        bounds = [(ALPHA_LO, ALPHA_HI), (ALPHA_LO, ALPHA_HI)] + ([(0.8, 0.98)] if damped else []) + \
-                 [(l0 - 10 * scale, l0 + 10 * scale), (b0 - 10 * scale, b0 + 10 * scale)]
-        res = minimize(_holt_sse, np.array(x0), args=(y, damped), method="L-BFGS-B", bounds=bounds)
-        if best is None or res.fun < best.fun:
-            best = res
-    alpha, beta, phi, l, b = best.x if damped else (*best.x[:2], 1.0, *best.x[2:])
-    for yt in y:                                             # son durum
+
+    def unpack(p):
+        alpha = float(np.clip(p[0], ALPHA_LO, ALPHA_HI))
+        beta = float(np.clip(alpha * p[1], ALPHA_LO, alpha))
+        phi = float(p[2]) if damped else 1.0
+        return alpha, beta, phi
+
+    def obj(p):
+        return _holt_profile(y, *unpack(p))[0]
+
+    alphas = (0.01, 0.05, 0.15, 0.3, 0.5, 0.8, 0.98)
+    us = (0.001, 0.02, 0.1, 0.4, 0.9)
+    phis = (0.8, 0.9, 0.98) if damped else (1.0,)
+    grid = [(a, u, ph) for a in alphas for u in us for ph in phis]
+    vals = [obj(g) for g in grid]
+    order = np.argsort(vals)[:3]
+    bounds = [(ALPHA_LO, ALPHA_HI), (0.0, 1.0)] + ([(0.8, 0.98)] if damped else [(1.0, 1.0)])
+    best_p, best_v = grid[order[0]], vals[order[0]]
+    for i in order:
+        res = minimize(obj, np.array(grid[i], dtype=float), method="L-BFGS-B", bounds=bounds)
+        if res.fun < best_v:
+            best_p, best_v = res.x, float(res.fun)
+    alpha, beta, phi = unpack(best_p)
+    _, l, b = _holt_profile(y, alpha, beta, phi)
+    for yt in y:                                             # final state
         f = l + phi * b
         e = yt - f
         l, b = f + alpha * e, phi * b + beta * e

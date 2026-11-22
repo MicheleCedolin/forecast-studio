@@ -76,8 +76,8 @@ temasının (doğruluk yerine karar etkisi) tam olarak gerektirdiği analizdir v
 | Method | Type | Needs | Source | Relation to R | Validation |
 |---|---|---|---|---|---|
 | `drift` | local | - | `rwf(drift = TRUE)` | same closed form | equals statsforecast `RandomWalkWithDrift` to 1e-10 (test) |
-| `naive2` | local | - | M4 benchmark code (Makridakis et al. 2020) | seasonality test and `decompose()` follow the M4 R code | unit tests; not compared with R output |
-| `comb_shd` | local | - | M4 benchmark "Comb" (SES + Holt + damped Holt) | same model family as `holt()`, own optimiser (SSE, ets bounds) | unit tests; **not** checked series by series against R |
+| `naive2` | local | - | M4 benchmark code (Makridakis et al. 2020) | seasonality test and `decompose()` follow the M4 R code | **identical** to R on NN5 weekly and daily (golden test, VALIDATION 1d) |
+| `comb_shd` | local | - | M4 benchmark "Comb" (SES + Holt + damped Holt) | same model as `holt()` (ets AAN/AAdN, least squares, ets bounds); initial state solved in closed form | NN5: mean SMAPE/MASE within 0.4% of R; fit at least as good as R's on every series (golden test, VALIDATION 1d) |
 | `dotm` | local | statsforecast | Fiorucci et al. 2016 | `DynamicOptimizedTheta` (signature checked on 2.1.1) | runs; no R reference |
 | `scum` | local | statsforecast | Petropoulos & Svetunkov 2020 | median of ETS, CES, ARIMA, DOTM from this engine | median identity test; a failed component is reported in notes |
 
