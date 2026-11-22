@@ -380,4 +380,4 @@ def test_engine_run_horizons_threads_and_fallback():
     np.testing.assert_array_equal(r1.forecasts, r4.forecasts)                       # threading does not change results
     assert np.isnan(r1.forecasts[30, 3:]).all() and np.isfinite(r1.forecasts[30, :3]).all()
     with pytest.raises(Exception, match="does not support"):
-        eng.run(EngineJob(task="local", method="tbats", train=train, horizon=3, seasonality=(7.0,)))
+        eng.run(EngineJob(task="local", method="no_such_model", train=train, horizon=3, seasonality=(7.0,)))
