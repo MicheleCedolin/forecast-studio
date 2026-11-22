@@ -7,7 +7,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_library(tsfcore SHARED src/util.cpp src/basic.cpp src/ets.cpp src/arima.cpp src/autoarima.cpp src/intermittent.cpp src/capi.cpp)
+add_library(tsfcore SHARED src/util.cpp src/basic.cpp src/ets.cpp src/arima.cpp src/autoarima.cpp src/intermittent.cpp src/theta_sf.cpp src/capi.cpp)
 target_include_directories(tsfcore PRIVATE src)
 set_target_properties(tsfcore PROPERTIES PREFIX "")        # tsfcore.dll / tsfcore.so (no "lib" prefix)
 

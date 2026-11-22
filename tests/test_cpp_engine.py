@@ -159,6 +159,20 @@ def test_holt_winters_reproduces_r_ets_aaa():
     assert flags.all() and "Nonseasonal" in msg
 
 
+def test_dotm_matches_python_engine(case):
+    """C++ dotm ports statsforecast 2.1.1's DynamicOptimizedTheta (theta recursion, its Nelder-Mead, statsmodels'
+    seasonal test and decomposition): forecasts equal the Python engine's to machine precision (~1e-15)."""
+    import warnings
+    name, seas, h, train, _ = case
+    sub = train if name == "nn5_weekly" else train[:20]
+    f, flags, _ = C.forecast_batch("dotm", sub, h, seas)
+    assert not flags.any()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ref = np.vstack([forecast_one("dotm", y, h, seas, {}) for y in sub])
+    np.testing.assert_allclose(f, ref, rtol=1e-11, atol=0, err_msg=name)
+
+
 INTERMITTENT = ["croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa"]
 
 

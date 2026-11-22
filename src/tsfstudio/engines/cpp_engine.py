@@ -91,7 +91,7 @@ def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, ho
 class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
-                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa")
+                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm")
     GLOBAL_METHODS = ()
 
     def methods(self) -> dict[str, tuple[str, ...]]:
@@ -119,6 +119,9 @@ class CppEngine(Engine):
                                   f"fourier_k = {k} / fourier_k_per_period need the R or Python engine.")
         if job.method == "holt_winters" and str((job.params or {}).get("error_type", "A")).upper() != "A":
             raise EngineError("The C++ holt_winters has additive errors (error_type = 'A'); 'M' needs the Python engine.")
+        if job.method == "dotm" and str((job.params or {}).get("decomposition_type", "multiplicative")) != "multiplicative":
+            raise EngineError("The C++ dotm uses decomposition_type = 'multiplicative' (additive automatically for data <= 0); "
+                              "other settings need the Python engine.")
         if job.method == "tsb":
             ad, ap = (float((job.params or {}).get(k, 0.1)) for k in ("alpha_d", "alpha_p"))
             if ad != 0.1 or ap != 0.1:
