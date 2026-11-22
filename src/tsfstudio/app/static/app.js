@@ -30,7 +30,12 @@ function el(tag, attrs, ...kids) {
 }
 function svg(tag, attrs, ...kids) {
   const e = document.createElementNS(NS, tag);
-  for (const [k, v] of Object.entries(attrs || {})) if (v != null && v !== false) e.setAttribute(k, v);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    // Theme colours: SVG presentation attributes cannot use var(), the style property can, and it follows a theme change live.
+    if ((k === "fill" || k === "stroke") && typeof v === "string" && v.startsWith("var(")) e.style.setProperty(k, v);
+    else e.setAttribute(k, v);
+  }
   for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
   return e;
 }
@@ -325,7 +330,7 @@ function applyDatasetDefaults() {
   const inter = m.group === "aralikli";
   if (inter && d.integer_conversion && S.settings.integer === "auto") { S.settings.integer = "off"; S.autoOff = true; }
 }
-const PROFILE = [["smooth", "smooth", "#12294b"], ["erratic", "erratic", "#6f93c9"], ["intermittent", "intermittent", "#ffe45c"], ["lumpy", "lumpy", "#b3261e"], ["all_zero", "all zero", "#c5d0d9"]];
+const PROFILE = [["smooth", "smooth", "var(--ink)"], ["erratic", "erratic", "#6f93c9"], ["intermittent", "intermittent", "var(--hl)"], ["lumpy", "lumpy", "var(--pen)"], ["all_zero", "all zero", "var(--rule)"]];
 function renderDetail() {
   const host = $("#ddetail");
   if (!S.sel.dataset) { host.replaceChildren(el("p", { class: "empty", text: "Choose a dataset; its summary and sample series appear here." })); return; }
@@ -365,7 +370,7 @@ function spark(s) {
   let dd = "", pen = false;
   s.y.forEach((v, i) => { if (v == null) { pen = false; return; } const x = (i / Math.max(1, n - 1)) * W, y = H - 3 - ((v - lo) / (hi - lo || 1)) * (H - 8); dd += (pen ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1); pen = true; });
   return el("div", { class: "spark" }, svg("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", role: "img", "aria-label": "Series " + s.name },
-    svg("path", { d: dd, fill: "none", stroke: "#12294b", "stroke-width": "1.3", "vector-effect": "non-scaling-stroke" })), `${s.name} · ${fint(s.n)} observations`.replace(" · ", ", "));
+    svg("path", { d: dd, fill: "none", stroke: "var(--ink)", "stroke-width": "1.3", "vector-effect": "non-scaling-stroke" })), `${s.name} · ${fint(s.n)} observations`.replace(" · ", ", "));
 }
 
 function uploadBlock() {
@@ -767,10 +772,10 @@ function renderChartBar() {
     el("button", { type: "button", class: "btn ghost small", onclick: () => pick("med") }, "median"),
     el("button", { type: "button", class: "btn ghost small", onclick: () => pick("min") }, "lowest error")),
     el("div", { class: "legend-line" },
-      el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "#586a7e", "stroke-width": 1.5 })), "history"),
-      el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "#12294b", "stroke-width": 2 }), svg("circle", { cx: 13, cy: 5, r: 3, fill: "#12294b" })), "actual (test)"),
-      el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "#2457c5", "stroke-width": 2, "stroke-dasharray": "5 3" }), svg("circle", { cx: 13, cy: 5, r: 3, fill: "#fff", stroke: "#2457c5", "stroke-width": 1.6 })), "forecast"),
-      el("span", {}, svg("svg", { width: 18, height: 10 }, svg("rect", { x: 0, y: 0, width: 18, height: 10, fill: "#ffe45c" })), "forecast horizon")));
+      el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "var(--pencil)", "stroke-width": 1.5 })), "history"),
+      el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "var(--ink)", "stroke-width": 2 }), svg("circle", { cx: 13, cy: 5, r: 3, fill: "var(--ink)" })), "actual (test)"),
+      el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "var(--blue)", "stroke-width": 2, "stroke-dasharray": "5 3" }), svg("circle", { cx: 13, cy: 5, r: 3, fill: "var(--white)", stroke: "var(--blue)", "stroke-width": 1.6 })), "forecast"),
+      el("span", {}, svg("svg", { width: 18, height: 10 }, svg("rect", { x: 0, y: 0, width: 18, height: 10, fill: "var(--hl)" })), "forecast horizon")));
   if (r.series) renderChart(false);
 }
 function renderChart(sweep) {
@@ -789,22 +794,22 @@ function renderChart(sweep) {
   const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Series ${d.name}: history, test actuals and a ${H_}-step forecast` });
   // forecast-horizon band (highlighter pen)
   g.append(svg("rect", { class: "band", x: x(nh) - step / 2, y: m.t, width: H_ * step, height: H - m.t - m.b }));
-  yt.forEach(v => { g.append(svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "#e2e8ed", "stroke-width": 1 }), svg("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, axisFmt(v))); });
-  g.append(svg("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: "#12294b", "stroke-width": 1 }));
+  yt.forEach(v => { g.append(svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "var(--rule-soft)", "stroke-width": 1 }), svg("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, axisFmt(v))); });
+  g.append(svg("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: "var(--ink)", "stroke-width": 1 }));
   // x axis: steps relative to the cut-off (t-10, t-20 ...), horizon end t+H
   const stepx = Math.max(1, Math.round(nh / 5 / 5) * 5 || 1), cutX = x(nh) - step / 2;
   for (let j = 1; j * stepx < nh; j++) { const i = nh - j * stepx;
-    g.append(svg("line", { x1: x(i) - step / 2, x2: x(i) - step / 2, y1: H - m.b, y2: H - m.b + 4, stroke: "#12294b" }), svg("text", { x: x(i) - step / 2, y: H - m.b + 17, "text-anchor": "middle" }, "t−" + (j * stepx))); }
+    g.append(svg("line", { x1: x(i) - step / 2, x2: x(i) - step / 2, y1: H - m.b, y2: H - m.b + 4, stroke: "var(--ink)" }), svg("text", { x: x(i) - step / 2, y: H - m.b + 17, "text-anchor": "middle" }, "t−" + (j * stepx))); }
   g.append(svg("text", { x: cutX - 4, y: H - m.b + 17, "text-anchor": "end" }, "cut-off"));
   g.append(svg("text", { x: x(nh + H_ - 1) + step / 2 - 2, y: H - m.b + 17, "text-anchor": "end" }, "t+" + H_));
-  g.append(svg("line", { x1: x(nh) - step / 2, x2: x(nh) - step / 2, y1: m.t, y2: H - m.b, stroke: "#12294b", "stroke-width": 1, "stroke-dasharray": "2 3" }));
-  g.append(svg("path", { d: path(hist, 0), fill: "none", stroke: "#586a7e", "stroke-width": 1.5 }));
-  g.append(svg("path", { d: path(d.test, nh), fill: "none", stroke: "#12294b", "stroke-width": 2 }));
-  d.test.forEach((v, i) => v != null && g.append(svg("circle", { cx: x(nh + i), cy: y(v), r: 3, fill: "#12294b" })));
-  g.append(svg("path", { d: path(d.forecast, nh), fill: "none", stroke: "#2457c5", "stroke-width": 2.2, "stroke-dasharray": "6 4" }));
-  d.forecast.forEach((v, i) => v != null && g.append(svg("circle", { cx: x(nh + i), cy: y(v), r: 3.2, fill: "#fff", stroke: "#2457c5", "stroke-width": 1.7 })));
+  g.append(svg("line", { x1: x(nh) - step / 2, x2: x(nh) - step / 2, y1: m.t, y2: H - m.b, stroke: "var(--ink)", "stroke-width": 1, "stroke-dasharray": "2 3" }));
+  g.append(svg("path", { d: path(hist, 0), fill: "none", stroke: "var(--pencil)", "stroke-width": 1.5 }));
+  g.append(svg("path", { d: path(d.test, nh), fill: "none", stroke: "var(--ink)", "stroke-width": 2 }));
+  d.test.forEach((v, i) => v != null && g.append(svg("circle", { cx: x(nh + i), cy: y(v), r: 3, fill: "var(--ink)" })));
+  g.append(svg("path", { d: path(d.forecast, nh), fill: "none", stroke: "var(--blue)", "stroke-width": 2.2, "stroke-dasharray": "6 4" }));
+  d.forecast.forEach((v, i) => v != null && g.append(svg("circle", { cx: x(nh + i), cy: y(v), r: 3.2, fill: "var(--white)", stroke: "var(--blue)", "stroke-width": 1.7 })));
   // interaction
-  const cross = svg("line", { y1: m.t, y2: H - m.b, stroke: "#2457c5", "stroke-width": 1, opacity: 0 });
+  const cross = svg("line", { y1: m.t, y2: H - m.b, stroke: "var(--blue)", "stroke-width": 1, opacity: 0 });
   const read = svg("text", { class: "readout", x: m.l + 8, y: H - m.b - 8 }, "");
   g.append(cross, read);
   const ov = svg("rect", { x: m.l, y: m.t, width: iw, height: H - m.t - m.b, fill: "transparent" });
@@ -835,12 +840,12 @@ function renderHist() {
   const mx = Math.max(...h.counts), n = h.counts.length, bw = iw / n, lo = h.edges[0], hi = h.edges[n];
   const x = v => m.l + (v - lo) / (hi - lo) * iw, y = c => m.t + (1 - c / mx) * ih;
   const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Distribution of ${r.histMetric}` });
-  niceTicks(0, mx, 4).forEach(v => g.append(svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "#e2e8ed" }), svg("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, fint(v))));
-  h.counts.forEach((c, i) => g.append(svg("rect", { x: m.l + i * bw + 1, y: y(c), width: Math.max(1, bw - 2), height: ih - (y(c) - m.t), fill: "#12294b", opacity: 0.78 }, svg("title", {}, `${fmt(h.edges[i])} – ${fmt(h.edges[i + 1])}: ${c} series`))));
-  g.append(svg("line", { x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih, stroke: "#12294b" }));
+  niceTicks(0, mx, 4).forEach(v => g.append(svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "var(--rule-soft)" }), svg("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, fint(v))));
+  h.counts.forEach((c, i) => g.append(svg("rect", { x: m.l + i * bw + 1, y: y(c), width: Math.max(1, bw - 2), height: ih - (y(c) - m.t), fill: "var(--ink)", opacity: 0.78 }, svg("title", {}, `${fmt(h.edges[i])} – ${fmt(h.edges[i + 1])}: ${c} series`))));
+  g.append(svg("line", { x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih, stroke: "var(--ink)" }));
   niceTicks(lo, hi, 6).forEach(v => g.append(svg("text", { x: x(v), y: H - m.b + 17, "text-anchor": "middle" }, axisFmt(v))));
   const mark = (v, label, dy, color) => { if (v >= lo && v <= hi) g.append(svg("line", { x1: x(v), x2: x(v), y1: m.t, y2: m.t + ih, stroke: color, "stroke-width": 2, "stroke-dasharray": label === "median" ? "4 3" : "" }), svg("text", { x: x(v) + 5, y: m.t + dy, fill: color, style: "fill:" + color + ";font-weight:700" }, `${label} ${fmt(v)}`)); };
-  mark(h.mean, "mean", 12, "#b3261e"); mark(h.median, "median", 26, "#2457c5");
+  mark(h.mean, "mean", 12, "var(--pen)"); mark(h.median, "median", 26, "var(--blue)");
   host.replaceChildren(g);
 }
 // ---- error table
