@@ -30,25 +30,26 @@
 namespace {
 
 using tsf::Vec;
-using Fn = Vec (*)(const Vec&, int, int);
+using Fn = Vec (*)(const Vec&, int, int, int);   // (y, h, m = floor(max period), number of periods)
 
-Vec m_naive(const Vec& y, int h, int) { return tsf::naive(y, h); }
-Vec m_snaive(const Vec& y, int h, int m) { return tsf::snaive(y, h, m); }
-Vec m_drift(const Vec& y, int h, int) { return tsf::drift(y, h); }
-Vec m_ses(const Vec& y, int h, int) { return tsf::ses_forecast(y, h); }
-Vec m_theta(const Vec& y, int h, int m) { return tsf::theta_forecast(y, h, m); }
-Vec m_naive2(const Vec& y, int h, int m) { return tsf::naive2(y, h, m); }
-Vec m_comb(const Vec& y, int h, int m) { return tsf::comb_shd(y, h, m); }
-Vec m_holt(const Vec& y, int h, int) { return tsf::holt_forecast(y, h, false); }
-Vec m_damped(const Vec& y, int h, int) { return tsf::holt_forecast(y, h, true); }
-Vec m_ets(const Vec& y, int h, int m) { return tsf::ets_auto(y, m, h).forecast; }
-Vec m_arima(const Vec& y, int h, int m) { return tsf::auto_arima_study(y, m, h).forecast; }
+Vec m_naive(const Vec& y, int h, int, int) { return tsf::naive(y, h); }
+Vec m_snaive(const Vec& y, int h, int m, int) { return tsf::snaive(y, h, m); }
+Vec m_drift(const Vec& y, int h, int, int) { return tsf::drift(y, h); }
+Vec m_ses(const Vec& y, int h, int, int) { return tsf::ses_forecast(y, h); }
+Vec m_theta(const Vec& y, int h, int m, int) { return tsf::theta_forecast(y, h, m); }
+Vec m_naive2(const Vec& y, int h, int m, int) { return tsf::naive2(y, h, m); }
+Vec m_comb(const Vec& y, int h, int m, int) { return tsf::comb_shd(y, h, m); }
+Vec m_holt(const Vec& y, int h, int, int) { return tsf::holt_forecast(y, h, false); }
+Vec m_damped(const Vec& y, int h, int, int) { return tsf::holt_forecast(y, h, true); }
+Vec m_ets(const Vec& y, int h, int m, int) { return tsf::ets_auto(y, m, h).forecast; }
+Vec m_arima(const Vec& y, int h, int m, int) { return tsf::auto_arima_study(y, m, h).forecast; }
+Vec m_dhr(const Vec& y, int h, int m, int np) { return tsf::dhr_arima(y, m, np, 1, h).forecast; }
 
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
     {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets},
-    {"arima", m_arima},
+    {"arima", m_arima}, {"dhr_arima", m_dhr},
 };
 
 Fn find_method(const char* name) {
@@ -60,10 +61,10 @@ Fn find_method(const char* name) {
 }  // namespace
 
 TSF_API const char* tsf_version() {
-    return "tsfcore 0.3.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, arima)";
+    return "tsfcore 0.3.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, arima, dhr_arima)";
 }
 
-TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,arima"; }
+TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,arima,dhr_arima"; }
 
 // Test hook for auto.arima (the study's chain). info = {p, d, q, P, D, Q, period, drift, mean, step, loglik, aicc,
 // sigma2}. Returns 0, or 1 on error (message in msg).
@@ -91,6 +92,24 @@ TSF_API int tsf_arima_q0(const double* phi, int32_t p, const double* theta, int3
         std::copy(Q.begin(), Q.end(), out);
         return 0;
     } catch (...) { return 1; }
+}
+
+// Test hook for dhr_arima (K Fourier terms, one period): info as tsf_auto_arima. Returns 0, or 1 on error.
+TSF_API int tsf_dhr_arima(const double* y, int32_t n, int32_t freq, int32_t K, int32_t h, double* fc, double* info,
+                          char* msg, int32_t len) {
+    try {
+        const tsf::AutoArimaResult r = tsf::dhr_arima(Vec(y, y + n), freq, 1, K, h);
+        std::copy(r.forecast.begin(), r.forecast.end(), fc);
+        const double v[13] = {double(r.p), double(r.d), double(r.q), double(r.P), double(r.D), double(r.Q),
+                              double(r.period), r.drift ? 1.0 : 0.0, r.mean ? 1.0 : 0.0, double(r.step),
+                              r.loglik, r.aicc, r.sigma2};
+        std::copy(v, v + 13, info);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
 }
 
 // Diagnostic hook for auto.arima's differencing tests: out = {seas.heuristic, nsdiffs, ndiffs(after D), kpss stat
@@ -190,7 +209,7 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
             std::string why;
             Vec f;
             try {
-                f = fn(y, hi, m);
+                f = fn(y, hi, m, n_periods);
                 if (static_cast<int>(f.size()) < hi) throw std::runtime_error("the model produced an incomplete horizon");
                 for (int k = 0; k < hi; ++k)
                     if (!std::isfinite(f[k])) throw std::runtime_error("the model produced a non-finite value");

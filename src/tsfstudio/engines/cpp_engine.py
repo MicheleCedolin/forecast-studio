@@ -90,7 +90,7 @@ def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, ho
 
 class CppEngine(Engine):
     name = "cpp"
-    LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "arima")
+    LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "arima", "dhr_arima")
     GLOBAL_METHODS = ()
 
     def methods(self) -> dict[str, tuple[str, ...]]:
@@ -111,6 +111,11 @@ class CppEngine(Engine):
         job.validate()
         if job.task != "local" or job.method not in self.LOCAL_METHODS:
             raise EngineError(f"The C++ engine does not support '{job.task}/{job.method}'. Available: {self.LOCAL_METHODS}")
+        if job.method == "dhr_arima":
+            k = (job.params or {}).get("fourier_k", 1)
+            if int(k) != 1 or (job.params or {}).get("fourier_k_per_period"):
+                raise EngineError("The C++ dhr_arima uses K = 1 Fourier terms (the study's setting); "
+                                  f"fourier_k = {k} / fourier_k_per_period need the R or Python engine.")
         t0 = time.time()
         n = len(job.train)
         if progress:

@@ -33,11 +33,20 @@ struct AutoArimaResult {
     int step = 0;                   // auto_arima_study: which call of the chain succeeded (1, 2, 3)
 };
 
-// auto.arima(y, seasonal, lambda = log_transform ? 0 : NULL) with frequency(y) = freq; forecast(fit, h)$mean.
-// Throws std::runtime_error where R stops.
-AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_transform, int h);
+// auto.arima(y, seasonal, lambda = log_transform ? 0 : NULL, xreg) with frequency(y) = freq;
+// forecast(fit, h, xreg = newxreg)$mean. xreg / newxreg: columns of length n / h. Throws where R stops.
+AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_transform, int h,
+                           const std::vector<Vec>& xreg = {}, const std::vector<Vec>& newxreg = {});
 
 // The study's chain: auto.arima(y, lambda = 0), else auto.arima(y), else auto.arima(y, seasonal = FALSE).
 AutoArimaResult auto_arima_study(const Vec& y, int freq, int h);
+
+// forecast::fourier(x, K) terms for one period at times t0 + 1 .. t0 + len: columns S1, C1, ..., SK, CK (sine columns
+// that are identically zero are dropped), computed with R's sinpi / cospi.
+std::vector<Vec> fourier_terms(double period, int K, int t0, int len);
+
+// The study's dynamic harmonic regression: auto.arima(y, xreg = fourier(y, K), seasonal = FALSE), forecast with
+// fourier(y, K, h). n_periods > 1 fails as in R (a scalar K with several periods), so the caller falls back.
+AutoArimaResult dhr_arima(const Vec& y, int freq, int n_periods, int K, int h);
 
 }  // namespace tsf

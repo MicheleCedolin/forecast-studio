@@ -718,6 +718,115 @@ bool invert(std::vector<Vec> A, std::vector<Vec>& inv) {
 
 }  // namespace
 
+// svd(X)$v for the columns X (n x k), one-sided Jacobi; columns ordered by decreasing singular value. Column signs
+// are arbitrary (as with LAPACK): the arima fit in the rotated basis is then mirrored exactly, so they do not matter.
+std::vector<Vec> svd_v(const std::vector<Vec>& cols, Vec* d) {
+    const int k = static_cast<int>(cols.size());
+    const size_t n = cols.empty() ? 0 : cols[0].size();
+    std::vector<Vec> U = cols, V(k, Vec(k, 0.0));       // V[i][j]: row i, column j
+    for (int i = 0; i < k; ++i) V[i][i] = 1.0;
+    auto dot = [n](const Vec& a, const Vec& b) { double s = 0.0; for (size_t i = 0; i < n; ++i) s += a[i] * b[i]; return s; };
+    for (int sweep = 0; sweep < 100; ++sweep) {
+        bool rotated = false;
+        for (int p = 0; p < k - 1; ++p)
+            for (int q = p + 1; q < k; ++q) {
+                const double alpha = dot(U[p], U[p]), beta = dot(U[q], U[q]), gamma = dot(U[p], U[q]);
+                if (!(std::fabs(gamma) > 1e-15 * std::sqrt(alpha * beta))) continue;
+                rotated = true;
+                const double zeta = (beta - alpha) / (2.0 * gamma);
+                const double t = (zeta >= 0 ? 1.0 : -1.0) / (std::fabs(zeta) + std::sqrt(1.0 + zeta * zeta));
+                const double c = 1.0 / std::sqrt(1.0 + t * t), sn = c * t;
+                for (size_t i = 0; i < n; ++i) {
+                    const double up = U[p][i], uq = U[q][i];
+                    U[p][i] = c * up - sn * uq;
+                    U[q][i] = sn * up + c * uq;
+                }
+                for (int i = 0; i < k; ++i) {
+                    const double vp = V[i][p], vq = V[i][q];
+                    V[i][p] = c * vp - sn * vq;
+                    V[i][q] = sn * vp + c * vq;
+                }
+            }
+        if (!rotated) break;
+    }
+    std::vector<int> ord(k);
+    std::vector<double> sv(k);
+    for (int j = 0; j < k; ++j) { ord[j] = j; sv[j] = std::sqrt(dot(U[j], U[j])); }
+    std::stable_sort(ord.begin(), ord.end(), [&](int a, int b) { return sv[a] > sv[b]; });
+    if (d) { d->resize(k); for (int j = 0; j < k; ++j) (*d)[j] = sv[ord[j]]; }
+    std::vector<Vec> Vo(k, Vec(k));
+    for (int i = 0; i < k; ++i) for (int j = 0; j < k; ++j) Vo[i][j] = V[i][ord[j]];
+    return Vo;
+}
+
+// lm(y ~ X - 1): coefficients and summary() standard errors by Householder QR. Returns the rank (0 if every column
+// is zero); a rank-deficient fit gives NaN coefficients, as lm gives NA.
+int lm_qr(const Vec& y, const std::vector<Vec>& cols, Vec& coef, Vec& se) {
+    const int k = static_cast<int>(cols.size()), n = static_cast<int>(y.size());
+    std::vector<Vec> A = cols;
+    Vec b = y;
+    coef.assign(k, std::nan(""));
+    se.assign(k, std::nan(""));
+    int rank = 0;
+    std::vector<double> rdiag(k, 0.0);
+    for (int j = 0; j < k && j < n; ++j) {
+        double norm = 0.0, cnorm0 = 0.0;
+        for (int i = j; i < n; ++i) norm += A[j][i] * A[j][i];
+        for (int i = 0; i < n; ++i) cnorm0 += cols[j][i] * cols[j][i];
+        norm = std::sqrt(norm);
+        if (!(norm > 1e-7 * std::sqrt(cnorm0)) || norm == 0.0) { rdiag[j] = 0.0; continue; }   // dqrdc2 tol 1e-7
+        ++rank;
+        const double alpha = A[j][j] > 0 ? -norm : norm;
+        Vec v(n, 0.0);
+        v[j] = A[j][j] - alpha;
+        for (int i = j + 1; i < n; ++i) v[i] = A[j][i];
+        double vv = 0.0;
+        for (int i = j; i < n; ++i) vv += v[i] * v[i];
+        if (vv > 0) {
+            for (int c = j; c < k; ++c) {
+                double s = 0.0;
+                for (int i = j; i < n; ++i) s += v[i] * A[c][i];
+                s = 2.0 * s / vv;
+                for (int i = j; i < n; ++i) A[c][i] -= s * v[i];
+            }
+            double s = 0.0;
+            for (int i = j; i < n; ++i) s += v[i] * b[i];
+            s = 2.0 * s / vv;
+            for (int i = j; i < n; ++i) b[i] -= s * v[i];
+        }
+        rdiag[j] = A[j][j];
+    }
+    if (rank == 0) return 0;
+    if (rank < k) return rank;                          // aliased columns: NA coefficients
+    for (int j = k - 1; j >= 0; --j) {                  // back substitution R coef = Q'y
+        double s = b[j];
+        for (int c = j + 1; c < k; ++c) s -= A[c][j] * coef[c];
+        coef[j] = s / A[j][j];
+    }
+    double rss = 0.0;
+    for (int i = 0; i < n; ++i) {
+        double fv = 0.0;
+        for (int j = 0; j < k; ++j) fv += cols[j][i] * coef[j];
+        rss += (y[i] - fv) * (y[i] - fv);
+    }
+    const double resvar = rss / (n - k);
+    std::vector<Vec> Rinv(k, Vec(k, 0.0));             // R^{-1}, upper triangular
+    for (int j = 0; j < k; ++j) {
+        Rinv[j][j] = 1.0 / A[j][j];
+        for (int i = j - 1; i >= 0; --i) {
+            double s = 0.0;
+            for (int c = i + 1; c <= j; ++c) s += A[c][i] * Rinv[c][j];
+            Rinv[i][j] = -s / A[i][i];
+        }
+    }
+    for (int i = 0; i < k; ++i) {                       // diag(R^-1 R^-T) = row sums of squares of R^-1
+        double s = 0.0;
+        for (int j = i; j < k; ++j) s += Rinv[i][j] * Rinv[i][j];
+        se[i] = std::sqrt(s * resvar);
+    }
+    return rank;
+}
+
 Vec arima_q0(const Vec& phi, const Vec& theta, int method) {
     return method == 0 ? getQ0_gardner(phi, theta) : getQ0_acov(phi, theta);
 }
@@ -735,19 +844,34 @@ ArimaFit arima_fit(const Vec& x0, const ArimaSpec& s) {
     for (double& v : Dl) v = -v;
     const int nd = s.d + s.D;
     int n_used = n - static_cast<int>(Dl.size());
-    // regressor: drift (1..n) or intercept (include.mean and no differencing); at most one column here
-    Vec xreg;
+    // regressors in R's column order: intercept (include.mean, no differencing), drift (1..n), user xreg
+    std::vector<Vec> X;
     bool has_intercept = false, has_drift = false;
-    if (s.drift) { xreg.resize(n); for (int i = 0; i < n; ++i) xreg[i] = i + 1; has_drift = true; }
-    else if (s.include_mean && nd == 0) { xreg.assign(n, 1.0); has_intercept = true; }
-    const int ncxreg = xreg.empty() ? 0 : 1;
+    if (s.include_mean && nd == 0) { X.emplace_back(n, 1.0); has_intercept = true; }
+    if (s.drift) { Vec v(n); for (int i = 0; i < n; ++i) v[i] = i + 1; X.push_back(std::move(v)); has_drift = true; }
+    for (const Vec& c : s.xreg) {
+        if (static_cast<int>(c.size()) != n) throw std::runtime_error("lengths of 'x' and 'xreg' do not match");
+        X.push_back(c);
+    }
+    const int ncxreg = static_cast<int>(X.size());
+    const bool orig_xreg = ncxreg <= 1;
+    std::vector<Vec> Vs;                                // S$v (row-major k x k) when rotated
+    if (!orig_xreg) {
+        Vs = svd_v(X);
+        std::vector<Vec> R(ncxreg, Vec(n, 0.0));        // xreg %*% S$v
+        for (int j = 0; j < ncxreg; ++j)
+            for (int k = 0; k < ncxreg; ++k) {
+                const double v = Vs[k][j];
+                for (int i = 0; i < n; ++i) R[j][i] += X[k][i] * v;
+            }
+        X = std::move(R);
+    }
     ArimaMethod method = s.method;
     int ncond = 0;
     if (method == ArimaMethod::CSS || method == ArimaMethod::CSS_ML)
         ncond = s.d + s.D * s.period + (s.p + s.period * s.P);
     Vec init0(narma, 0.0), parscale(narma, 1.0);
     if (ncxreg) {
-        Vec dx = x, dxr = xreg;
         auto diffv = [](Vec v, int lag, int times) {
             for (int k = 0; k < times; ++k) {
                 Vec o(v.size() > static_cast<size_t>(lag) ? v.size() - lag : 0);
@@ -756,34 +880,45 @@ ArimaFit arima_fit(const Vec& x0, const ArimaSpec& s) {
             }
             return v;
         };
-        if (s.d > 0) { dx = diffv(dx, 1, s.d); dxr = diffv(dxr, 1, s.d); }
-        if (s.period > 1 && s.D > 0) { dx = diffv(dx, s.period, s.D); dxr = diffv(dxr, s.period, s.D); }
-        auto lm1 = [](const Vec& yv, const Vec& xv, double& coef, double& se) {   // lm(y ~ x - 1)
-            double sxy = 0, sxx = 0;
-            for (size_t i = 0; i < yv.size(); ++i) { sxy += xv[i] * yv[i]; sxx += xv[i] * xv[i]; }
-            if (!(sxx > 0)) return false;
-            coef = sxy / sxx;
-            double rss = 0;
-            for (size_t i = 0; i < yv.size(); ++i) { const double e = yv[i] - coef * xv[i]; rss += e * e; }
-            const double df = static_cast<double>(yv.size()) - 1;
-            se = df > 0 ? std::sqrt(rss / df / sxx) : std::nan("");
-            return true;
-        };
-        double coef = 0, se = 0;
-        bool okfit = dx.size() > 1 && lm1(dx, dxr, coef, se);
-        if (!okfit) lm1(x, xreg, coef, se);
-        init0.push_back(coef);
-        parscale.push_back(10 * se);
+        Vec dx = x;
+        std::vector<Vec> dX = X;
+        if (s.d > 0) { dx = diffv(dx, 1, s.d); for (Vec& c : dX) c = diffv(c, 1, s.d); }
+        if (s.period > 1 && s.D > 0) { dx = diffv(dx, s.period, s.D); for (Vec& c : dX) c = diffv(c, s.period, s.D); }
+        Vec cf, se;
+        if (ncxreg == 1) {
+            auto lm1 = [](const Vec& yv, const Vec& xv, double& coef, double& sd) {   // lm(y ~ x - 1)
+                double sxy = 0, sxx = 0;
+                for (size_t i = 0; i < yv.size(); ++i) { sxy += xv[i] * yv[i]; sxx += xv[i] * xv[i]; }
+                if (!(sxx > 0)) return false;
+                coef = sxy / sxx;
+                double rss = 0;
+                for (size_t i = 0; i < yv.size(); ++i) { const double e = yv[i] - coef * xv[i]; rss += e * e; }
+                const double df = static_cast<double>(yv.size()) - 1;
+                sd = df > 0 ? std::sqrt(rss / df / sxx) : std::nan("");
+                return true;
+            };
+            cf.assign(1, 0.0); se.assign(1, 0.0);
+            const bool okfit = dx.size() > 1 && lm1(dx, dX[0], cf[0], se[0]);
+            if (!okfit) lm1(x, X[0], cf[0], se[0]);
+        } else {
+            const int rank = (static_cast<int>(dx.size()) > ncxreg) ? lm_qr(dx, dX, cf, se) : 0;
+            if (rank == 0 && lm_qr(x, X, cf, se) == 0) throw std::runtime_error("xreg has rank 0");
+            for (double v : cf) if (!std::isfinite(v)) throw std::runtime_error("xreg is rank deficient");
+        }
+        for (int j = 0; j < ncxreg; ++j) { init0.push_back(cf[j]); parscale.push_back(10 * se[j]); }
     }
     if (n_used <= 0) throw std::runtime_error("too few non-missing observations");
     Vec init = init0;
     const int npar = narma + ncxreg;
     Vec coef(npar, 0.0);
-    Vec xr = x;                                         // x minus regression (set per evaluation)
-    auto resid_x = [&](const Vec& par) {
+    auto resid_x = [&](const Vec& par) {               // x - xreg %*% par[narma + 1:ncxreg]
         if (!ncxreg) return x;
         Vec o(n);
-        for (int i = 0; i < n; ++i) o[i] = x[i] - xreg[i] * par[narma];
+        for (int i = 0; i < n; ++i) {
+            double t = 0.0;
+            for (int j = 0; j < ncxreg; ++j) t += X[j][i] * par[narma + j];
+            o[i] = x[i] - t;
+        }
         return o;
     };
     auto armaCSS = [&](const Vec& par) {
@@ -894,6 +1029,22 @@ ArimaFit arima_fit(const Vec& x0, const ArimaSpec& s) {
     const double val = 2 * n_used * value + n_used + n_used * std::log(2 * 3.14159265358979323846);
     fit.loglik = -0.5 * val;
     fit.aic = (method != ArimaMethod::CSS) ? val + 2 * npar + 2 : std::nan("");
+    if (!orig_xreg) {                                   // back to the original regressors: coef = S$v coef, var = A var A'
+        Vec c2(ncxreg, 0.0);
+        for (int i = 0; i < ncxreg; ++i)
+            for (int k = 0; k < ncxreg; ++k) c2[i] += Vs[i][k] * coef[narma + k];
+        for (int i = 0; i < ncxreg; ++i) coef[narma + i] = c2[i];
+        if (fit.var_ok) {
+            std::vector<Vec> A(npar, Vec(npar, 0.0));
+            for (int i = 0; i < narma; ++i) A[i][i] = 1.0;
+            for (int i = 0; i < ncxreg; ++i) for (int k = 0; k < ncxreg; ++k) A[narma + i][narma + k] = Vs[i][k];
+            std::vector<Vec> AV(npar, Vec(npar, 0.0)), W(npar, Vec(npar, 0.0));
+            for (int i = 0; i < npar; ++i) for (int k = 0; k < npar; ++k) for (int l = 0; l < npar; ++l) AV[i][k] += A[i][l] * var[l][k];
+            for (int i = 0; i < npar; ++i) for (int j = 0; j < npar; ++j) for (int k = 0; k < npar; ++k) W[i][j] += AV[i][k] * A[j][k];
+            var = W;
+        }
+    }
+    fit.nuser = static_cast<int>(s.xreg.size());
     fit.coef = coef;
     fit.n_used = n_used;
     fit.model = mod;
@@ -903,7 +1054,7 @@ ArimaFit arima_fit(const Vec& x0, const ArimaSpec& s) {
     return fit;
 }
 
-Vec arima_forecast(const ArimaFit& fit, int h) {
+Vec arima_forecast(const ArimaFit& fit, int h, const std::vector<Vec>* newxreg) {
     const ArimaModel& m = fit.model;
     const int rd = m.rd, r = m.r, d = m.d, p = static_cast<int>(m.phi.size());
     // T and Z as makeARIMA builds them
@@ -930,8 +1081,18 @@ Vec arima_forecast(const ArimaFit& fit, int h) {
         a = an;
         f[l] = fc;
     }
-    if (fit.has_intercept) for (double& v : f) v += fit.coef[fit.narma];
-    if (fit.has_drift) for (int l = 0; l < h; ++l) f[l] += fit.coef[fit.narma] * (fit.n + l + 1);
+    if (fit.ncxreg > 0) {                               // + newxreg %*% coef[-(1:narma)]
+        if (fit.nuser > 0 && (!newxreg || static_cast<int>(newxreg->size()) != fit.nuser))
+            throw std::runtime_error("'xreg' and 'newxreg' have different numbers of columns");
+        for (int l = 0; l < h; ++l) {
+            int j = fit.narma;
+            double xm = 0.0;
+            if (fit.has_intercept) xm += fit.coef[j++];
+            if (fit.has_drift) xm += static_cast<double>(fit.n + l + 1) * fit.coef[j++];
+            for (int u = 0; u < fit.nuser; ++u) xm += (*newxreg)[u][l] * fit.coef[j++];
+            f[l] += xm;
+        }
+    }
     return f;
 }
 

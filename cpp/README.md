@@ -18,6 +18,7 @@ Windows system DLLs. GitHub Actions builds it with MSVC (`-Generator ""`) for th
 | 1 (done) | naive, snaive, drift, naive2, ses, theta, comb_shd (with holt / damped holt) | naive/snaive/drift/naive2 to 1e-10; ses/theta to ~3e-8 (same Brent minimiser, different summation order); Holt fits equal to or better than Python on all NN5 fits; Comb S-H-D within 1% of R in mean SMAPE/MASE |
 | 2 (done) | auto ETS: a port of R `forecast::ets()` 9.x (initstate, initparam, bounds "both" with the characteristic-root test, etscalc likelihood, R's Nelder-Mead `nmmin`, AICc selection, m > 24 non-seasonal) | against the study's R forecasts (`tests/golden/*/forecasts_ets`): same model on 111/111 weekly and 111/111 daily series; forecasts equal to machine precision (median relative difference ~1e-14); 1 daily series differs by > 0.1% (the two Nelder-Mead runs drift apart) |
 | 3 (done) | auto ARIMA: a port of R `stats::arima` (CSS / CSS-ML / ML, Gardner Q0, Kalman likelihood, R's BFGS `vmmin` and `optimhess`) and `forecast::auto.arima()` 9.0.2 (KPSS `ndiffs`, STL-based `nsdiffs` with a port of `stl.f`, stepwise search, approximation offset and refit, root and variance checks), run as the study's chain `auto.arima(lambda = 0)` → `auto.arima()` → `auto.arima(seasonal = FALSE)` | fixed orders: 40 NN5 fits against R `stats::arima`, log-likelihood within 2e-9 (`tools/r_reference/compare_arima_fixed.py`); auto: same model, constant and fallback step as R on 111/111 weekly and 111/111 daily series, forecasts median relative difference ~1e-13, worst 1.5e-6 weekly / 9e-5 daily (`compare_auto_arima.py`); R 9.0.2 itself reproduces the study's golden forecasts to 4e-5 |
+| 3c (done) | dhr_arima: the study's dynamic harmonic regression, `auto.arima(y, xreg = fourier(y, K = 1), seasonal = FALSE)`; adds general regressors to the `stats::arima` port (intercept / drift / xreg columns, SVD rotation, `lm` starting values) and to `auto.arima` (residualised differencing tests, rank check), and `fourier()` with R's `sinpi`/`cospi`. Several seasonal periods fail as in R (scalar K), so those series fall back to snaive; K other than 1 is refused by the engine | same model on 111/111 weekly (vs the study's forecasts, worst 1.2e-8) and 111/111 daily series (vs R 9.0.2, `tools/r_reference/compare_dhr.py`, worst 4.3e-6) |
 
 Speed on this machine (i5, 6 cores; 111 NN5 series; Python in-process, one core):
 
@@ -35,7 +36,10 @@ C++ 100 s (6 threads). Daily is dominated by R's refit step: candidates are refi
 one passes the root and variance checks (up to ~30 fits, ~25,000 Kalman passes for one series), and the port keeps that
 behaviour. Two deliberate departures from R's arithmetic, both ~1e-12: the stationary covariance Q0 is computed from the
 ARMA autocovariances when the state dimension exceeds 8 (Gardner's method costs O(r^6)), and loops skip the zero
-coefficients of the seasonal differencing polynomial. Weekly data use frequency floor(52.18) = 52, as the study's R run did.
+coefficients of the seasonal differencing polynomial. Weekly data use frequency floor(52.18) = 52, as the study's R run did
+(a single-period `msts` is a plain `ts` with frequency floor(period), so R's Fourier terms also use 52).
+
+DHR-ARIMA (111 series, 1 thread): weekly R 10.5 s / C++ 1.3 s; daily R 34.3 s / C++ 13.3 s.
 
 ## Interface
 `tsf_forecast_batch(method, values, offsets, n_series, h, horizons, periods, n_periods, n_threads, out, flags, msg, msg_len)`:

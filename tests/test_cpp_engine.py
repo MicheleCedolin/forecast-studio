@@ -114,6 +114,33 @@ def test_arima_reproduces_r_auto_arima(case):
     assert rel.max() < 1e-3, f"{name}: worst relative difference {rel.max():.2e}"
 
 
+def test_dhr_arima_reproduces_r():
+    """C++ dhr_arima = auto.arima(y, xreg = fourier(y, K = 1), seasonal = FALSE), as the study's R code. Against the
+    study's weekly R forecasts: same model on all 111 series, forecasts to ~1e-8 (daily, checked with
+    tools/r_reference/compare_dhr.py: 111/111, worst 4e-6)."""
+    d = G / "nn5_weekly"
+    train = [r[~np.isnan(r)] for r in _load(d, "train")]
+    ref = _load(d, "forecasts_dhr_arima")
+    f, flags, _ = C.forecast_batch("dhr_arima", train, ref.shape[1], (52.17857142857143,))
+    assert not flags.any()
+    rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
+    assert np.median(rel) < 1e-9 and rel.max() < 1e-5, f"median {np.median(rel):.2e}, worst {rel.max():.2e}"
+
+
+def test_dhr_arima_r_failure_modes():
+    rng = np.random.default_rng(5)
+    train = [100 + np.cumsum(rng.normal(size=120)) for _ in range(3)]
+    # two seasonal periods with a scalar K: R's fourier() stops, the app falls back to snaive
+    f, flags, msg = C.forecast_batch("dhr_arima", train, 7, (7.0, 30.5))
+    assert flags.all() and "Number of periods" in msg
+    # period 1: 2K > period, fourier() stops
+    _, flags, msg = C.forecast_batch("dhr_arima", train, 3, (1.0,))
+    assert flags.all() and "K must" in msg
+    with pytest.raises(Exception, match="K = 1"):
+        C.CppEngine().run(EngineJob(task="local", method="dhr_arima", train=train, horizon=3, seasonality=(7.0,),
+                                    params={"fourier_k": 2}))
+
+
 def test_arima_q0_methods_agree():
     """Gardner's Q0 (as R's getQ0) and the autocovariance form used for large state dimension give the same matrix."""
     lib = C.load_lib()

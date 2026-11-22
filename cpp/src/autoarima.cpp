@@ -331,13 +331,14 @@ double min_root_modulus(const Vec& coefs, double sign) {   // polyroot(c(1, sign
 }
 
 MyFit myarima(const Vec& x, int p, int d, int q, int P, int D, int Q, int freq, bool constant, bool approximation,
-              double offset, bool use_aic) {
+              double offset, bool use_aic, const std::vector<Vec>& xreg) {
     MyFit r;
     r.p = p; r.d = d; r.q = q; r.P = P; r.D = D; r.Q = Q; r.constant = constant;
     const int n = static_cast<int>(x.size());
     ArimaSpec s;
     s.p = p; s.d = d; s.q = q; s.P = P; s.D = D; s.Q = Q; s.period = freq;
     s.method = approximation ? ArimaMethod::CSS : ArimaMethod::CSS_ML;
+    s.xreg = xreg;
     if (d + D == 1 && constant) { s.drift = true; s.include_mean = true; }
     else { s.drift = false; s.include_mean = constant; }
     try { r.fit = arima_fit(x, s); } catch (const std::exception&) { return r; }
@@ -394,7 +395,8 @@ Vec differencing_forecast(const Vec& x, int d, int D, int m, double c, int reg, 
 
 }  // namespace
 
-AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_transform, int h) {
+AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_transform, int h,
+                           const std::vector<Vec>& xreg, const std::vector<Vec>& newxreg) {
     AutoArimaResult out;
     const int n = static_cast<int>(y.size());
     if (n == 0) throw std::runtime_error("All data are missing");
@@ -417,15 +419,66 @@ AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_trans
         for (double v : y) if (!(v > 0)) throw std::runtime_error("lambda = 0 needs positive data");
         for (double& v : x) v = std::log(v);
     }
+    // xreg: the differencing tests run on residuals(lm(x ~ xregg)), xregg = the non-constant columns
+    for (const Vec& c : xreg) if (static_cast<int>(c.size()) != n) throw std::runtime_error("xreg length does not match");
+    for (const Vec& c : newxreg) if (static_cast<int>(c.size()) < h) throw std::runtime_error("newxreg is shorter than h");
+    if (newxreg.size() != xreg.size()) throw std::runtime_error("'xreg' and 'newxreg' have different numbers of columns");
+    std::vector<Vec> xregg;
+    for (const Vec& c : xreg) if (!is_constant(c)) xregg.push_back(c);
+    Vec xx = x;
+    if (!xregg.empty()) {
+        std::vector<Vec> X1{Vec(n, 1.0)};
+        X1.insert(X1.end(), xregg.begin(), xregg.end());
+        Vec sv;
+        svd_v(X1, &sv);
+        double ssum = 0.0, smin = INF;
+        for (double v : sv) { ssum += v; smin = std::min(smin, v); }
+        if (smin / ssum < 2.220446049250313e-16) throw std::runtime_error("xreg is rank deficient");
+        Vec cf, se;
+        if (lm_qr(x, X1, cf, se) != static_cast<int>(X1.size())) throw std::runtime_error("xreg is rank deficient");
+        for (int i = 0; i < n; ++i) {
+            double fv = 0.0;
+            for (size_t j = 0; j < X1.size(); ++j) fv += X1[j][i] * cf[j];
+            xx[i] = x[i] - fv;
+        }
+    }
+    auto any_constant = [](const std::vector<Vec>& cols) {
+        for (const Vec& c : cols) if (is_constant(c)) return true;
+        return false;
+    };
     int D = 0;
     if (m == 1) { D = 0; max_P = max_Q = 0; }
     else if (n <= 2 * m) D = 0;
-    else D = nsdiffs(x, freq);
-    Vec dx = D > 0 ? diff_lag(x, m) : x;
-    const int d = ndiffs(dx, 2);
+    else {
+        D = nsdiffs(xx, freq);
+        if (D > 0 && !xregg.empty()) {
+            std::vector<Vec> dr;
+            for (const Vec& c : xregg) dr.push_back(diff_lag(c, m));
+            if (any_constant(dr)) --D;
+        }
+    }
+    Vec dx = D > 0 ? diff_lag(xx, m) : xx;
+    std::vector<Vec> diffxreg;
+    for (const Vec& c : xregg) diffxreg.push_back(D > 0 ? diff_lag(c, m) : c);
+    int d = ndiffs(dx, 2);
+    if (d > 0 && !xregg.empty()) {
+        for (Vec& c : diffxreg) for (int i = 0; i < d; ++i) c = diff_lag(c, 1);
+        if (any_constant(diffxreg)) --d;
+    }
     for (int i = 0; i < d; ++i) dx = diff_lag(dx, 1);
     if (dx.empty()) throw std::runtime_error("Not enough data to proceed");
     out.period = (D > 0) ? m : freq;
+    if (is_constant(dx) && !xreg.empty()) {
+        // Arima(x, order = c(0, d, 0), seasonal = c(0, D, 0), xreg = xreg): regression with differencing only (lambda
+        // is not passed on in R, so no back-transform)
+        ArimaSpec s;
+        s.d = d; s.D = D; s.period = (D > 0) ? m : freq; s.include_mean = true; s.method = ArimaMethod::CSS_ML;
+        s.xreg = xreg;
+        const ArimaFit f = arima_fit(x, s);
+        out.d = d; out.D = D; out.mean = f.has_intercept;
+        out.forecast = arima_forecast(f, h, &newxreg);
+        return out;
+    }
     if (is_constant(dx)) {
         // R fits these with Arima(x, ...) without passing lambda, so the forecasts stay on the transformed scale.
         out.d = d; out.D = D;
@@ -455,6 +508,7 @@ AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_trans
         s.d = d; s.D = D; s.period = (D > 0) ? m : freq;
         s.include_mean = true;
         s.method = ArimaMethod::CSS_ML;
+        s.xreg = xreg;
         try {
             const ArimaFit f = arima_fit(x, s);
             if (f.var_ok) offset = -2.0 * f.loglik - n * std::log(f.sigma2);
@@ -470,7 +524,7 @@ AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_trans
     struct Row { int p, q, P, Q; bool c; double ic; };
     std::vector<Row> results;
     auto fitm = [&](int p_, int q_, int P_, int Q_, bool c_) {
-        return myarima(x, p_, d, q_, P_, D, Q_, freq, c_, approximation, offset, use_aic);
+        return myarima(x, p_, d, q_, P_, D, Q_, freq, c_, approximation, offset, use_aic, xreg);
     };
     auto newmodel = [&](int p_, int q_, int P_, int Q_, bool c_) {
         for (const Row& r : results) if (r.p == p_ && r.q == q_ && r.P == P_ && r.Q == Q_ && r.c == c_) return false;
@@ -538,17 +592,63 @@ AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_trans
         std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return results[a].ic < results[b].ic; });
         for (size_t i : order) {
             const Row& r = results[i];
-            MyFit g = myarima(x, r.p, d, r.q, r.P, D, r.Q, freq, r.c, false, 0.0, use_aic);
+            MyFit g = myarima(x, r.p, d, r.q, r.P, D, r.Q, freq, r.c, false, 0.0, use_aic, xreg);
             if (g.ic < INF) { best = g; break; }
         }
     }
     if (!(best.ic < INF)) throw std::runtime_error("No suitable ARIMA model found");
-    out.forecast = arima_forecast(best.fit, h);
+    out.forecast = arima_forecast(best.fit, h, &newxreg);
     if (log_transform) for (double& v : out.forecast) v = std::exp(v);
     out.p = best.p; out.d = best.d; out.q = best.q; out.P = best.P; out.D = best.D; out.Q = best.Q;
     out.drift = best.fit.has_drift; out.mean = best.fit.has_intercept;
     out.loglik = best.fit.loglik; out.aicc = best.aicc; out.sigma2 = best.fit.sigma2;
     return out;
+}
+
+namespace {
+
+double r_sinpi(double x) {                              // R's sinpi / cospi (nmath/cospi.c)
+    x = std::fmod(x, 2.0);
+    if (x <= -1) x += 2.0; else if (x > 1.0) x -= 2.0;
+    if (x == 0.0 || x == 1.0) return 0.0;
+    if (x == 0.5) return 1.0;
+    if (x == -0.5) return -1.0;
+    return std::sin(3.14159265358979323846 * x);
+}
+
+double r_cospi(double x) {
+    x = std::fmod(std::fabs(x), 2.0);
+    if (std::fmod(x, 1.0) == 0.5) return 0.0;
+    if (x == 1.0) return -1.0;
+    if (x == 0.0) return 1.0;
+    return std::cos(3.14159265358979323846 * x);
+}
+
+}  // namespace
+
+std::vector<Vec> fourier_terms(double period, int K, int t0, int len) {
+    if (2.0 * K > period) throw std::runtime_error("K must be not be greater than period/2");
+    std::vector<Vec> X;
+    for (int j = 1; j <= K; ++j) {
+        const double p = j / period;
+        const bool with_sin = std::fabs(2 * p - std::nearbyint(2 * p)) > 2.220446049250313e-16;
+        Vec s(len), c(len);
+        for (int t = 0; t < len; ++t) {
+            const double arg = 2 * p * (t0 + t + 1);
+            s[t] = r_sinpi(arg);
+            c[t] = r_cospi(arg);
+        }
+        if (with_sin) X.push_back(std::move(s));
+        X.push_back(std::move(c));
+    }
+    return X;
+}
+
+AutoArimaResult dhr_arima(const Vec& y, int freq, int n_periods, int K, int h) {
+    if (n_periods > 1) throw std::runtime_error("Number of periods does not match number of orders");
+    const int n = static_cast<int>(y.size());
+    const std::vector<Vec> X = fourier_terms(freq, K, 0, n), Xf = fourier_terms(freq, K, n, h);
+    return auto_arima(y, freq, false, false, h, X, Xf);
 }
 
 AutoArimaResult auto_arima_study(const Vec& y, int freq, int h) {
