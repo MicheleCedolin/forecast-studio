@@ -70,3 +70,16 @@ temasının (doğruluk yerine karar etkisi) tam olarak gerektirdiği analizdir v
 .\scripts\windows\tsfs.ps1 doctor     # her yöntemin canlı mini testi
 .\scripts\windows\tsfs.ps1 golden     # kendi R çıktılarınızla karşılaştırma (NN5 haftalık + günlük), --csv ile kaydeder
 ```
+
+## Added 2026-11-22: M3/M4 benchmarks and SCUM
+
+| Method | Type | Needs | Source | Relation to R | Validation |
+|---|---|---|---|---|---|
+| `drift` | local | - | `rwf(drift = TRUE)` | same closed form | equals statsforecast `RandomWalkWithDrift` to 1e-10 (test) |
+| `naive2` | local | - | M4 benchmark code (Makridakis et al. 2020) | seasonality test and `decompose()` follow the M4 R code | unit tests; not compared with R output |
+| `comb_shd` | local | - | M4 benchmark "Comb" (SES + Holt + damped Holt) | same model family as `holt()`, own optimiser (SSE, ets bounds) | unit tests; **not** checked series by series against R |
+| `dotm` | local | statsforecast | Fiorucci et al. 2016 | `DynamicOptimizedTheta` (signature checked on 2.1.1) | runs; no R reference |
+| `scum` | local | statsforecast | Petropoulos & Svetunkov 2020 | median of ETS, CES, ARIMA, DOTM from this engine | median identity test; a failed component is reported in notes |
+
+Ranking tools for comparing several runs: `python -m tsfstudio rank --run ets=runs/<dir> --run theta=runs/<dir> ... --metric MASE`
+(mean ranks, Friedman, Nemenyi critical difference, bootstrap P(first) / P(top k) and Kendall tau). Module: `src/tsfstudio/ranking.py`.

@@ -11,9 +11,15 @@ This repository contains **Phase A** (core), **Phase B** (R engine, runner, Dock
 | A | TSF reader/writer, data catalogue, Excel template + converter, Python metrics module, CLI, tests | **Done** |
 | B | R engine (corrected driver, fallback counter), runner + manifest, memory/time estimate, Dockerfile/compose, Windows scripts, golden tests | **Coded**; real R and Docker verification is on the user's machine (`doctor`, `golden-test`) |
 | C | Python engine: built-in ses/theta/naive/snaive/pooled regression (verified against R) + statsforecast (ets/arima/dhr_arima; TBATS disabled; C3: intermittent demand Croston/SBA/TSB/ADIDA/IMAPA and AutoTheta/AutoCES/Holt-Winters/MSTL/AutoMFLES) + CatBoost | **Coded**; statsforecast/catboost verification is on the user's machine (`golden`) |
-| D | Deep models (PyTorch GluonTS 0.17) | – |
+| C4 | M3/M4 benchmarks drift, Naive2, Comb S-H-D (numpy), DOTM and SCUM (statsforecast); optional measures RMSSE, MSE, MAPE, MAAPE, MedAE, RMSLE, ME, PBias; `ranking.py` + `rank` command (Friedman, Nemenyi CD, AvgRelMAE, OWA, bootstrap rank stability) | **Coded and unit-tested** (2026-11-22); see docs/RESEARCH_MODELS_METRICS.md for what to add next |
+| D | Deep models: the research report recommends `neuralforecast` (N-HiTS, N-BEATS) and one foundation model (Chronos-Bolt / Chronos-2) over GluonTS | – |
 | E | WRMSSE (M5), data features (tsfeatures/catch22/lambda), rolling origin | – |
 | F | Local interface (in the browser; standard library only): data/model selection, margin-note explanations, editable parameters, pre-run check, progress/cancel, result charts, history and comparison, Excel upload | **Coded** (docs/APP.md) |
+
+## Claude Code agents
+`.claude/agents/` defines three project agents for Claude Code: `test-manager` (runs and triages the test suite),
+`ui-design-reviewer` (evaluates the web interface; latest report: `docs/UI_REVIEW.md`) and `forecasting-researcher`
+(alternative models, error measures and ranking methods; latest report: `docs/RESEARCH_MODELS_METRICS.md`).
 
 ## Installation and tests
 

@@ -170,6 +170,9 @@ SPECS: dict[str, dict] = {
     "adida":             {"cls": "ADIDA", "group": "intermittent", "params": {}},
     "imapa":             {"cls": "IMAPA", "group": "intermittent", "params": {}},
     "auto_theta":        {"cls": "AutoTheta", "group": "classical", "params": {"decomposition_type": "multiplicative"}},
+    # 2026-11-22: DOTM (Fiorucci vd. 2016), M4'te güçlü kıyas ve SCUM bileşeni. İmza 2.1.1'de doğrulandı:
+    # DynamicOptimizedTheta(season_length=1, decomposition_type='multiplicative', alias, prediction_intervals).
+    "dotm":              {"cls": "DynamicOptimizedTheta", "group": "classical", "params": {"decomposition_type": "multiplicative"}},
     "auto_ces":          {"cls": "AutoCES", "group": "classical", "params": {"model": "Z", "max_season": 24}},
     "holt_winters":      {"cls": "HoltWinters", "group": "classical", "params": {"error_type": "A", "max_season": 24}},
     "mstl":              {"cls": "MSTL", "group": "classical", "params": {}},
@@ -228,14 +231,14 @@ def forecast_spec(method: str, y: np.ndarray, h: int, m: int, periods: Sequence[
             return np.zeros(h)
         if method == "tsb":
             kw = {"alpha_d": _alpha(P, "alpha_d"), "alpha_p": _alpha(P, "alpha_p")}
-    elif method == "auto_theta":
+    elif method in ("auto_theta", "dotm"):
         dec = str(P["decomposition_type"])
         if dec not in ("multiplicative", "additive"):
             raise ValueError("decomposition_type must be 'multiplicative' or 'additive'")
         if dec == "multiplicative" and float(np.min(y)) <= 0:
-            note("auto_theta: for series with zero/negative values, additive decomposition was used instead of multiplicative.")
+            note(f"{method}: for series with zero/negative values, additive decomposition was used instead of multiplicative.")
             dec = "additive"
-        kw = {"season_length": usable_season(n, m, None, "auto_theta"), "decomposition_type": dec}
+        kw = {"season_length": usable_season(n, m, None, method), "decomposition_type": dec}
     elif method == "auto_ces":
         kw = {"season_length": usable_season(n, m, P["max_season"], "auto_ces"), "model": str(P["model"])}
     elif method == "holt_winters":
@@ -257,3 +260,35 @@ def forecast_spec(method: str, y: np.ndarray, h: int, m: int, periods: Sequence[
 
     cls = getattr(SM, spec["cls"])
     return _mean(make_model(cls, _strict=True, **kw).forecast(y=y, h=h))
+
+
+# ------------------------------------------------------------------------------------------------
+# SCUM (Petropoulos & Svetunkov, 2020, IJF 36(1)): ETS, CES, ARIMA ve DOTM tahminlerinin nokta nokta MEDYANI.
+# M4'te en iyi istatistiksel kıyaslardan biri. Bileşenlerden biri hata verirse kalanların medyanı alınır ve bildirilir;
+# ikiden az bileşen kalırsa hata (seri yedeğe düşer). Bileşenler bu motordaki ayarlarıyla çağrılır.
+# ------------------------------------------------------------------------------------------------
+SCUM_COMPONENTS = ("ets", "auto_ces", "arima", "dotm")
+
+
+def forecast_scum(y: np.ndarray, h: int, m: int, periods: Sequence[float], params: dict | None) -> np.ndarray:
+    fcs, failed = [], []
+    for comp in SCUM_COMPONENTS:
+        try:
+            if comp == "ets":
+                f = forecast_ets(y, h, m)
+            elif comp == "arima":
+                f = forecast_arima(y, h, m, int((params or {}).get("arima_max_season", ARIMA_MAX_SEASON_DEFAULT)))
+            else:
+                f = forecast_spec(comp, y, h, m, periods, None)
+            f = np.asarray(f, dtype=np.float64).reshape(-1)[:h]
+            if f.shape[0] == h and np.all(np.isfinite(f)):
+                fcs.append(f)
+            else:
+                failed.append(f"{comp}: non-finite")
+        except Exception as exc:  # noqa: BLE001
+            failed.append(f"{comp}: {type(exc).__name__}")
+    if len(fcs) < 2:
+        raise RuntimeError("scum: fewer than two components succeeded (" + "; ".join(failed) + ")")
+    if failed:
+        note(f"scum: median of {len(fcs)} components; failed: {', '.join(sorted(f.split(':')[0] for f in failed))}")
+    return np.median(np.vstack(fcs), axis=0)

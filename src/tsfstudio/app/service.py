@@ -28,7 +28,7 @@ from .. import catalog as C
 from ..engines.base import EngineCancelled, EngineError
 from ..engines.registry import get_engine
 from ..estimate import available_memory_bytes, preflight
-from ..metrics import DEFAULT_METRICS
+from ..metrics import ALL_METRICS, DEFAULT_METRICS
 from ..runner import MISSING_POLICIES, RunConfig, RunError, build_job, prepare, run
 from ..seasonality import primary_period, seasonality_for
 from ..tsf.reader import TSFDataset, read_tsf, read_tsf_header
@@ -142,6 +142,7 @@ class AppService:
         cat = MI.build_catalog({k: (v["methods"] if v["available"] else None) for k, v in eng.items()})
         return {"groups": [{"id": g, "title": t, "text": x} for g, t, x in MI.GROUPS], "models": cat,
                 "metrics": MI.METRICS_INFO, "metric_defaults": list(DEFAULT_METRICS),
+                "metric_all": list(ALL_METRICS),
                 "metric_refs": [dict(MI.REFS[k], key=k) for k in MI.METRIC_REFS],
                 "ref_table": {k: dict(v, key=k) for k, v in MI.REFS.items()},
                 "missing_policies": [
@@ -326,7 +327,7 @@ class AppService:
         if mp not in MISSING_POLICIES:
             raise AppError(f"Invalid missing-value policy: {mp}")
         metrics = payload.get("metrics") or list(DEFAULT_METRICS)
-        if not isinstance(metrics, list) or not metrics or any(m not in DEFAULT_METRICS for m in metrics):
+        if not isinstance(metrics, list) or not metrics or any(m not in ALL_METRICS for m in metrics):
             raise AppError("Invalid metric selection.")
         workers = opt_int("workers") or 1
         workers = min(workers, max(1, (os.cpu_count() or 1)))

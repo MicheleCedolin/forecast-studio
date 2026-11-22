@@ -143,6 +143,109 @@ def theta_forecast(y: np.ndarray, h: int, m: int) -> np.ndarray:
 
 
 # ------------------------------------------------------------------------------------------------
+# M3/M4 kıyas yöntemleri (2026-11-22): drift, Naive2, Comb S-H-D
+#   Kaynak: M4 yarışmasının resmi kıyas kodu (Makridakis, Spiliotis & Assimakopoulos, 2020, IJF 36(1));
+#   `rwf(drift = TRUE)` (Hyndman & Athanasopoulos, FPP3). Holt / sönümlü Holt: forecast::holt ile aynı model sınıfı
+#   (ets "AAN"/"AAdN", opt.crit = "mse", R sınırları) ama kendi en iyileyicimiz; R ile birebir sınanmadı.
+# ------------------------------------------------------------------------------------------------
+def drift(y: np.ndarray, h: int) -> np.ndarray:
+    """Rastgele yürüyüş + sürüklenme: y_T + k (y_T - y_1)/(T - 1), k = 1..h (forecast::rwf(drift = TRUE))."""
+    y = np.asarray(y, dtype=np.float64)
+    n = len(y)
+    slope = (y[-1] - y[0]) / (n - 1) if n > 1 else 0.0
+    return y[-1] + slope * np.arange(1, h + 1, dtype=np.float64)
+
+
+def m4_seasonality_test(x: np.ndarray, m: int) -> bool:
+    """M4 kıyas kodundaki `SeasonalityTest`: %90 (t = 1.645), n >= 3m, ACF R `acf()` varsayılan lag.max ile.
+
+    R: xacf <- acf(x)$acf[-1]; clim <- 1.645/sqrt(n) * sqrt(cumsum(c(1, 2*xacf^2))); abs(xacf[m]) > clim[m].
+    m, R'ın varsayılan lag.max'ından (floor(10 log10 n)) büyükse xacf[m] NA olur -> mevsimsiz kabul edilir."""
+    x = np.asarray(x, dtype=np.float64)
+    n = len(x)
+    if m <= 1 or n < 3 * m or float(np.ptp(x)) == 0.0:
+        return False
+    lag_max = min(int(math.floor(10.0 * math.log10(n))), n - 1)
+    if m > lag_max:
+        return False
+    r = _acf(x, lag_max)
+    clim = 1.645 / math.sqrt(n) * math.sqrt(1.0 + 2.0 * float(np.sum(r[: m - 1] ** 2)))
+    return bool(abs(r[m - 1]) > clim)
+
+
+def _m4_deseasonalise(y: np.ndarray, m: int, h: int) -> tuple[np.ndarray, np.ndarray]:
+    """(mevsimden arındırılmış seri, ufuk için mevsim indeksleri). Mevsimsiz ya da indeks tanımsızsa indeksler 1."""
+    x = np.asarray(y, dtype=np.float64)
+    if m4_seasonality_test(x, m):
+        seas = _decompose_multiplicative(x, m)
+        if np.all(np.isfinite(seas)) and not np.any(np.abs(seas) < 1e-10):
+            return x / seas, np.resize(seas[len(x) - m:], h)
+    return x, np.ones(h)
+
+
+def naive2(y: np.ndarray, h: int, m: int) -> np.ndarray:
+    """M4 Naive2: mevsimsellik sınaması geçerse çarpımsal klasik ayrıştırma, naif, yeniden mevsimselleştirme."""
+    x, si = _m4_deseasonalise(y, m, h)
+    return naive(x, h) * si
+
+
+def _holt_sse(params: np.ndarray, y: np.ndarray, damped: bool) -> float:
+    alpha, beta, phi, l, b = params if damped else (*params[:2], 1.0, *params[2:])
+    if beta > alpha:                                         # ets sınırı: beta <= alpha
+        return 1e300
+    sse = 0.0
+    for yt in y:
+        f = l + phi * b
+        e = yt - f
+        sse += e * e
+        l_new = f + alpha * e
+        b = phi * b + beta * e
+        l = l_new
+    return sse
+
+
+def holt_forecast(y: np.ndarray, h: int, damped: bool = False) -> np.ndarray:
+    """Holt doğrusal eğilim (damped=True: sönümlü). SSE en küçüklenir (forecast::holt -> ets(opt.crit = "mse")).
+
+    Sınırlar R ets ile aynı: alfa in [1e-4, 0.9999], beta in [1e-4, alfa], phi in [0.8, 0.98]. Başlangıç düzeyi/eğimi de
+    serbest parametredir (ilk değerleri: ilk en fazla 10 gözlem üzerinde doğrusal regresyon, ets gibi)."""
+    from scipy.optimize import minimize
+
+    y = np.asarray(y, dtype=np.float64)
+    n = len(y)
+    if n < 3 or float(np.ptp(y)) == 0.0:
+        return drift(y, h) if n > 1 else naive(y, h)
+    k = min(10, n)
+    b0, l0 = np.polyfit(np.arange(1, k + 1, dtype=np.float64), y[:k], 1)
+    l0 = float(l0)
+    b0 = float(b0)
+    scale = max(float(np.std(y)), 1e-8)
+    best = None
+    starts = [(0.5, 0.1), (0.2, 0.05), (0.9, 0.3)]
+    for a0, be0 in starts:
+        x0 = [a0, be0] + ([0.95] if damped else []) + [l0, b0]
+        bounds = [(ALPHA_LO, ALPHA_HI), (ALPHA_LO, ALPHA_HI)] + ([(0.8, 0.98)] if damped else []) + \
+                 [(l0 - 10 * scale, l0 + 10 * scale), (b0 - 10 * scale, b0 + 10 * scale)]
+        res = minimize(_holt_sse, np.array(x0), args=(y, damped), method="L-BFGS-B", bounds=bounds)
+        if best is None or res.fun < best.fun:
+            best = res
+    alpha, beta, phi, l, b = best.x if damped else (*best.x[:2], 1.0, *best.x[2:])
+    for yt in y:                                             # son durum
+        f = l + phi * b
+        e = yt - f
+        l, b = f + alpha * e, phi * b + beta * e
+    steps = np.cumsum(phi ** np.arange(1, h + 1)) if damped else np.arange(1, h + 1, dtype=np.float64)
+    return l + steps * b
+
+
+def comb_shd(y: np.ndarray, h: int, m: int) -> np.ndarray:
+    """M4 'Comb' kıyası: Naive2 ile aynı mevsim arındırma; SES, Holt ve sönümlü Holt ortalaması; yeniden mevsimselleştirme."""
+    x, si = _m4_deseasonalise(y, m, h)
+    f = (ses_forecast(x, h) + holt_forecast(x, h, False) + holt_forecast(x, h, True)) / 3.0
+    return f * si
+
+
+# ------------------------------------------------------------------------------------------------
 # Fourier terimleri (forecast::fourier) — DHR-ARIMA için dış regresörler
 # ------------------------------------------------------------------------------------------------
 def fourier_terms(n: int, periods: Sequence[float], K: int | Sequence[int], h: int | None = None) -> np.ndarray:

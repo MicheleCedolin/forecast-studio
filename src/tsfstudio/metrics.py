@@ -32,6 +32,11 @@ from .seasonality import primary_period
 
 ORIGINAL_METRICS = ("SMAPE", "mSMAPE", "MASE", "MAE", "RMSE")
 DEFAULT_METRICS = ORIGINAL_METRICS + ("WAPE", "nRMSE_Mean", "nRMSE_Range")  # error_calculator.R ile aynı küme
+# 2026-11-22: isteğe bağlı ek metrikler (varsayılan kümeyi DEĞİŞTİRMEZ; R çıktısıyla karşılaştırma bozulmasın diye).
+# Tanımlar ve kaynaklar: docs/METRICS.md ve docs/RESEARCH_MODELS_METRICS.md.
+EXTRA_METRICS = ("RMSSE", "MSE", "MAPE", "MAAPE", "MedAE", "RMSLE", "ME", "PBias")
+ALL_METRICS = DEFAULT_METRICS + EXTRA_METRICS
+_TRAIN_METRICS = ("MASE", "RMSSE")                     # örnek-içi ölçek gerektirenler
 MSMAPE_EPSILON = 0.1
 
 
@@ -163,11 +168,94 @@ def mase(
 
 
 # ---------------------------------------------------------------------------------------------
+# Ek metrikler (2026-11-22). Hepsi seri başına; tanımsız durum NaN (özette N_excluded olarak sayılır).
+# ---------------------------------------------------------------------------------------------
+def mse(forecasts, actuals) -> np.ndarray:
+    f, a = _check(forecasts, actuals)
+    return _row_nanmean((f - a) ** 2)
+
+
+def mape(forecasts, actuals) -> np.ndarray:
+    """100 · mean(|f − a| / |a|). Gerçek değeri 0 olan noktalar tanımsızdır ve dışarıda kalır (Hyndman & Koehler 2006)."""
+    f, a = _check(forecasts, actuals)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        e = np.abs(f - a) / np.abs(a)
+    e[a == 0] = np.nan
+    return 100.0 * _row_nanmean(e)
+
+
+def maape(forecasts, actuals) -> np.ndarray:
+    """mean(arctan(|f − a| / |a|)) radyan, [0, π/2] (Kim & Kim 2016). a = 0 ve f ≠ 0 -> π/2; a = f = 0 -> 0."""
+    f, a = _check(forecasts, actuals)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        e = np.arctan(np.abs(f - a) / np.abs(a))          # x/0 -> inf -> arctan = π/2
+    e[(a == 0) & (f == 0)] = 0.0
+    return _row_nanmean(e)
+
+
+def medae(forecasts, actuals) -> np.ndarray:
+    f, a = _check(forecasts, actuals)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.nanmedian(np.abs(f - a), axis=1)
+
+
+def rmsle(forecasts, actuals) -> np.ndarray:
+    """sqrt(mean((ln(1+f) − ln(1+a))²)). Negatif tahmin/gerçek içeren seri NaN (kırpma yapılmaz; sessiz düzeltme olmasın)."""
+    f, a = _check(forecasts, actuals)
+    with np.errstate(invalid="ignore"):
+        bad = np.nansum((f < 0) | (a < 0), axis=1) > 0
+        out = np.sqrt(_row_nanmean((np.log1p(np.where(f < 0, np.nan, f)) - np.log1p(np.where(a < 0, np.nan, a))) ** 2))
+    out[bad] = np.nan
+    return out
+
+
+def me(forecasts, actuals) -> np.ndarray:
+    """Ortalama hata, mean(f − a): pozitif = aşırı tahmin (yanlılık)."""
+    f, a = _check(forecasts, actuals)
+    return _row_nanmean(f - a)
+
+
+def pbias(forecasts, actuals) -> np.ndarray:
+    """100 · Σ(f − a) / Σ a. Σ a = 0 -> NaN."""
+    f, a = _check(forecasts, actuals)
+    ok = ~(np.isnan(f) | np.isnan(a))
+    num = np.where(ok, f - a, 0.0).sum(axis=1)
+    den = np.where(ok, a, 0.0).sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = 100.0 * num / den
+    out[(den == 0) | (ok.sum(axis=1) == 0)] = np.nan
+    return out
+
+
+def rmsse(forecasts, actuals, train: Sequence[np.ndarray]) -> np.ndarray:
+    """RMSSE (M5; Makridakis, Spiliotis & Assimakopoulos 2022): sqrt(mean(e²) / mean((y_t − y_{t−1})², örnek içi)).
+
+    Ölçek tüm eğitim kısmı üzerinden alınır. M5 resmi tanımında ölçek ilk sıfır olmayan satıştan başlar; bu fark
+    yalnızca başında sıfırlar olan serileri etkiler (docs/METRICS.md). Ölçek 0 -> NaN."""
+    f, a = _check(forecasts, actuals)
+    if len(train) != f.shape[0]:
+        raise ValueError(f"the length of train ({len(train)}) does not match the number of series ({f.shape[0]})")
+    num = _row_nanmean((f - a) ** 2)
+    out = np.full(f.shape[0], np.nan)
+    for k in range(f.shape[0]):
+        tr = np.asarray(train[k], dtype=np.float64)
+        tr = tr[~np.isnan(tr)]
+        if tr.size < 2:
+            continue
+        s = float(np.mean(np.diff(tr) ** 2))
+        if s > 0 and np.isfinite(num[k]):
+            out[k] = np.sqrt(num[k] / s)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
 # Toplu hesap + özet + Excel
 # ---------------------------------------------------------------------------------------------
 _SIMPLE: dict[str, Callable] = {
     "SMAPE": smape, "mSMAPE": msmape, "MAE": mae, "RMSE": rmse,
     "WAPE": wape, "nRMSE_Mean": nrmse_mean, "nRMSE_Range": nrmse_range,
+    "MSE": mse, "MAPE": mape, "MAAPE": maape, "MedAE": medae, "RMSLE": rmsle, "ME": me, "PBias": pbias,
 }
 
 
@@ -182,12 +270,17 @@ def compute_error_table(
 ) -> pd.DataFrame:
     """Seri başına metrik tablosu (satır = seri, sütun = metrik)."""
     f, a = _check(forecasts, actuals)
-    unknown = [m for m in metrics if m != "MASE" and m not in _SIMPLE]
+    unknown = [m for m in metrics if m not in _TRAIN_METRICS and m not in _SIMPLE]
     if unknown:
-        raise ValueError(f"Unknown metric(s): {unknown}. Valid: {sorted(_SIMPLE) + ['MASE']}")
+        raise ValueError(f"Unknown metric(s): {unknown}. Valid: {sorted(_SIMPLE) + list(_TRAIN_METRICS)}")
     cols = {}
     for m in metrics:
-        cols[m] = mase(f, a, train, seasonality, mase_digits) if m == "MASE" else _SIMPLE[m](f, a)
+        if m == "MASE":
+            cols[m] = mase(f, a, train, seasonality, mase_digits)
+        elif m == "RMSSE":
+            cols[m] = rmsse(f, a, train)
+        else:
+            cols[m] = _SIMPLE[m](f, a)
     idx = pd.Index(series_names if series_names is not None else range(1, f.shape[0] + 1), name="series_name")
     return pd.DataFrame(cols, index=idx)
 

@@ -494,7 +494,7 @@ function renderAyarlar() {
     S.models.missing_policies.map(p => el("option", { value: p.value, selected: s.missing === p.value }, p.label)));
   const maxQuick = el("div", { class: "quick" }, [["20", "20"], ["100", "100"], ["", "All"]].map(([v, l]) => el("button", { type: "button", class: "btn ghost small",
     onclick: () => { s.max_series = v; renderAyarlar(); renderKosuDebounced(); } }, l)));
-  const metricsBox = el("div", { class: "chips", role: "group", "aria-label": "Measures" }, S.models.metric_defaults.map(k => bindNote(el("label", {},
+  const metricsBox = el("div", { class: "chips", role: "group", "aria-label": "Measures" }, (S.models.metric_all || S.models.metric_defaults).map(k => bindNote(el("label", {},
     el("input", { type: "checkbox", checked: s.metrics.has(k), onchange: ev => { ev.target.checked ? s.metrics.add(k) : s.metrics.delete(k); renderKosuDebounced(); } }), S.models.metrics[k].name), () => metricNote(k))));
   sec.replaceChildren(
     ...secHead("ayarlar", 3, "Settings", "Defaults are the values from your own study; edit only what you want to change."),
@@ -879,7 +879,7 @@ function renderCompare(runs, metricKeys) {
   const host = $("#compare"); if (!host) return;
   const sel = runs.filter(r => S.compare.has(r.run_id));
   if (sel.length < 2) { host.replaceChildren(el("p", { class: "empty", text: sel.length ? "Tick at least two runs to compare." : "" })); return; }
-  const metrics = S.models.metric_defaults.filter(k => metricKeys.includes(k));
+  const metrics = (S.models.metric_all || S.models.metric_defaults).filter(k => metricKeys.includes(k));
   const stat = S.cmpStat;
   const best = {}; for (const k of metrics) { let b = null; for (const r of sel) { const v = r.summary[k] && r.summary[k][stat]; if (v != null && (b == null || v < b)) b = v; } best[k] = b; }
   const sameData = new Set(sel.map(r => r.dataset)).size === 1;

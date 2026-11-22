@@ -42,6 +42,22 @@ def test_run_baseline_on_nn5_matches_golden_metrics(nn5_tsf, tmp_path, capsys):
     assert (run_dir / "manifest.json").is_file()
 
 
+def test_rank_command_over_three_runs(nn5_tsf, tmp_path, capsys):
+    runs = []
+    for m in ("naive", "snaive", "drift"):
+        assert main(["run", "--file", str(nn5_tsf), "--engine", "python", "--method", m, "--out", str(tmp_path / m)]) == 0
+        runs.append(f"{m}={next((tmp_path / m).iterdir())}")
+    capsys.readouterr()
+    args = ["rank", "--metric", "MASE", "--boot", "50", "--csv", str(tmp_path / "rank.csv")]
+    for r in runs:
+        args += ["--run", r]
+    assert main(args) == 0
+    out = capsys.readouterr().out
+    assert "Friedman chi2" in out and "Nemenyi" in out and "P(first)" in out
+    tab = pd.read_csv(tmp_path / "rank.csv", index_col=0)
+    assert set(tab.index) == {"naive", "snaive", "drift"} and np.isclose(tab["P(first)"].sum(), 1.0)
+
+
 def test_estimate_command_prints_prior(nn5_tsf, capsys):
     assert main(["estimate", "--file", str(nn5_tsf), "--engine", "python-baseline", "--method", "snaive"]) == 0
     out = capsys.readouterr().out

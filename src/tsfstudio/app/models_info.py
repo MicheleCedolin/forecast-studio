@@ -61,6 +61,19 @@ REFS = {
                         "https://econpapers.repec.org/RePEc:for:ijafaa:y:2006:i:4:p:43-46", True),
     "hyndmankoehler2006": _ref("Hyndman, R. J., & Koehler, A. B. (2006). Another look at measures of forecast accuracy. "
                                "International Journal of Forecasting, 22(4), 679–688."),
+    "makridakis2020": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2020). The M4 Competition: 100,000 time series and 61 "
+                           "forecasting methods. International Journal of Forecasting, 36(1), 54–74."),
+    "makridakis2022": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2022). M5 accuracy competition: Results, findings, and "
+                           "conclusions. International Journal of Forecasting, 38(4), 1346–1364."),
+    "petropoulos2020": _ref("Petropoulos, F., & Svetunkov, I. (2020). A simple combination of univariate models. "
+                            "International Journal of Forecasting, 36(1), 110–115."),
+    "fiorucci2016": _ref("Fiorucci, J. A., Pellegrini, T. R., Louzada, F., Petropoulos, F., & Koehler, A. B. (2016). Models for optimising "
+                         "the theta method and their relationship to state space models. International Journal of Forecasting, 32(4), 1151–1161."),
+    "gardner1985": _ref("Gardner, E. S., Jr., & McKenzie, E. (1985). Forecasting trends in time series. Management Science, 31(10), 1237–1246."),
+    "kim2016": _ref("Kim, S., & Kim, H. (2016). A new metric of absolute percentage error for intermittent demand forecasts. "
+                    "International Journal of Forecasting, 32(3), 669–679."),
+    "davydenko2013": _ref("Davydenko, A., & Fildes, R. (2013). Measuring forecasting accuracy: The case of judgmental adjustments to SKU-level "
+                          "demand forecasts. International Journal of Forecasting, 29(3), 510–522."),
     "nixtla": _ref("Nixtla StatsForecast (open source, Apache-2.0) documentation: in the Python engine this model is the library's own implementation.",
                    "https://nixtlaverse.nixtla.io/statsforecast/"),
 }
@@ -146,6 +159,56 @@ MODELS: dict[str, dict] = {
                     R: "forecast::thetaf. The original call from your study."},
         "params": [], "refs": ["assimakopoulos2000", "hyndmanbillah2003"],
         "cost": "NN5 weekly, 111 series: 0.5 s in R; daily: 1.2 s (measured on your machine).",
+    },
+    "drift": {
+        "name": "Random walk with drift", "group": "yerel", "task": "local",
+        "summary": "Extends the line from the first to the last observation into the future.",
+        "how": "Forecast(T+h) = y(T) + h·(y(T) − y(1))/(T − 1); the same rule as R rwf(drift = TRUE). It has no parameters.",
+        "use": "A standard benchmark for trended series.",
+        "caution": "Only the first and last observations determine the slope, so an outlier at either end changes the whole forecast.",
+        "engines": {PY: "Built in (numpy), closed form."},
+        "params": [], "refs": ["fpp3"], "cost": "Instant.",
+    },
+    "naive2": {
+        "name": "Naive2 (M4 benchmark)", "group": "yerel", "task": "local",
+        "summary": "Seasonally adjusted naive forecast; the reference method of the M4 OWA measure.",
+        "how": "If a 90% autocorrelation test (M4 benchmark code, at least 3 periods of data) finds seasonality, a classical multiplicative "
+               "decomposition removes it; the last adjusted value is repeated and the seasonal indices are put back.",
+        "use": "Needed to compute OWA; a seasonal benchmark that is less noisy than seasonal naive.",
+        "caution": "The seasonality test uses R's default number of autocorrelation lags, so long periods (e.g. 365 in daily data) are treated as non-seasonal.",
+        "engines": {PY: "Built in (numpy), following the official M4 benchmark code."},
+        "params": [], "refs": ["makridakis2020"], "cost": "Instant.",
+    },
+    "comb_shd": {
+        "name": "Comb S-H-D (M4 benchmark)", "group": "yerel", "task": "local",
+        "summary": "Average of simple, Holt and damped Holt exponential smoothing on the seasonally adjusted series.",
+        "how": "Seasonality is removed as in Naive2; SES, Holt (linear trend) and damped Holt forecasts are averaged and the seasonal indices are put back. "
+               "Holt parameters are fitted by least squares within the R ets bounds.",
+        "use": "The combination benchmark of the M3/M4 competitions; strong and hard to beat on yearly, quarterly and monthly data.",
+        "caution": "Same model family as R holt(), but our own optimiser: it has not been checked series by series against R.",
+        "engines": {PY: "Built in (numpy/scipy)."},
+        "params": [], "refs": ["makridakis2020", "gardner1985"], "cost": "Fast.",
+    },
+    "dotm": {
+        "name": "Dynamic optimised Theta (DOTM)", "group": "yerel", "task": "local",
+        "summary": "A Theta model whose theta coefficient and parameters are optimised and updated over time.",
+        "how": "State-space form of the Theta method with an optimised theta line; seasonality is removed first by classical decomposition when detected.",
+        "use": "A strong benchmark in M4 for yearly/quarterly/monthly data; also a component of SCUM.",
+        "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded).",
+        "engines": {PY: "statsforecast DynamicOptimizedTheta. No R counterpart in this app."},
+        "params": [P("decomposition_type", "Decomposition", "choice", "multiplicative", "Type of seasonal decomposition.",
+                     choices=(("multiplicative", "Multiplicative"), ("additive", "Additive")))],
+        "refs": ["fiorucci2016", "nixtla"], "cost": "Fast.",
+    },
+    "scum": {
+        "name": "SCUM (median of ETS, CES, ARIMA, DOTM)", "group": "yerel", "task": "local",
+        "summary": "Point-wise median of four automatic statistical models.",
+        "how": "ETS, CES, ARIMA and DOTM are fitted with this engine's settings and the median of their forecasts is taken at each horizon step. "
+               "If a component fails the median of the remaining ones is used (a note is recorded); with fewer than two the series falls back.",
+        "use": "A simple combination that ranked among the best statistical benchmarks in M4; useful to test whether combinations change rankings.",
+        "caution": "As slow as its slowest component (ARIMA); measure with a short trial first.",
+        "engines": {PY: "Built from statsforecast AutoETS, AutoCES, AutoARIMA and DynamicOptimizedTheta."},
+        "params": [], "refs": ["petropoulos2020"], "cost": "Slow (sum of the four components).",
     },
     "tbats": {
         "name": "TBATS", "group": "yerel", "task": "local",
@@ -356,9 +419,25 @@ METRICS_INFO = {
              "caution": "Undefined if the total of actuals is 0. A model that forecasts all zeros scores exactly 100%."},
     "nRMSE_Mean": {"name": "nRMSE (mean)", "unit": "ratio", "text": "RMSE / mean of the actuals.", "caution": "Undefined if the mean is 0."},
     "nRMSE_Range": {"name": "nRMSE (range)", "unit": "ratio", "text": "RMSE / (maximum of actuals − minimum of actuals).", "caution": "Undefined if the range is 0."},
+    # 2026-11-22: optional measures (not selected by default)
+    "RMSSE": {"name": "RMSSE", "unit": "scale-free",
+              "text": "Root of: mean squared error / mean squared one-step naive error on the training part (the M5 measure). Below 1 means better than the in-sample naive.",
+              "caution": "The scale uses the whole training part; the official M5 definition starts at the first non-zero sale, which differs only for series with leading zeros."},
+    "MSE": {"name": "MSE", "unit": "data unit²", "text": "Mean of squared errors.", "caution": "Scale-dependent; do not average across series of different scales."},
+    "MAPE": {"name": "MAPE", "unit": "percent", "text": "Mean of |error| / |actual| × 100.",
+             "caution": "Points with actual = 0 are excluded; asymmetric (penalises over-forecasts more). Not suitable for intermittent demand."},
+    "MAAPE": {"name": "MAAPE", "unit": "radians (0–π/2)", "text": "Mean of arctan(|error| / |actual|); bounded, defined when the actual is 0.",
+              "caution": "A zero forecast for a positive actual scores about 0.785 (π/4) per point, so it can still favour zero forecasts on intermittent data."},
+    "MedAE": {"name": "MedAE", "unit": "data unit", "text": "Median absolute error over the horizon.", "caution": "Robust to a few large errors; scale-dependent."},
+    "RMSLE": {"name": "RMSLE", "unit": "log ratio", "text": "Root mean squared difference of log(1 + forecast) and log(1 + actual).",
+              "caution": "Undefined (series excluded) if any forecast or actual is negative; no clipping is applied."},
+    "ME": {"name": "ME (bias)", "unit": "data unit", "text": "Mean of forecast − actual. Positive: over-forecasting.",
+           "caution": "Positive and negative errors cancel; read together with an absolute measure."},
+    "PBias": {"name": "Percent bias", "unit": "percent", "text": "100 · Σ(forecast − actual) / Σ actual.",
+              "caution": "Undefined if the actuals sum to 0. Shows when a 'winning' model is simply biased toward zero."},
 }
 
-METRIC_REFS = ("hyndmankoehler2006", "hyndman2006")
+METRIC_REFS = ("hyndmankoehler2006", "hyndman2006", "makridakis2022", "kim2016", "davydenko2013")
 
 
 # ----------------------------------------------------------------------------------------------------

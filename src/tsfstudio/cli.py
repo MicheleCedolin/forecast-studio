@@ -10,6 +10,7 @@
   run          runs a model on a dataset: forecasts + error measures + Excel outputs + manifest
   doctor       environment check: Python, R, packages, memory, data; a quick live test of every method of every engine
   golden       compares an engine's forecasts with your own R outputs (NN5): forecast difference + effect on SMAPE/MASE
+  rank         ranks models from several runs; Friedman, Nemenyi CD and bootstrap ranking stability
   app          starts the local web interface (opens in the browser; no extra installation needed)
 """
 from __future__ import annotations
@@ -293,6 +294,46 @@ def _cmd_app(a) -> int:
     return serve(svc, port=a.port, open_browser=not a.no_browser)
 
 
+def _cmd_rank(a) -> int:
+    """Ranking and ranking reliability from the per-series errors of several runs."""
+    import numpy as np
+    import pandas as pd
+
+    from . import ranking as RK
+
+    runs = {}
+    for it in a.run:
+        name, sep, path = it.partition("=")
+        if not sep:
+            path, name = it, Path(it).name
+        runs[name] = path
+    if len(runs) < 2:
+        print("At least two --run entries are needed.")
+        return 2
+    e = RK.errors_from_runs(runs, a.metric)
+    if a.higher_is_better:
+        e = -e
+    mr = RK.mean_ranks(e)
+    print(f"Metric: {a.metric} | series: {len(e)} | models: {e.shape[1]}")
+    print("\nMean rank (1 = best):")
+    print(mr.to_string(float_format=lambda x: f"{x:.3f}"))
+    if e.shape[1] >= 3:
+        fr = RK.friedman(e)
+        cd = RK.nemenyi_cd(fr.n_models, fr.n_blocks, a.alpha)
+        print(f"\nFriedman chi2 = {fr.statistic:.4f}, p = {fr.p_value:.3g} (complete blocks {fr.n_blocks}, dropped {fr.n_dropped})")
+        print(f"Nemenyi critical difference (alpha = {a.alpha}): {cd:.3f}")
+    st = RK.rank_stability(e, n_boot=a.boot, top_k=a.top_k, seed=a.seed)
+    tab = pd.DataFrame({"P(first)": st.p_first, f"P(top {st.k})": st.p_top_k}).join(st.mean_rank_ci).sort_values("p50")
+    print(f"\nBootstrap over series ({st.n_boot} resamples):")
+    print(tab.to_string(float_format=lambda x: f"{x:.3f}"))
+    print(f"Kendall tau vs full ranking: median {float(np.median(st.kendall_tau)):.3f}, "
+          f"5th percentile {float(np.percentile(st.kendall_tau, 5)):.3f}")
+    if a.csv:
+        tab.join(mr.rename("mean_rank")).to_csv(a.csv)
+        print("Written:", a.csv)
+    return 0
+
+
 def _safe_streams() -> None:
     """On Windows, when output is redirected to a pipe (| Tee-Object) or a file, Python uses the default encoding (cp1252) and
     CRASHES with UnicodeEncodeError on characters such as ı, ş, ğ, İ. To avoid a crash, characters that cannot be written become '?'."""
@@ -339,6 +380,16 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--runs-dir", default=None, help="default: $TSFSTUDIO_RUNS_DIR or ./runs")
     sp.add_argument("--uploads-dir", default=None, help="default: $TSFSTUDIO_UPLOADS_DIR or ./uploads")
     sp.set_defaults(fn=_cmd_app)
+    sp = sub.add_parser("rank", help="rank models from several runs + ranking reliability (Friedman, Nemenyi, bootstrap)")
+    sp.add_argument("--run", action="append", required=True, help="name=run_dir (repeat for each model); run_dir holds metrics.xlsx")
+    sp.add_argument("--metric", default="MASE")
+    sp.add_argument("--higher-is-better", action="store_true", help="for metrics where larger is better")
+    sp.add_argument("--alpha", type=float, default=0.05)
+    sp.add_argument("--boot", type=int, default=1000)
+    sp.add_argument("--top-k", type=int, default=3)
+    sp.add_argument("--seed", type=int, default=1)
+    sp.add_argument("--csv", default=None)
+    sp.set_defaults(fn=_cmd_rank)
     sp = sub.add_parser("engines", help="engine status")
     sp.set_defaults(fn=_cmd_engines)
     sp = sub.add_parser("doctor", help="environment check + quick live R test")

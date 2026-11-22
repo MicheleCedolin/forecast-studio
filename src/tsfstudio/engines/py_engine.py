@@ -2,6 +2,7 @@
 
 Yerleşik (yalnızca numpy/scipy; R algoritmasıyla birebir sınanmıştır, docs/VALIDATION.md):
     naive, snaive, ses, theta        yerel
+    drift, naive2, comb_shd          yerel M3/M4 kıyasları (2026-11-22; R ile birebir sınanmadı, bkz. py_models)
     pooled_regression                global (akış hâlinde QR; R `glm` ile aynı sonuç)
 İsteğe bağlı kütüphaneler:
     statsforecast  -> ets, arima, dhr_arima          (kurulu değilse yöntem listesinde görünmez)
@@ -31,13 +32,15 @@ from . import py_models as M
 from . import py_sf as S
 from .base import Engine, EngineCancelled, EngineError, EngineJob, EngineResult, ProgressFn
 
-NATIVE_LOCAL = ("naive", "snaive", "ses", "theta")
+NATIVE_LOCAL = ("naive", "snaive", "ses", "theta",
+                "drift", "naive2", "comb_shd")                 # 2026-11-22: M3/M4 kıyasları (py_models)
 # TBATS (2026-11-03, kullanıcı kararı): Python motorundan ÇIKARILDI. statsforecast `AutoTBATS`, R `tbats()` ile aynı modeli
 # bulmuyor (NN5 haftalık, 8 seri: ortanca tahmin farkı %3,1) ve amaç R'ı Python'a çevirmek değil. Orijinal R TBATS, R motorunda
 # kalır. Adaptör `py_sf.forecast_tbats` (düzeltilmiş imza) yeniden açmak için durur: SF_LOCAL'e "tbats": "AutoTBATS" ekleyip
 # `forecast_one`'a dalını geri koyun.
 SF_LOCAL = {"ets": "AutoETS", "arima": "AutoARIMA", "dhr_arima": "AutoARIMA",
-            **{k: v["cls"] for k, v in S.SPECS.items()}}      # C3: aralıklı talep + ek klasik modeller
+            **{k: v["cls"] for k, v in S.SPECS.items()},      # C3: aralıklı talep + ek klasik modeller
+            "scum": "DynamicOptimizedTheta"}                   # 2026-11-22: ETS/CES/ARIMA/DOTM medyanı
 
 
 # ------------------------------------------------------------------------------------------------
@@ -53,6 +56,14 @@ def forecast_one(method: str, y: np.ndarray, h: int, seasonality: tuple[float, .
         return M.ses_forecast(y, h)
     if method == "theta":
         return M.theta_forecast(y, h, m)
+    if method == "drift":
+        return M.drift(y, h)
+    if method == "naive2":
+        return M.naive2(y, h, m)
+    if method == "comb_shd":
+        return M.comb_shd(y, h, m)
+    if method == "scum":
+        return S.forecast_scum(y, h, m, seasonality, params)
     if method == "ets":
         return S.forecast_ets(y, h, m)
     if method == "arima":

@@ -41,3 +41,10 @@ Not: SMAPE/mSMAPE oran (0–2), WAPE ise yüzde olarak orijinal kodda böyledir;
 | `fixed_horizon_functions.R` | `forecast_horizon <- 1` atama sonraki serileri etkiliyor; sessiz SNaive yedeği ve NA→0 | Yedek kullanımı seri bazında sayılıp raporlanacak |
 | `rolling_origin.R` | Kaynak olarak yüklenince örnek koşular çalışıyor; sabit Colab `BASE_DIR` | Fonksiyonlar ayrı, yol parametre |
 | `data_loader.py` | `distutils.util.strtobool` Python ≥ 3.12'de yok | `tsfstudio.tsf.reader` yerel `strtobool` |
+
+## Optional measures (added 2026-11-22)
+The default set is unchanged (it reproduces the R error files). These can be selected in the UI or passed via `RunConfig.metrics`:
+`RMSSE` (M5, scale = in-sample one-step squared naive error over the whole training part), `MSE`, `MAPE` (points with actual 0 excluded),
+`MAAPE` (Kim & Kim 2016, radians), `MedAE`, `RMSLE` (series with negative values -> NaN, no clipping), `ME` (bias), `PBias`.
+Dataset-level comparisons across models (OWA, AvgRelMAE, Friedman / Nemenyi, bootstrap rank stability) are in `tsfstudio.ranking`.
+Formulas and references: `docs/RESEARCH_MODELS_METRICS.md`.
