@@ -11,4 +11,7 @@ namespace tsf {
 // the engine's usable_season(n, m, None) rule (applied here); multiplicative switches to additive for data <= 0.
 Vec dotm_forecast(const Vec& y, int m, int h, bool multiplicative = true);
 
+// AutoTheta(season_length = m, decomposition_type): STM, OTM, DSTM and DOTM fitted, lowest in-sample mse kept.
+Vec auto_theta_forecast(const Vec& y, int m, int h, bool multiplicative = true);
+
 }  // namespace tsf

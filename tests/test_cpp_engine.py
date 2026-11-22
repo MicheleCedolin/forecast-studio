@@ -173,6 +173,20 @@ def test_dotm_matches_python_engine(case):
     np.testing.assert_allclose(f, ref, rtol=1e-11, atol=0, err_msg=name)
 
 
+def test_auto_theta_matches_python_engine(case):
+    """C++ auto_theta = statsforecast AutoTheta (STM / OTM / DSTM / DOTM by in-sample mse) on the theta port used by
+    dotm: equal to the Python engine to machine precision."""
+    import warnings
+    name, seas, h, train, _ = case
+    sub = train if name == "nn5_weekly" else train[:15]
+    f, flags, _ = C.forecast_batch("auto_theta", sub, h, seas)
+    assert not flags.any()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ref = np.vstack([forecast_one("auto_theta", y, h, seas, {}) for y in sub])
+    np.testing.assert_allclose(f, ref, rtol=1e-11, atol=0, err_msg=name)
+
+
 def test_auto_ces_matches_python_engine(case):
     """C++ auto_ces ports statsforecast 2.1.1's AutoCES (model "Z": N / S / P / F by AICc, three-pass fit, its
     Nelder-Mead): forecasts equal the Python engine's (weekly bit for bit, daily to ~1e-10)."""

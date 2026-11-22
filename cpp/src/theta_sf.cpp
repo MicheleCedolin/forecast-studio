@@ -137,7 +137,10 @@ bool seasonality_test(const Vec& y, int m) {           // acf(y, nlags = m, fft 
 
 }  // namespace
 
-Vec dotm_forecast(const Vec& y0, int m, int h, bool multiplicative) {
+namespace {
+
+// auto_theta(y, m, model, decomposition_type) + forecast_theta: models fitted in order, lowest mse kept.
+Vec theta_select(const Vec& y0, int m, int h, bool multiplicative, std::initializer_list<Model> models) {
     const int n0 = static_cast<int>(y0.size());
     if (m <= 1 || n0 < 2 * m) m = 1;                   // usable_season(n, m, None)
     double ymin = INFINITY;
@@ -157,14 +160,26 @@ Vec dotm_forecast(const Vec& y0, int m, int h, bool multiplicative) {
     }
     const int n = static_cast<int>(y.size());
     if (n <= 3) throw std::runtime_error("tiny datasets");
-    const Target F{y, DOTM, y[0] / 2, 0.5, 2.0, true, true, true, 3};
-    const Vec par = sf_nelder_mead(F, {y[0] / 2, 0.5, 2.0}, {-1e10, 0.1, 1.0}, {1e10, 0.99, 1e10});
-    States st(n);
-    Vec e(n, 0.0);
-    const double mse = calc(y, st, DOTM, par[0], par[1], par[2], e, 3);
-    if (std::isnan(mse) || std::fabs(mse + 99999) < 1e-7) throw std::runtime_error("no model able to be fitted");
+    double best_ic = INFINITY;
+    Model bm = DOTM;
+    Vec bpar;
+    States bst;
+    for (Model mt : models) {
+        // initparamtheta: level y[0] / 2 and alpha 0.5 optimised; theta 2 optimised for OTM / DOTM, fixed otherwise
+        const bool opt_theta = (mt == OTM || mt == DOTM);
+        const Target F{y, mt, y[0] / 2, 0.5, 2.0, true, true, opt_theta, 3};
+        Vec par;
+        if (opt_theta) par = sf_nelder_mead(F, {y[0] / 2, 0.5, 2.0}, {-1e10, 0.1, 1.0}, {1e10, 0.99, 1e10});
+        else { par = sf_nelder_mead(F, {y[0] / 2, 0.5}, {-1e10, 0.1}, {1e10, 0.99}); par.push_back(2.0); }
+        States st(n);
+        Vec e(n, 0.0);
+        double mse = calc(y, st, mt, par[0], par[1], par[2], e, 3);
+        if (!std::isnan(mse) && std::fabs(mse + 99999) < 1e-7) mse = NAN;
+        if (!std::isnan(mse) && mse < best_ic) { best_ic = mse; bm = mt; bpar = par; bst = st; }
+    }
+    if (std::isinf(best_ic)) throw std::runtime_error("no model able to be fitted");
     Vec f(h);
-    forecast(st, n, DOTM, f, par[1], par[2]);
+    forecast(bst, n, bm, f, bpar[1], bpar[2]);
     if (decompose)
         for (int j = 0; j < h; ++j) {
             const double s = seas[n - m + (j % m)];     // seasonal naive of the seasonal component, repeated
@@ -173,4 +188,11 @@ Vec dotm_forecast(const Vec& y0, int m, int h, bool multiplicative) {
     return f;
 }
 
+}  // namespace
+
+Vec dotm_forecast(const Vec& y, int m, int h, bool multiplicative) { return theta_select(y, m, h, multiplicative, {DOTM}); }
+
+Vec auto_theta_forecast(const Vec& y, int m, int h, bool multiplicative) {
+    return theta_select(y, m, h, multiplicative, {STM, OTM, DSTM, DOTM});
+}
 }  // namespace tsf

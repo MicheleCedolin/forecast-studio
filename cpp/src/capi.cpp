@@ -56,6 +56,7 @@ Vec m_adida(const Vec& y, int h, int, int) { return tsf::adida(y, h); }
 Vec m_imapa(const Vec& y, int h, int, int) { return tsf::imapa(y, h); }
 Vec m_dotm(const Vec& y, int h, int m, int) { return tsf::dotm_forecast(y, m, h, true); }
 Vec m_ces(const Vec& y, int h, int m, int) { return tsf::ces_forecast(y, m, h); }
+Vec m_atheta(const Vec& y, int h, int m, int) { return tsf::auto_theta_forecast(y, m, h, true); }
 
 // SCUM (Petropoulos & Svetunkov 2020): pointwise median of ets, auto_ces, arima and dotm, as the Python engine's
 // forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
@@ -96,7 +97,7 @@ const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
     {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets}, {"holt_winters", m_hw},
     {"arima", m_arima}, {"dhr_arima", m_dhr}, {"croston_classic", m_crc}, {"croston_sba", m_crs},
-    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum},
+    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum}, {"auto_theta", m_atheta},
 };
 
 Fn find_method(const char* name) {
@@ -108,11 +109,11 @@ Fn find_method(const char* name) {
 }  // namespace
 
 TSF_API const char* tsf_version() {
-    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm, auto_ces, scum)";
+    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm, auto_ces, scum, auto_theta)";
 }
 
 TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,holt_winters,arima,dhr_arima,"
-                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm,auto_ces,scum"; }
+                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm,auto_ces,scum,auto_theta"; }
 
 // Test hook for auto.arima (the study's chain). info = {p, d, q, P, D, Q, period, drift, mean, step, loglik, aicc,
 // sigma2}. Returns 0, or 1 on error (message in msg).

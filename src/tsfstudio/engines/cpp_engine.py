@@ -91,7 +91,7 @@ def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, ho
 class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
-                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum")
+                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta")
     GLOBAL_METHODS = ()
 
     def methods(self) -> dict[str, tuple[str, ...]]:
@@ -119,8 +119,8 @@ class CppEngine(Engine):
                                   f"fourier_k = {k} / fourier_k_per_period need the R or Python engine.")
         if job.method == "holt_winters" and str((job.params or {}).get("error_type", "A")).upper() != "A":
             raise EngineError("The C++ holt_winters has additive errors (error_type = 'A'); 'M' needs the Python engine.")
-        if job.method == "dotm" and str((job.params or {}).get("decomposition_type", "multiplicative")) != "multiplicative":
-            raise EngineError("The C++ dotm uses decomposition_type = 'multiplicative' (additive automatically for data <= 0); "
+        if job.method in ("dotm", "auto_theta") and str((job.params or {}).get("decomposition_type", "multiplicative")) != "multiplicative":
+            raise EngineError("The C++ dotm / auto_theta use decomposition_type = 'multiplicative' (additive automatically for data <= 0); "
                               "other settings need the Python engine.")
         if job.method == "auto_ces" and (str((job.params or {}).get("model", "Z")) != "Z"
                                          or int((job.params or {}).get("max_season", 24)) != 24):
