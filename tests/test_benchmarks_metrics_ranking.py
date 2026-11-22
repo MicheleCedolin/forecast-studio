@@ -175,6 +175,17 @@ def test_avg_rel_mae_and_owa():
     assert np.isclose(o["naive2"], 1.0) and np.isclose(o["x"], 0.5 * (0.5 + 1.5))
 
 
+def test_rank_stability_splits_ties_evenly():
+    rng = np.random.default_rng(2)
+    a = rng.random(40)
+    e = pd.DataFrame({"x": a, "x_copy": a.copy(), "worse": a + 1.0, "worst": a + 2.0})
+    s = R.rank_stability(e, n_boot=100, top_k=1, seed=3)
+    assert np.isclose(s.p_first["x"], 0.5) and np.isclose(s.p_first["x_copy"], 0.5)
+    assert np.isclose(s.p_top_k.sum(), 1.0)
+    s3 = R.rank_stability(e, n_boot=100, top_k=3, seed=3)
+    assert np.isclose(s3.p_top_k.sum(), 3.0) and np.isclose(s3.p_top_k["worst"], 0.0)
+
+
 def test_rank_stability_clear_winner_and_reproducible():
     rng = np.random.default_rng(1)
     e = pd.DataFrame({"best": rng.random(50), "mid": rng.random(50) + 1, "worst": rng.random(50) + 2})

@@ -129,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
                     fh.write(f"\n=== {self.command} {self.path}\n{tb}")
             except OSError:
                 pass
-            self._err(500, f"Beklenmeyen hata: {type(exc).__name__}: {exc}", tb.splitlines()[-1])
+            self._err(500, f"Unexpected error: {type(exc).__name__}: {exc}", tb.splitlines()[-1])
 
     def _index(self) -> None:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -184,7 +184,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(s.job(parts[1]))
             if parts == ["template.xlsx"]:
                 return self._send(200, s.template_xlsx(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                  {"Content-Disposition": "attachment; filename*=UTF-8''forecast_studio_sablon.xlsx"})
+                                  {"Content-Disposition": "attachment; filename*=UTF-8''forecast_studio_template.xlsx"})
         else:
             if parts == ["estimate"]:
                 body = self._body_json()

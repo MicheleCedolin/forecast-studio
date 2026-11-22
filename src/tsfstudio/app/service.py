@@ -601,7 +601,7 @@ class AppService:
     def run_hist(self, run_id: str, metric: str, bins: int = 28) -> dict:
         er = self._run_frames(run_id)["er"]
         if metric not in er.columns or metric == "series_name":
-            raise AppError("Bilinmeyen metrik.")
+            raise AppError("Unknown measure.")
         v = er[metric].to_numpy(float)
         v = v[np.isfinite(v)]
         if v.size == 0:

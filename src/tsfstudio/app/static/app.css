@@ -282,5 +282,6 @@ table.t td.name { font-family: var(--serif); font-size: 16.5px; }
   .mrow .e { justify-content: flex-start; }
   .sparks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .runrow { grid-template-columns: 24px minmax(0, 1fr) 70px 70px; }
-  .runrow > :nth-child(3), .runrow > :nth-child(4), .runrow > :nth-child(7), .runrow > :nth-child(8) { display: none; }
+  /* Phone: keep checkbox, run name, MASE and the Open button (child 8 is the only way to load a past run). */
+  .runrow > :nth-child(3), .runrow > :nth-child(4), .runrow > :nth-child(5), .runrow > :nth-child(7) { display: none; }
 }

@@ -111,12 +111,19 @@ def rank_stability(errors: pd.DataFrame, n_boot: int = 1000, top_k: int = 3, see
     topk = np.zeros(k)
     means = np.empty((n_boot, k))
     taus = np.empty(n_boot)
+    kk = min(top_k, k)
     for b in range(n_boot):
         mr = r[rng.integers(0, n, n)].mean(axis=0)
         means[b] = mr
-        order = np.argsort(mr, kind="stable")
-        firsts[order[0]] += 1
-        topk[order[: min(top_k, k)]] += 1
+        # Ties share the credit instead of going to whichever model comes first in the column order
+        # (e.g. naive and naive2 are identical when Naive2 finds no seasonality).
+        best = np.isclose(mr, mr.min(), rtol=0, atol=1e-12)
+        firsts[best] += 1.0 / best.sum()
+        cut = np.sort(mr)[kk - 1]
+        above = mr < cut - 1e-12
+        at = np.isclose(mr, cut, rtol=0, atol=1e-12)
+        topk[above] += 1.0
+        topk[at] += (kk - above.sum()) / at.sum()
         taus[b] = stats.kendalltau(full, mr).statistic
     ci = pd.DataFrame(np.percentile(means, [2.5, 50, 97.5], axis=0).T, index=models, columns=["p2.5", "p50", "p97.5"])
     return StabilityResult(pd.Series(firsts / n_boot, index=models).sort_values(ascending=False),

@@ -165,7 +165,7 @@ def prepare(dataset: TSFDataset, cfg: RunConfig, entry: DatasetEntry | None = No
     if integer and cfg.method in INTERMITTENT:
         warnings.append(
             "Rounding to integers is ON (catalogue or choice): intermittent-demand methods forecast a flat demand RATE (often < 0.5), which "
-            "becomes 0 when rounded; all forecasts can come out as 0. To see the rate forecast, run with --integer-conversion off.")
+            "becomes 0 when rounded; all forecasts can come out as 0. To see the rate forecast, turn rounding off (in the interface: Settings, 'Round to integers' = Off; on the command line: --integer-conversion off).")
     if excluded:
         warnings.append(f"{len(excluded)} series excluded (details in manifest.json -> split.excluded).")
     if test_missing:

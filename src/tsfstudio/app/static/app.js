@@ -158,8 +158,8 @@ function paramNote(p, m) {
 function metricNote(k) {
   const mi = S.models.metrics[k];
   if (!mi) return introNote();
-  return el("div", {}, el("h3", { text: mi.name }), el("p", { class: "lead", text: "Birim: " + mi.unit }), el("p", { text: mi.text }),
-    runIn("Dikkat.", mi.caution, "caution"),
+  return el("div", {}, el("h3", { text: mi.name }), el("p", { class: "lead", text: "Unit: " + mi.unit }), el("p", { text: mi.text }),
+    runIn("Caution.", mi.caution, "caution"),
     refList(S.models.metric_refs));
 }
 const SETTING_NOTES = {
@@ -309,7 +309,7 @@ function datasetNote(d) {
 async function selectDataset(id, silent) {
   S.sel.dataset = id; S.detail = null; S.detailErr = null; S.est = null; S.autoOff = false;
   store.set("sel", S.sel);
-  renderDatasetList(); renderDetail(); updateRail();
+  renderDatasetList(); renderDetail(); updateRail(); refreshStale();
   try {
     S.detail = await api("dataset/" + encodeURIComponent(id));
   } catch (e) { S.detailErr = e.message; if (!silent) toast(e.message, true); }
@@ -448,7 +448,7 @@ function renderEnginePick() {
 }
 function setEngine(k) {
   S.sel.engine = k; store.set("sel", S.sel);
-  resetParams(); renderEnginePick(); renderModel(); renderAyarlarParams(); renderKosuDebounced(); updateRail();
+  resetParams(); renderEnginePick(); renderModel(); renderAyarlarParams(); renderKosuDebounced(); updateRail(); refreshStale();
 }
 function selectModel(id, silent) {
   const m = model(id); if (!m) return;
@@ -463,7 +463,7 @@ function selectModel(id, silent) {
   applyDatasetDefaults();
   store.set("sel", S.sel);
   Note.hovering = false; Note.base = () => (curModel() ? modelNote(curModel()) : introNote()); Note.restore();
-  renderModel(); renderAyarlar(); renderKosuDebounced(); updateRail();
+  renderModel(); renderAyarlar(); renderKosuDebounced(); updateRail(); refreshStale();
   if (!silent) $("#enginepick").scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 function resetParams() {
@@ -641,11 +641,24 @@ function renderProgress() {
       el("div", { class: "row-actions", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", disabled: j.cancelling, onclick: () => api(`jobs/${j.id}/cancel`, {}).then(v => { S.job = v; renderProgress(); }) }, j.cancelling ? "Cancelling…" : "Cancel"))));
   } else if (j.status === "error") host.replaceChildren(el("p", { class: "note err", text: "Run failed: " + j.error }));
   else if (j.status === "cancelled") host.replaceChildren(el("p", { class: "note soft", text: "Run cancelled." }));
+  else if (runIsStale()) host.replaceChildren(el("p", { class: "note", text: `The last run (${runLabel(S.run.detail.manifest)}) finished. Its results below do not match your current selection; start a run to get results for ${selLabel()}.` }));
   else host.replaceChildren(el("p", { class: "note soft", text: `Run finished (${mmss(j.elapsed)}). Results are below.` }));
 }
 
 // ================================================================================================ 5 RESULTS
 function runLabel(m) { const c = m.config, d = m.dataset; return `${d.id.replace(/^upload:/, "")}, ${c.method} (${ENGINE_NAME[c.engine] || c.engine})`; }
+// True when the shown run was made with a different dataset/method/engine than the current selection (UI review H4).
+function runIsStale() {
+  if (!S.run || !S.run.detail) return false;
+  const m = S.run.detail.manifest;
+  return m.dataset.id !== S.sel.dataset || m.config.method !== S.sel.method || m.config.engine !== S.sel.engine;
+}
+function selLabel() { return `${(S.sel.dataset || "?").replace(/^upload:/, "")}, ${S.sel.method || "?"} (${ENGINE_NAME[S.sel.engine] || S.sel.engine || "?"})`; }
+function renderStaleNote() {
+  const host = $("#stalenote"); if (!host) return;
+  host.replaceChildren(...(runIsStale() ? [el("p", { class: "note err", text: `These results are from an earlier run (${runLabel(S.run.detail.manifest)}), not from your current selection (${selLabel()}). Start a run to replace them.` })] : []));
+}
+function refreshStale() { renderStaleNote(); if (S.job) renderProgress(); }
 async function loadRun(id) {
   try {
     const detail = await api("runs/" + encodeURIComponent(id));
@@ -685,6 +698,7 @@ function renderSonuc() {
   const flagZero = dg.series_all_zero_forecast_share != null && dg.series_all_zero_forecast_share > 0.5;
   const diagItem = (k, v, flag, note) => bindNote(el("div", { class: flag ? "flag" : "", tabindex: 0 }, el("dt", { text: k }), el("dd", { text: v })), note);
   sec.replaceChildren(...head,
+    el("div", { id: "stalenote", role: "status" }),
     el("p", { class: "rtitle" }, el("span", { class: "hl", text: runLabel(m) })),
     el("p", { class: "rsub", text: r.id }),
     el("dl", { class: "facts" }, fact("Series", fint(m.dataset.n_series_run)), fact("Horizon", fint(m.config.effective_horizon)), fact("Run time", mmss(m.engine.elapsed_sec || 0)),
@@ -704,6 +718,7 @@ function renderSonuc() {
     el("h3", { text: "Errors by series" }), el("div", { id: "errtable" }),
     el("h3", { text: "Files" }),
     el("div", { class: "files" }, d.files.map(f => el("a", { href: fileUrl(r.id, f.key), download: f.name }, f.name))));
+  renderStaleNote();
   renderChartBar();
 }
 function diagNote(k) {
