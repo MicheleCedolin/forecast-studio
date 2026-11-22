@@ -19,6 +19,10 @@ int ndiffs(Vec x, int max_d = 2);
 struct StlOut { Vec seasonal, trend; };
 StlOut stl(const Vec& x, int period, int s_window);
 
+// The stl.f procedure with explicit windows, degrees, jumps and inner iterations (statsmodels' STL uses other defaults).
+StlOut stl_core(const Vec& x, int period, int s_window, int t_window, int l_window, int s_deg, int t_deg, int l_deg,
+                int s_jump, int t_jump, int l_jump, int inner);
+
 // forecast::seas.heuristic (via mstl) and nsdiffs(test = "seas", max.D = 1).
 double seas_heuristic(const Vec& x, int period);
 int nsdiffs(const Vec& x, int period);

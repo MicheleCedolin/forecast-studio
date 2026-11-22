@@ -91,7 +91,7 @@ def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, ho
 class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
-                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta")
+                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl")
     GLOBAL_METHODS = ()
 
     def methods(self) -> dict[str, tuple[str, ...]]:

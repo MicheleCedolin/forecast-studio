@@ -178,8 +178,13 @@ StlOut stl(const Vec& x, int period, int s_window) {
     const int nsjump = std::max(1, static_cast<int>(std::ceil(s_win / 10.0)));
     const int ntjump = std::max(1, static_cast<int>(std::ceil(t_window / 10.0)));
     const int nljump = std::max(1, static_cast<int>(std::ceil(l_window / 10.0)));
-    const int ni = 2;                                    // inner (robust = FALSE), outer = 0
-    // subroutine stl: window sanity (already odd and >= 3), np >= 2
+    return stl_core(x, period, s_win, t_window, l_window, isdeg, itdeg, ildeg, nsjump, ntjump, nljump, 2);
+}
+
+StlOut stl_core(const Vec& x, int period, int s_win, int t_window, int l_window, int isdeg, int itdeg, int ildeg,
+                int nsjump, int ntjump, int nljump, int ni) {
+    const int n = static_cast<int>(x.size());
+    // subroutine stl: window sanity (odd and >= 3), np >= 2; robust = FALSE (no outer loop)
     int ns = std::max(3, s_win), nt = std::max(3, t_window), nl = std::max(3, l_window);
     if (ns % 2 == 0) ++ns;
     if (nt % 2 == 0) ++nt;

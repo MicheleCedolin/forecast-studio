@@ -187,6 +187,34 @@ def test_auto_theta_matches_python_engine(case):
     np.testing.assert_allclose(f, ref, rtol=1e-11, atol=0, err_msg=name)
 
 
+@pytest.mark.parametrize("periods", [(7.0,), (7.0, 30.4)])
+def test_mstl_decomposition_matches_statsforecast(periods):
+    """C++ mstl: the decomposition (trend + remainder, seasonal naive forecasts) equals statsforecast's mstl() with
+    statsmodels' STL to machine precision; the trend is then forecast with the C++ ets (R's ets, model "ZZN")."""
+    import warnings
+    from statsforecast.mstl import mstl
+    from statsforecast.models import _predict_mstl_seas
+    train = [r[~np.isnan(r)] for r in _load(G / "nn5_daily", "train")][:12]
+    lib, dp, h = C.load_lib(), C.ctypes.POINTER(C.ctypes.c_double), 14
+    pp = np.ascontiguousarray(periods, dtype=float)
+    for y in train:
+        pv = sorted({int(round(p)) for p in periods})
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            mo = mstl(y, pv if len(pv) > 1 else pv[0])
+            sf_ref = _predict_mstl_seas(mo, h, pv if len(pv) > 1 else pv[0])
+        xsa_ref = mo[["trend", "remainder"]].sum(axis=1).values
+        yy, xsa, sf = np.ascontiguousarray(y), np.zeros(len(y)), np.zeros(h)
+        assert lib.tsf_mstl_parts(yy.ctypes.data_as(dp), len(y), pp.ctypes.data_as(dp), len(pp), h,
+                                  xsa.ctypes.data_as(dp), sf.ctypes.data_as(dp)) == 0
+        np.testing.assert_allclose(xsa, xsa_ref, rtol=0, atol=1e-12 * np.abs(y).max())
+        np.testing.assert_allclose(sf, sf_ref, rtol=0, atol=1e-12 * np.abs(y).max())
+    f, flags, _ = C.forecast_batch("mstl", train, h, periods)
+    assert not flags.any() and np.isfinite(f).all()
+    _, flags, msg = C.forecast_batch("mstl", [np.arange(10.0)], 3, (7.0,))   # 2 * 7 > 10: no valid period
+    assert flags.all() and "no valid seasonal period" in msg
+
+
 def test_auto_ces_matches_python_engine(case):
     """C++ auto_ces ports statsforecast 2.1.1's AutoCES (model "Z": N / S / P / F by AICc, three-pass fit, its
     Nelder-Mead): forecasts equal the Python engine's (weekly bit for bit, daily to ~1e-10)."""

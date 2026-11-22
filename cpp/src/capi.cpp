@@ -23,6 +23,7 @@
 #include "intermittent.hpp"
 #include "theta_sf.hpp"
 #include "ces_sf.hpp"
+#include "mstl_sf.hpp"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -33,36 +34,37 @@
 namespace {
 
 using tsf::Vec;
-using Fn = Vec (*)(const Vec&, int, int, int);   // (y, h, m = floor(max period), number of periods)
+using Fn = Vec (*)(const Vec&, int, int, const Vec&);   // (y, h, m = floor(max period), periods)
 
-Vec m_naive(const Vec& y, int h, int, int) { return tsf::naive(y, h); }
-Vec m_snaive(const Vec& y, int h, int m, int) { return tsf::snaive(y, h, m); }
-Vec m_drift(const Vec& y, int h, int, int) { return tsf::drift(y, h); }
-Vec m_ses(const Vec& y, int h, int, int) { return tsf::ses_forecast(y, h); }
-Vec m_theta(const Vec& y, int h, int m, int) { return tsf::theta_forecast(y, h, m); }
-Vec m_naive2(const Vec& y, int h, int m, int) { return tsf::naive2(y, h, m); }
-Vec m_comb(const Vec& y, int h, int m, int) { return tsf::comb_shd(y, h, m); }
-Vec m_holt(const Vec& y, int h, int, int) { return tsf::holt_forecast(y, h, false); }
-Vec m_damped(const Vec& y, int h, int, int) { return tsf::holt_forecast(y, h, true); }
-Vec m_ets(const Vec& y, int h, int m, int) { return tsf::ets_auto(y, m, h).forecast; }
-Vec m_hw(const Vec& y, int h, int m, int) { return tsf::ets_holt_winters(y, m, h).forecast; }
-Vec m_arima(const Vec& y, int h, int m, int) { return tsf::auto_arima_study(y, m, h).forecast; }
-Vec m_dhr(const Vec& y, int h, int m, int np) { return tsf::dhr_arima(y, m, np, 1, h).forecast; }
-Vec m_crc(const Vec& y, int h, int, int) { return tsf::croston_classic(y, h); }
-Vec m_crs(const Vec& y, int h, int, int) { return tsf::croston_sba(y, h); }
-Vec m_cro(const Vec& y, int h, int, int) { return tsf::croston_optimized(y, h); }
-Vec m_tsb(const Vec& y, int h, int, int) { return tsf::tsb(y, h); }
-Vec m_adida(const Vec& y, int h, int, int) { return tsf::adida(y, h); }
-Vec m_imapa(const Vec& y, int h, int, int) { return tsf::imapa(y, h); }
-Vec m_dotm(const Vec& y, int h, int m, int) { return tsf::dotm_forecast(y, m, h, true); }
-Vec m_ces(const Vec& y, int h, int m, int) { return tsf::ces_forecast(y, m, h); }
-Vec m_atheta(const Vec& y, int h, int m, int) { return tsf::auto_theta_forecast(y, m, h, true); }
+Vec m_naive(const Vec& y, int h, int, const Vec&) { return tsf::naive(y, h); }
+Vec m_snaive(const Vec& y, int h, int m, const Vec&) { return tsf::snaive(y, h, m); }
+Vec m_drift(const Vec& y, int h, int, const Vec&) { return tsf::drift(y, h); }
+Vec m_ses(const Vec& y, int h, int, const Vec&) { return tsf::ses_forecast(y, h); }
+Vec m_theta(const Vec& y, int h, int m, const Vec&) { return tsf::theta_forecast(y, h, m); }
+Vec m_naive2(const Vec& y, int h, int m, const Vec&) { return tsf::naive2(y, h, m); }
+Vec m_comb(const Vec& y, int h, int m, const Vec&) { return tsf::comb_shd(y, h, m); }
+Vec m_holt(const Vec& y, int h, int, const Vec&) { return tsf::holt_forecast(y, h, false); }
+Vec m_damped(const Vec& y, int h, int, const Vec&) { return tsf::holt_forecast(y, h, true); }
+Vec m_ets(const Vec& y, int h, int m, const Vec&) { return tsf::ets_auto(y, m, h).forecast; }
+Vec m_hw(const Vec& y, int h, int m, const Vec&) { return tsf::ets_holt_winters(y, m, h).forecast; }
+Vec m_arima(const Vec& y, int h, int m, const Vec&) { return tsf::auto_arima_study(y, m, h).forecast; }
+Vec m_dhr(const Vec& y, int h, int m, const Vec& per) { return tsf::dhr_arima(y, m, static_cast<int>(per.size()), 1, h).forecast; }
+Vec m_crc(const Vec& y, int h, int, const Vec&) { return tsf::croston_classic(y, h); }
+Vec m_crs(const Vec& y, int h, int, const Vec&) { return tsf::croston_sba(y, h); }
+Vec m_cro(const Vec& y, int h, int, const Vec&) { return tsf::croston_optimized(y, h); }
+Vec m_tsb(const Vec& y, int h, int, const Vec&) { return tsf::tsb(y, h); }
+Vec m_adida(const Vec& y, int h, int, const Vec&) { return tsf::adida(y, h); }
+Vec m_imapa(const Vec& y, int h, int, const Vec&) { return tsf::imapa(y, h); }
+Vec m_dotm(const Vec& y, int h, int m, const Vec&) { return tsf::dotm_forecast(y, m, h, true); }
+Vec m_ces(const Vec& y, int h, int m, const Vec&) { return tsf::ces_forecast(y, m, h); }
+Vec m_atheta(const Vec& y, int h, int m, const Vec&) { return tsf::auto_theta_forecast(y, m, h, true); }
+Vec m_mstl(const Vec& y, int h, int, const Vec& per) { return tsf::mstl_forecast(y, per, h); }
 
 // SCUM (Petropoulos & Svetunkov 2020): pointwise median of ets, auto_ces, arima and dotm, as the Python engine's
 // forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
 // ets and arima reproduce R (the Python engine uses statsforecast's), auto_ces and dotm reproduce statsforecast.
 // ARIMA uses the Python engine's arima_max_season = 200 rule (non-seasonal above it).
-Vec m_scum(const Vec& y, int h, int m, int) {
+Vec m_scum(const Vec& y, int h, int m, const Vec&) {
     std::vector<Vec> fcs;
     std::string failed;
     auto add = [&](const char* name, auto&& fn) {
@@ -97,7 +99,7 @@ const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
     {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets}, {"holt_winters", m_hw},
     {"arima", m_arima}, {"dhr_arima", m_dhr}, {"croston_classic", m_crc}, {"croston_sba", m_crs},
-    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum}, {"auto_theta", m_atheta},
+    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum}, {"auto_theta", m_atheta}, {"mstl", m_mstl},
 };
 
 Fn find_method(const char* name) {
@@ -109,11 +111,11 @@ Fn find_method(const char* name) {
 }  // namespace
 
 TSF_API const char* tsf_version() {
-    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm, auto_ces, scum, auto_theta)";
+    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm, auto_ces, scum, auto_theta, mstl)";
 }
 
 TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,holt_winters,arima,dhr_arima,"
-                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm,auto_ces,scum,auto_theta"; }
+                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm,auto_ces,scum,auto_theta,mstl"; }
 
 // Test hook for auto.arima (the study's chain). info = {p, d, q, P, D, Q, period, drift, mean, step, loglik, aicc,
 // sigma2}. Returns 0, or 1 on error (message in msg).
@@ -159,6 +161,17 @@ TSF_API int tsf_dhr_arima(const double* y, int32_t n, int32_t freq, int32_t K, i
         if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
         return 1;
     }
+}
+
+// Test hook: the MSTL decomposition (xsa: n values) and the summed seasonal naive forecast (h values).
+TSF_API int tsf_mstl_parts(const double* y, int32_t n, const double* periods, int32_t n_periods, int32_t h, double* xsa,
+                           double* seas_fc) {
+    try {
+        const tsf::MstlParts r = tsf::mstl_parts(Vec(y, y + n), Vec(periods, periods + n_periods), h);
+        std::copy(r.xsa.begin(), r.xsa.end(), xsa);
+        std::copy(r.seas_fc.begin(), r.seas_fc.end(), seas_fc);
+        return 0;
+    } catch (...) { return 1; }
 }
 
 // Diagnostic hook for auto.arima's differencing tests: out = {seas.heuristic, nsdiffs, ndiffs(after D), kpss stat
@@ -239,6 +252,7 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
     const Fn fn = find_method(method);
     if (!fn) return -1;
     const int m = tsf::r_frequency(periods, n_periods);
+    const Vec pervec = (periods && n_periods > 0) ? Vec(periods, periods + n_periods) : Vec{};
     if (msg && msg_len > 0) msg[0] = '\0';
     std::mutex msg_mutex;
     bool msg_set = false;
@@ -258,7 +272,7 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
             std::string why;
             Vec f;
             try {
-                f = fn(y, hi, m, n_periods);
+                f = fn(y, hi, m, pervec);
                 if (static_cast<int>(f.size()) < hi) throw std::runtime_error("the model produced an incomplete horizon");
                 for (int k = 0; k < hi; ++k)
                     if (!std::isfinite(f[k])) throw std::runtime_error("the model produced a non-finite value");
