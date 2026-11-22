@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .base import Engine
 from .baseline import PythonBaselineEngine
+from .cpp_engine import CppEngine
 from .py_engine import PythonEngine
 from .r_engine import REngine
 
@@ -10,6 +11,7 @@ ENGINES: dict[str, type[Engine]] = {
     "python": PythonEngine,
     "r": REngine,
     "python-baseline": PythonBaselineEngine,
+    "cpp": CppEngine,
 }
 
 

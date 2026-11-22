@@ -32,10 +32,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r packaging/requirements-build.txt
 
-      - name: Quick tests (engine, new methods, R reference fixtures)
+      - name: Build the C++ library (tsfcore.dll, MSVC)
+        run: powershell -ExecutionPolicy Bypass -File cpp/build.ps1 -Generator ""
+
+      - name: Quick tests (engine, new methods, R reference fixtures, C++ engine against Python)
         env:
           PYTHONPATH: src
-        run: python -m pytest -q tests/test_py_engine.py tests/test_benchmarks_metrics_ranking.py tests/test_golden_m4_benchmarks.py
+        run: python -m pytest -q tests/test_py_engine.py tests/test_benchmarks_metrics_ranking.py tests/test_golden_m4_benchmarks.py tests/test_cpp_engine.py
 
       - name: Build with PyInstaller
         working-directory: packaging

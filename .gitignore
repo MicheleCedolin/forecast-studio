@@ -17,6 +17,8 @@ uploads/*
 !uploads/.gitkeep
 setup_log.txt
 build_log.txt
+cpp/build/
+src/tsfstudio/native/
 cache/
 golden_hizli.csv
 
@@ -28,3 +30,6 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Inputs of the manuscript's feature analysis (about 60 MB; provenance in manuscript/analysis/README.md)
+data/ranking_study/

@@ -16,6 +16,9 @@ for pattern in ("data/*.yaml", "r/*.R", "r/lib/*.R", "app/static/*.*", "app/stat
         if f.is_file():
             datas.append((str(f), str(Path("tsfstudio") / f.parent.relative_to(PKG))))
 hiddenimports += collect_submodules("tsfstudio")
+# Native C++ library for the "cpp" engine (built by cpp/build.ps1); optional: the package works without it.
+for f in (PKG / "native").glob("tsfcore.*"):
+    binaries.append((str(f), "tsfstudio/native"))
 for pkg in ("statsforecast", "catboost", "numba", "llvmlite", "sklearn", "coreforecast", "utilsforecast"):
     try:
         d, b, h = collect_all(pkg)
