@@ -32,6 +32,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r packaging/requirements-build.txt
 
+      - name: Download CatBoost 1.2.10 (CLI and model library for the C++ engine's catboost) and verify SHA-256
+        run: |
+          New-Item -ItemType Directory -Force third_party/catboost | Out-Null
+          $base = "https://github.com/catboost/catboost/releases/download/v1.2.10"
+          $files = @{ "catboost.exe" = @("catboost-1.2.10.exe", "8aef27b977fd0b887c2ad2ddcdd3b6c722f8c650af16b2613804a906e292e558");
+                      "catboostmodel.dll" = @("catboostmodel.dll", "668d8867940a0832accaad6004e249f11ecc48eb63eb1d65551cfdd37c1939ad") }
+          foreach ($k in $files.Keys) {
+            Invoke-WebRequest "$base/$($files[$k][0])" -OutFile "third_party/catboost/$k" -UseBasicParsing
+            $h = (Get-FileHash "third_party/catboost/$k" -Algorithm SHA256).Hash.ToLower()
+            if ($h -ne $files[$k][1]) { throw "SHA-256 mismatch for $k" }
+          }
+
       - name: Build the C++ library (tsfcore.dll, MSVC)
         run: powershell -ExecutionPolicy Bypass -File cpp/build.ps1 -Generator ""
 

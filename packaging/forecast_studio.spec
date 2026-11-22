@@ -19,6 +19,10 @@ hiddenimports += collect_submodules("tsfstudio")
 # Native C++ library for the "cpp" engine (built by cpp/build.ps1); optional: the package works without it.
 for f in (PKG / "native").glob("tsfcore.*"):
     binaries.append((str(f), "tsfstudio/native"))
+# CatBoost CLI and model library for the C++ engine's catboost (downloaded by the workflow into third_party/catboost);
+# optional: without them the C++ engine simply does not offer catboost.
+for f in (PKG.parents[1] / "third_party" / "catboost").glob("catboost*"):
+    binaries.append((str(f), "tsfstudio/native/catboost"))
 for pkg in ("statsforecast", "catboost", "numba", "llvmlite", "sklearn", "coreforecast", "utilsforecast"):
     try:
         d, b, h = collect_all(pkg)

@@ -33,3 +33,6 @@ Thumbs.db
 
 # Inputs of the manuscript's feature analysis (about 60 MB; provenance in manuscript/analysis/README.md)
 data/ranking_study/
+
+# downloaded third-party binaries (CatBoost CLI and model library; see cpp/README.md)
+third_party/

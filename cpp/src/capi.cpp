@@ -27,6 +27,7 @@
 #include "mfles_sf.hpp"
 #include "tbats.hpp"
 #include "global.hpp"
+#include "catboost_bridge.hpp"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -200,6 +201,26 @@ TSF_API int tsf_pooled_regression(const double* values, const int64_t* offsets, 
         for (int32_t i = 0; i < n_series; ++i) std::copy(r.forecasts[i].begin(), r.forecasts[i].end(), out + static_cast<int64_t>(i) * h);
         *n_aliased = static_cast<int32_t>(r.aliased.size());
         std::copy(r.aliased.begin(), r.aliased.end(), aliased);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
+// Global CatBoost (training by the CatBoost command-line program, prediction by its model library). out: n_series x h.
+// Returns 0, or 1 on error (message in msg).
+TSF_API int tsf_catboost(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
+                         int32_t max_obs, const char* exe, const char* model_lib, const char* workdir, int32_t threads,
+                         double* out, char* msg, int32_t len) {
+    try {
+        std::vector<Vec> series(n_series);
+        for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
+        tsf::CatboostSetup s;
+        s.exe = exe; s.model_lib = model_lib; s.workdir = workdir; s.threads = threads;
+        const std::vector<Vec> f = tsf::catboost_forecast(series, lag, h, max_obs, s);
+        for (int32_t i = 0; i < n_series; ++i) std::copy(f[i].begin(), f[i].end(), out + static_cast<int64_t>(i) * h);
         if (msg && len > 0) msg[0] = '\0';
         return 0;
     } catch (const std::exception& ex) {

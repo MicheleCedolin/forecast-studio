@@ -176,6 +176,22 @@ def test_pooled_regression_matches_r_and_python():
     assert any("linearly dependent" in n for n in r.notes)
 
 
+@pytest.mark.skipif(C.catboost_paths() is None, reason="CatBoost binaries (third_party/catboost) not downloaded")
+def test_catboost_bit_identical_to_python():
+    """C++ catboost (same data pipeline, CatBoost CLI training, model-library prediction) gives the Python engine's
+    CatBoost forecasts bit for bit (NN5 weekly and daily, all series: identical)."""
+    from tsfstudio.engines import py_global as PG
+    train = [r[~np.isnan(r)] for r in _load(G / "nn5_weekly", "train")][:30]
+    f = C.catboost(train, 12, 8, threads=4)
+    ref, _ = PG.catboost_forecast(train, 12, 8, workers=4)
+    np.testing.assert_array_equal(f, ref)
+    r = C.CppEngine().run(EngineJob(task="global", method="catboost", train=train, horizon=8, seasonality=(1.0,), lag=12, workers=4))
+    np.testing.assert_array_equal(r.forecasts, ref)
+    with pytest.raises(Exception, match="defaults"):
+        C.CppEngine().run(EngineJob(task="global", method="catboost", train=train, horizon=8, seasonality=(1.0,), lag=12,
+                                    params={"catboost": {"depth": 4}}))
+
+
 def test_holt_winters_reproduces_r_ets_aaa():
     """C++ holt_winters = R ets(y, model = "AAA") (damped / undamped by AICc) through the C++ ets port. Reference:
     R 9.0.2 forecasts on NN5 daily (tests/golden/nn5_daily/r_ets_aaa). statsforecast's HoltWinters, which the

@@ -54,6 +54,10 @@ def load_lib():
             lib.tsf_pooled_regression.restype = ctypes.c_int32
             lib.tsf_pooled_regression.argtypes = [dp, i64p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
                                                   dp, i32p, i32p, ctypes.c_char_p, ctypes.c_int32]
+            lib.tsf_catboost.restype = ctypes.c_int32
+            lib.tsf_catboost.argtypes = [dp, i64p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+                                         ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int32, dp,
+                                         ctypes.c_char_p, ctypes.c_int32]
             lib.tsf_holt_sse.restype = ctypes.c_double
             lib.tsf_holt_sse.argtypes = [dp, ctypes.c_int32, ctypes.c_int32]
             _LIB = lib
@@ -113,15 +117,57 @@ def pooled_regression(train: list[np.ndarray], lag: int, h: int, max_obs: int | 
     return out, [int(a) for a in aliased[: na.value]]
 
 
+def catboost_paths() -> tuple[Path, Path] | None:
+    """(catboost executable, model library) or None. Looked up in TSFSTUDIO_CATBOOST_DIR, the package's native/catboost
+    folder (release build) and the repository's third_party/catboost folder (downloaded from the CatBoost releases)."""
+    exe = "catboost.exe" if platform.system() == "Windows" else "catboost"
+    lib = "catboostmodel.dll" if platform.system() == "Windows" else "libcatboostmodel.so"
+    here = Path(__file__).resolve()
+    dirs = [Path(os.environ["TSFSTUDIO_CATBOOST_DIR"])] if os.environ.get("TSFSTUDIO_CATBOOST_DIR") else []
+    dirs += [here.parents[1] / "native" / "catboost", here.parents[3] / "third_party" / "catboost"]
+    for d in dirs:
+        if (d / exe).is_file() and (d / lib).is_file():
+            return d / exe, d / lib
+    return None
+
+
+def catboost(train: list[np.ndarray], lag: int, h: int, max_obs: int | None = None, threads: int = -1) -> np.ndarray:
+    """Global CatBoost (CatBoost's defaults, RMSE, random seed 0) trained by the CatBoost command-line program and
+    predicted through its model library, both driven from C++."""
+    import tempfile
+    lib = load_lib()
+    if lib is None:
+        raise EngineError(_LIB_ERR or "native library not available")
+    paths = catboost_paths()
+    if paths is None:
+        raise EngineError("CatBoost binaries not found (catboost.exe and catboostmodel.dll from the CatBoost 1.2.10 release; "
+                          "see cpp/README.md)")
+    n = len(train)
+    lens = np.array([len(s) for s in train], dtype=np.int64)
+    offsets = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(lens, out=offsets[1:])
+    values = np.ascontiguousarray(np.concatenate([np.asarray(s, dtype=np.float64) for s in train]) if n else np.zeros(0))
+    out = np.empty((n, h), dtype=np.float64)
+    msg = ctypes.create_string_buffer(1024)
+    with tempfile.TemporaryDirectory(prefix="tsf_catboost_") as wd:
+        rc = lib.tsf_catboost(_ptr(values, ctypes.c_double), _ptr(offsets, ctypes.c_int64), n, int(lag), int(h),
+                              int(max_obs or 0), str(paths[0]).encode(), str(paths[1]).encode(), wd.encode(),
+                              int(threads), _ptr(out, ctypes.c_double), msg, 1024)
+    if rc != 0:
+        raise EngineError(msg.value.decode(errors="replace"))
+    return out
+
+
 class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
                      "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl", "auto_mfles", "tbats")
-    GLOBAL_METHODS = ("pooled_regression",)
+    GLOBAL_METHODS = ("pooled_regression", "catboost")
 
     def methods(self) -> dict[str, tuple[str, ...]]:
         ok = load_lib() is not None
-        return {"local": self.LOCAL_METHODS if ok else (), "global": self.GLOBAL_METHODS if ok else ()}
+        glob = tuple(m for m in self.GLOBAL_METHODS if m != "catboost" or catboost_paths() is not None)
+        return {"local": self.LOCAL_METHODS if ok else (), "global": glob if ok else ()}
 
     def versions(self) -> dict:
         lib = load_lib()
@@ -141,7 +187,16 @@ class CppEngine(Engine):
             if progress:
                 progress("fitting", 0, 1)
             max_obs = (job.params or {}).get("max_obs")
-            f, aliased = pooled_regression(list(job.train), int(job.lag), job.horizon, int(max_obs) if max_obs else None)
+            max_obs = int(max_obs) if max_obs else None
+            aliased = []
+            if job.method == "catboost":
+                if (job.params or {}).get("catboost"):
+                    raise EngineError("The C++ catboost uses CatBoost's defaults (RMSE, random seed 0); custom CatBoost "
+                                      "parameters need the Python engine.")
+                threads = int(job.workers) if job.workers and int(job.workers) > 1 else -1
+                f = catboost(list(job.train), int(job.lag), job.horizon, max_obs, threads)
+            else:
+                f, aliased = pooled_regression(list(job.train), int(job.lag), job.horizon, max_obs)
             if job.integer_conversion:
                 f = np.round(f)
             notes = []
