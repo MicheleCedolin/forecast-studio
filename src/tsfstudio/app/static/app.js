@@ -202,9 +202,9 @@ function metricNote(k) {
 }
 const SETTING_NOTES = {
   horizon: ["Forecast horizon", "The LAST this-many observations of every series are held out as the test set; the model is trained on the rest and forecasts these steps. If left empty, the horizon from the dataset catalogue (or the file header) is used."],
-  lag: ["Lag", "Global models learn the next value from the last 'lag' observations. The catalogue value comes from your own study (or is marked 'suggested', which is not an evidence-based choice). Not used by local models."],
+  lag: ["Lag", "Global models learn the next value from the last 'lag' observations. For catalogue datasets the value comes from the reference study (or is marked 'suggested', which is not an evidence-based choice). Not used by local models."],
   max_series: ["Number of series", "Runs only the first N series (for a quick trial). If left empty, all series are run. A small trial before a long run is recommended."],
-  integer: ["Round to integers", "Rounds forecasts to the nearest integer. For count data (car_parts, M5, ...) the catalogue turns this ON, as in your own study. Intermittent-demand methods forecast a flat demand rate (often below 0.5); rounding turns it into 0 and every forecast becomes 0."],
+  integer: ["Round to integers", "Rounds forecasts to the nearest integer. For count data (car_parts, M5, ...) the catalogue turns this ON, as in the reference study. Intermittent-demand methods forecast a flat demand rate (often below 0.5); rounding turns it into 0 and every forecast becomes 0."],
   missing: ["Missing values", "What to do about missing values in the training part. By default the run does not start, because the choice affects the results and we do not change data silently."],
   seed: ["Seed", "Reproducibility for methods that involve randomness. Most classical methods are deterministic; the seed is still written to the manifest."],
   workers: ["Workers", "In the Python engine, series are run in this many parallel processes. The R engine runs on a single core on Windows. With 8 GB of memory we suggest 1-2."],
@@ -321,7 +321,7 @@ function renderDatasetList() {
   const items = S.datasets.items.filter(d => (S.tab === "all" || d.bundle === S.tab) && (!q || (d.id + " " + d.title).toLowerCase().includes(q)))
     .sort((a, b) => rank(a) - rank(b));
   const list = el("div", { class: "list", role: "radiogroup", "aria-label": "Datasets" },
-    el("div", { class: "drow head" }, el("span", { text: "Name" }), el("span", { text: "Domain" }), el("span", { class: "m", text: "Frequency" }), el("span", { class: "m", text: "Series" }), el("span", { class: "m", text: "Status" })),
+    el("div", { class: "drow head" }, el("span", { text: "Name" }), el("span", { class: "d", text: "Domain" }), el("span", { class: "m", text: "Frequency" }), el("span", { class: "m", text: "Series" }), el("span", { class: "m", text: "Status" })),
     items.length ? items.map(d => {
       const ok = d.status === "ok" || d.status === "user";
       const on = S.sel.dataset === d.id;
@@ -343,8 +343,8 @@ function datasetNote(d) {
   nodes.push(el("div", { class: "kv" }, el("div", {}, el("b", { text: "File: " }), d.file), el("div", {}, el("b", { text: "Size: " }), nf1.format(d.bytes / 1e6) + " MB")));
   if (d.status === "missing") nodes.push(runIn("File missing.", "This dataset was not found in the data folder; place it there under its catalogue name and reload the page.", "caution"));
   if (d.kind === "catalog") {
-    nodes.push(el("p", {}, d.lag != null ? `Lag: ${d.lag} (${d.lag_origin === "study" ? "from your own study" : "suggested, not in the study"}). ` : "No lag suggestion in the catalogue. ",
-      d.integer_conversion ? "Rounding to integers is ON in your own study." : "Rounding to integers is off."));
+    nodes.push(el("p", {}, d.lag != null ? `Lag: ${d.lag} (${d.lag_origin === "study" ? "from the reference study" : "suggested, not in the reference study"}). ` : "No lag suggestion in the catalogue. ",
+      d.integer_conversion ? "Rounding to integers is ON in the reference study." : "Rounding to integers is off."));
     if (d.bytes > BIG) nodes.push(runIn("Large file.", "The pre-run check reads the whole file; we only do this when you ask (Run step).", "caution"));
   }
   return el("div", {}, nodes);
@@ -471,7 +471,7 @@ function renderModel() {
           const any = ["python", "r"].some(k => m.engines[k].available);
           const row = el("div", { class: "mrow", role: "radio", "aria-checked": String(on), tabindex: 0, "data-id": m.id, onclick: () => selectModel(m.id),
             onkeydown: ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectModel(m.id); } } },
-            el("span", { class: "t" }, on ? el("span", { class: "hl", text: m.name }) : m.name, studied.has(m.id) ? el("span", { class: "studied", text: "used in your study" }) : null),
+            el("span", { class: "t" }, on ? el("span", { class: "hl", text: m.name }) : m.name, studied.has(m.id) ? el("span", { class: "studied", text: "used in the reference study" }) : null),
             el("span", { class: "s" }, m.summary, any ? null : el("span", { class: "pen", text: " Not installed on this machine." })),
             el("span", { class: "e" }, engineBadges(m)));
           return bindNote(row, () => modelNote(m));
@@ -489,7 +489,7 @@ function renderEnginePick() {
     el("div", { class: "seg", role: "group", "aria-label": "Engine" }, opts.map(k => bindNote(el("button", { type: "button", "aria-pressed": String(S.sel.engine === k),
       onclick: () => setEngine(k) }, ENGINE_NAME[k] + (m.engines[k].available ? "" : " (unavailable)")), () => el("div", {}, el("h3", { text: ENGINE_NAME[k] + " engine" }), el("p", { text: m.engines[k].note || "" }),
       m.engines[k].available ? null : runIn("Unavailable.", ((S.sys.engines[k].message) || "") , "caution"))))),
-    opts.length === 1 ? el("span", { class: "hint", text: "This method exists only in the " + ENGINE_NAME[opts[0]] + " engine." }) : el("span", { class: "hint", text: "The R engine is the original call from your study; the Python engine uses its own libraries." })));
+    opts.length === 1 ? el("span", { class: "hint", text: "This method exists only in the " + ENGINE_NAME[opts[0]] + " engine." }) : el("span", { class: "hint", text: "The R engine runs the original R code of the reference study; the Python engine uses its own libraries." })));
 }
 function setEngine(k) {
   S.sel.engine = k; store.set("sel", S.sel);
@@ -542,10 +542,10 @@ function renderAyarlar() {
   const metricsBox = el("div", { class: "chips", role: "group", "aria-label": "Measures" }, (S.models.metric_all || S.models.metric_defaults).map(k => bindNote(el("label", {},
     el("input", { type: "checkbox", checked: s.metrics.has(k), onchange: ev => { ev.target.checked ? s.metrics.add(k) : s.metrics.delete(k); renderKosuDebounced(); } }), S.models.metrics[k].name), () => metricNote(k))));
   sec.replaceChildren(
-    ...secHead("ayarlar", 3, "Settings", "Defaults are the values from your own study; edit only what you want to change."),
+    ...secHead("ayarlar", 3, "Settings", (d && d.kind === "catalog" ? "Defaults come from the reference study (dataset catalogue)" : "Defaults come from the data file header") + "; edit only what you want to change."),
     el("div", { class: "grid3" },
       field("Forecast horizon", inp("horizon", "number", d && d.horizon != null ? String(d.horizon) + " (data)" : "from dataset", { min: 1 }), settingNote("horizon"), s.horizon !== ""),
-      global ? field("Lag", inp("lag", "number", d && d.lag != null ? String(d.lag) + " (your study)" : "required", { min: 1 }), settingNote("lag", () => d && d.lag_suggestion && d.lag == null ? el("p", { class: "hint", text: `Suggestion: ${d.lag_suggestion} (based on the seasonal period; not evidence-based).` }) : null), s.lag !== "") : null,
+      global ? field("Lag", inp("lag", "number", d && d.lag != null ? String(d.lag) + (d.kind === "catalog" ? " (reference study)" : " (data)") : "required", { min: 1 }), settingNote("lag", () => d && d.lag_suggestion && d.lag == null ? el("p", { class: "hint", text: `Suggestion: ${d.lag_suggestion} (based on the seasonal period; not evidence-based).` }) : null), s.lag !== "") : null,
       field("Number of series", el("div", {}, inp("max_series", "number", "all", { min: 1 }), maxQuick), settingNote("max_series"), s.max_series !== "")),
     el("div", { class: "grid2 sub" },
       bindNote(el("div", { class: "field" }, el("div", { class: "lab", text: "Round to integers" }), intSeg, roundWarn, autoNote), settingNote("integer")),
@@ -600,6 +600,30 @@ function buildConfig() {
   }
   return { dataset: S.sel.dataset, engine: S.sel.engine, method: S.sel.method, horizon: s.horizon, lag: s.lag, integer_conversion: s.integer, missing_policy: s.missing,
     max_series: s.max_series, seed: s.seed, workers: s.workers, metrics: [...s.metrics], params };
+}
+// Load a past run's configuration into the workspace (UI review M4): dataset, model, engine, settings and parameters.
+async function loadSettings(m) {
+  const c = m.config || {}, dsId = m.dataset && m.dataset.id;
+  if (!dsId || !entry(dsId)) { toast(`The dataset of this run (${dsId || "?"}) is not available in this data folder.`, true); return; }
+  if (!model(c.method)) { toast(`The method of this run (${c.method}) is not known to this version.`, true); return; }
+  S.sel.engine = c.engine || "python";
+  selectModel(c.method, true);
+  await selectDataset(dsId, true);
+  const str = v => (v == null ? "" : String(v));
+  Object.assign(S.settings, {
+    horizon: str(c.horizon), lag: str(c.lag), missing: c.missing_policy || "error", max_series: str(c.max_series),
+    seed: str(c.seed == null ? 1 : c.seed), workers: str(c.workers == null ? 1 : c.workers),
+    integer: c.integer_conversion == null ? "auto" : (c.integer_conversion ? "on" : "off"),
+  });
+  if (Array.isArray(c.metrics)) S.settings.metrics = new Set(c.metrics.filter(k => S.models.metrics[k]));
+  S.params = {};
+  for (const [k, v] of Object.entries(c.params || {})) {
+    if (v && typeof v === "object" && !Array.isArray(v)) for (const [k2, v2] of Object.entries(v)) S.params[`${k}.${k2}`] = String(v2);
+    else S.params[k] = typeof v === "boolean" ? String(v) : String(v);
+  }
+  setView("work"); renderModel(); renderAyarlar(); renderKosuDebounced(); updateRail(); refreshStale();
+  $("#ayarlar").scrollIntoView({ behavior: "smooth" });
+  toast(`Settings loaded from ${runLabel(m)}. Check them, then start a run.`);
 }
 const renderKosuDebounced = debounce(() => refreshEstimate(false), 550);
 function ready() { return !!(S.sel.dataset && S.sel.method); }
@@ -768,6 +792,7 @@ function renderSonuc() {
     el("div", { id: "stalenote", role: "status" }),
     el("p", { class: "rtitle" }, el("span", { class: "hl", text: runLabel(m) })),
     el("p", { class: "rsub", text: r.id }),
+    el("div", { class: "row-actions" }, el("button", { type: "button", class: "btn ghost small", onclick: () => loadSettings(m) }, "Load these settings into the workspace")),
     el("dl", { class: "facts" }, fact("Series", fint(m.dataset.n_series_run)), fact("Horizon", fint(m.config.effective_horizon)), fact("Run time", mmss(m.engine.elapsed_sec || 0)),
       fact("Fallback forecasts", fint(nfb), nfb > 0), fact("Rounding", m.config.effective_integer_conversion ? "on" : "off")),
     // UI review M3: which series fell back to the seasonal-naive forecast, and why.
