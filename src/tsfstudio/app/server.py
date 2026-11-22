@@ -119,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
             self._api(method, parts, qs)
         except AppError as exc:
             self._err(exc.status, str(exc))
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):   # client went away (WinError 10053)
             pass
         except Exception as exc:  # noqa: BLE001
             tb = traceback.format_exc()
