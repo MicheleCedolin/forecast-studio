@@ -16,6 +16,7 @@
 #include <string>
 #include <thread>
 
+#include "arima.hpp"
 #include "basic.hpp"
 #include "ets.hpp"
 
@@ -74,6 +75,29 @@ TSF_API double tsf_ets_debug(const double* y, int32_t n, int32_t m, int32_t e, i
     } catch (...) {
         *n_init = 0; *n_par = 0;
         return std::numeric_limits<double>::infinity();
+    }
+}
+
+// Diagnostic hook: stats::arima with a fixed order. ord = {p,d,q,P,D,Q,period}; flags = {include_mean, drift, method
+// (0 CSS, 1 CSS-ML, 2 ML)}; info = {loglik, aic, sigma2, var_ok, n_coef}; coef up to 16 values. Returns 0, or 1 on error.
+TSF_API int tsf_arima_fixed(const double* y, int32_t n, const int32_t* ord, const int32_t* flags, int32_t h, double* fc,
+                            double* coef, double* info, char* msg, int32_t len) {
+    try {
+        tsf::ArimaSpec s;
+        s.p = ord[0]; s.d = ord[1]; s.q = ord[2]; s.P = ord[3]; s.D = ord[4]; s.Q = ord[5]; s.period = ord[6];
+        s.include_mean = flags[0] != 0; s.drift = flags[1] != 0;
+        s.method = flags[2] == 0 ? tsf::ArimaMethod::CSS : (flags[2] == 1 ? tsf::ArimaMethod::CSS_ML : tsf::ArimaMethod::ML);
+        const tsf::ArimaFit f = tsf::arima_fit(Vec(y, y + n), s);
+        const Vec p = tsf::arima_forecast(f, h);
+        std::copy(p.begin(), p.end(), fc);
+        const size_t nc = std::min<size_t>(f.coef.size(), 16);
+        std::copy(f.coef.begin(), f.coef.begin() + nc, coef);
+        info[0] = f.loglik; info[1] = f.aic; info[2] = f.sigma2; info[3] = f.var_ok ? 1 : 0; info[4] = static_cast<double>(nc);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
     }
 }
 
