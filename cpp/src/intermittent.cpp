@@ -3,6 +3,8 @@
 // _croston_optimized, _tsb, _adida, _imapa), with numpy's pairwise summation and round-half-to-even where it matters.
 #include "intermittent.hpp"
 
+#include "sf_common.hpp"
+
 #include <cmath>
 #include <stdexcept>
 
@@ -10,29 +12,7 @@ namespace tsf {
 
 namespace {
 
-// numpy's pairwise summation (np.sum / np.mean over a contiguous float64 array)
-double np_sum(const double* a, size_t n) {
-    if (n < 8) {
-        double res = -0.0;
-        for (size_t i = 0; i < n; ++i) res += a[i];
-        return res;
-    }
-    if (n <= 128) {
-        double r[8];
-        for (int j = 0; j < 8; ++j) r[j] = a[j];
-        size_t i = 8;
-        for (; i < n - (n % 8); i += 8)
-            for (int j = 0; j < 8; ++j) r[j] += a[i + j];
-        double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
-        for (; i < n; ++i) res += a[i];
-        return res;
-    }
-    size_t n2 = n / 2;
-    n2 -= n2 % 8;
-    return np_sum(a, n2) + np_sum(a + n2, n - n2);
-}
-
-double np_mean(const Vec& v) { return np_sum(v.data(), v.size()) / static_cast<double>(v.size()); }
+double np_mean(const Vec& v) { return tsf::np_mean(v.data(), v.size()); }
 
 double ses_sse(double alpha, const Vec& x) {
     if (x.size() < 2) return 0.0;

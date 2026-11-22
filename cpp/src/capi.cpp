@@ -22,6 +22,7 @@
 #include "ets.hpp"
 #include "intermittent.hpp"
 #include "theta_sf.hpp"
+#include "ces_sf.hpp"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -54,13 +55,14 @@ Vec m_tsb(const Vec& y, int h, int, int) { return tsf::tsb(y, h); }
 Vec m_adida(const Vec& y, int h, int, int) { return tsf::adida(y, h); }
 Vec m_imapa(const Vec& y, int h, int, int) { return tsf::imapa(y, h); }
 Vec m_dotm(const Vec& y, int h, int m, int) { return tsf::dotm_forecast(y, m, h, true); }
+Vec m_ces(const Vec& y, int h, int m, int) { return tsf::ces_forecast(y, m, h); }
 
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
     {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets}, {"holt_winters", m_hw},
     {"arima", m_arima}, {"dhr_arima", m_dhr}, {"croston_classic", m_crc}, {"croston_sba", m_crs},
-    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm},
+    {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces},
 };
 
 Fn find_method(const char* name) {
@@ -72,11 +74,11 @@ Fn find_method(const char* name) {
 }  // namespace
 
 TSF_API const char* tsf_version() {
-    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm)";
+    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa, dotm, auto_ces)";
 }
 
 TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,holt_winters,arima,dhr_arima,"
-                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm"; }
+                                         "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa,dotm,auto_ces"; }
 
 // Test hook for auto.arima (the study's chain). info = {p, d, q, P, D, Q, period, drift, mean, step, loglik, aicc,
 // sigma2}. Returns 0, or 1 on error (message in msg).
