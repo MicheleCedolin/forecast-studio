@@ -1,0 +1,1031 @@
+schema: 1
+source_note: lag/ufuk/tamsayı dönüşümü/yöntem listeleri kullanıcının fixed_horizon.R ve deep_learning_experiments.py dosyalarından
+  çıkarıldı; lag_origin=suggested olanlar çalışmada yoktur.
+datasets:
+- id: aus_elecdemand
+  file: australian_electricity_demand_dataset.tsf
+  bytes: 13422464
+  bundle: extra
+  domain: Australian electricity demand
+  lag: 420
+  lag_origin: study
+  horizon_override: 336
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: bitcoin
+  file: bitcoin_dataset_without_missing_values.tsf
+  bytes: 583250
+  bundle: extra
+  domain: Cryptocurrency
+  lag: 9
+  lag_origin: study
+  horizon_override: 30
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: cif_2016
+  file: cif_2016_dataset.tsf
+  bytes: 108787
+  bundle: extra
+  domain: CIF 2016 competition (banking)
+  lag: 15
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: false
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods: []
+- id: dominick
+  file: dominick_dataset.tsf
+  bytes: 75954427
+  bundle: extra
+  domain: Retail sales (Dominick's)
+  lag: 10
+  lag_origin: study
+  horizon_override: 8
+  integer_conversion: false
+  use_timestamps: false
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: electricity_hourly
+  file: electricity_hourly_dataset.tsf
+  bytes: 35932338
+  bundle: extra
+  domain: Electricity consumption
+  lag: 30
+  lag_origin: study
+  horizon_override: 168
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: electricity_weekly
+  file: electricity_weekly_dataset.tsf
+  bytes: 334919
+  bundle: extra
+  domain: Electricity consumption
+  lag: 65
+  lag_origin: study
+  horizon_override: 8
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: kaggle_web_traffic_weekly
+  file: kaggle_web_traffic_weekly_dataset.tsf
+  bytes: 74880015
+  bundle: extra
+  domain: Web traffic
+  lag: 10
+  lag_origin: study
+  horizon_override: 8
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: london_smart_meters
+  file: london_smart_meters_dataset_without_missing_values.tsf
+  bytes: 977782457
+  bundle: extra
+  domain: Smart-meter energy
+  lag: 336
+  lag_origin: suggested
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods: []
+  global_methods: []
+  deep_methods: []
+- id: m4_monthly
+  file: m4_monthly_dataset.tsf
+  bytes: 77554719
+  bundle: extra
+  domain: M4 competition (mixed)
+  lag: 15
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m4_quarterly
+  file: m4_quarterly_dataset.tsf
+  bytes: 17623972
+  bundle: extra
+  domain: M4 competition (mixed)
+  lag: 5
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m4_yearly
+  file: m4_yearly_dataset.tsf
+  bytes: 6876712
+  bundle: extra
+  domain: M4 competition (mixed)
+  lag: 2
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods: []
+- id: melbourne_pedestrian_counts
+  file: pedestrian_counts_dataset.tsf
+  bytes: 11901419
+  bundle: extra
+  domain: Pedestrian counts
+  lag: 210
+  lag_origin: study
+  horizon_override: 24
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: rideshare
+  file: rideshare_dataset_without_missing_values.tsf
+  bytes: 7072724
+  bundle: extra
+  domain: Ride-hailing
+  lag: 210
+  lag_origin: study
+  horizon_override: 168
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: solar_10_minutes
+  file: solar_10_minutes_dataset.tsf
+  bytes: 24110029
+  bundle: extra
+  domain: Solar power
+  lag: 50
+  lag_origin: study
+  horizon_override: 1008
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - transformer
+- id: solar_weekly
+  file: solar_weekly_dataset.tsf
+  bytes: 57779
+  bundle: extra
+  domain: Solar power
+  lag: 6
+  lag_origin: study
+  horizon_override: 5
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: temperature_rain
+  file: temperature_rain_dataset_without_missing_values.tsf
+  bytes: 114753808
+  bundle: extra
+  domain: Temperature and rainfall
+  lag: 9
+  lag_origin: study
+  horizon_override: 30
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: weather
+  file: weather_dataset.tsf
+  bytes: 212401586
+  bundle: extra
+  domain: Weather
+  lag: 9
+  lag_origin: study
+  horizon_override: 30
+  integer_conversion: false
+  use_timestamps: false
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m5_item_state
+  file: m5_item_state_daily_dataset.tsf
+  bytes: 31992314
+  bundle: m5
+  domain: Retail unit sales (M5)
+  lag: 28
+  lag_origin: suggested
+  horizon_override: null
+  integer_conversion: true
+  use_timestamps: true
+  local_methods: []
+  global_methods: []
+  deep_methods: []
+  wrmsse: false
+- id: m5_item_store
+  file: m5_daily_dataset.tsf
+  bytes: 99129403
+  bundle: m5
+  domain: Retail unit sales (M5)
+  lag: 28
+  lag_origin: suggested
+  horizon_override: null
+  integer_conversion: true
+  use_timestamps: true
+  local_methods: []
+  global_methods: []
+  deep_methods: []
+  wrmsse: true
+- id: car_parts
+  file: car_parts_dataset_without_missing_values.tsf
+  bytes: 344870
+  bundle: main
+  domain: Spare-parts demand (intermittent)
+  lag: 15
+  lag_origin: study
+  horizon_override: 12
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: covid_deaths
+  file: covid_deaths_dataset.tsf
+  bytes: 158234
+  bundle: main
+  domain: COVID-19 deaths
+  lag: 9
+  lag_origin: study
+  horizon_override: 30
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: fred_md
+  file: fred_md_dataset.tsf
+  bytes: 487237
+  bundle: main
+  domain: US macroeconomics (FRED-MD)
+  lag: 15
+  lag_origin: study
+  horizon_override: 12
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: hospital
+  file: hospital_dataset.tsf
+  bytes: 233355
+  bundle: main
+  domain: Hospital patient counts
+  lag: 15
+  lag_origin: study
+  horizon_override: 12
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: kdd_cup
+  file: kdd_cup_2018_dataset_without_missing_values.tsf
+  bytes: 9925024
+  bundle: main
+  domain: Air quality (KDD Cup 2018)
+  lag: 210
+  lag_origin: study
+  horizon_override: 168
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m1_monthly
+  file: m1_monthly_dataset.tsf
+  bytes: 313600
+  bundle: main
+  domain: M1 competition (mixed)
+  lag: 15
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m1_quarterly
+  file: m1_quarterly_dataset.tsf
+  bytes: 53754
+  bundle: main
+  domain: M1 competition (mixed)
+  lag: 5
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m1_yearly
+  file: m1_yearly_dataset.tsf
+  bytes: 30557
+  bundle: main
+  domain: M1 competition (mixed)
+  lag: 2
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m3_monthly
+  file: m3_monthly_dataset.tsf
+  bytes: 960208
+  bundle: main
+  domain: M3 competition (mixed)
+  lag: 15
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m3_other
+  file: m3_other_dataset.tsf
+  bytes: 80003
+  bundle: main
+  domain: M3 competition (mixed)
+  lag: 2
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: false
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m3_quarterly
+  file: m3_quarterly_dataset.tsf
+  bytes: 253744
+  bundle: main
+  domain: M3 competition (mixed)
+  lag: 5
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m3_yearly
+  file: m3_yearly_dataset.tsf
+  bytes: 125743
+  bundle: main
+  domain: M3 competition (mixed)
+  lag: 2
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m4_daily
+  file: m4_daily_dataset.tsf
+  bytes: 76262290
+  bundle: main
+  domain: M4 competition (mixed)
+  lag: 9
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m4_hourly
+  file: m4_hourly_dataset.tsf
+  bytes: 1688095
+  bundle: main
+  domain: M4 competition (mixed)
+  lag: 210
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: m4_weekly
+  file: m4_weekly_dataset.tsf
+  bytes: 2736081
+  bundle: main
+  domain: M4 competition (mixed)
+  lag: 65
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: nn5_daily
+  file: nn5_daily_dataset_without_missing_values.tsf
+  bytes: 1479606
+  bundle: main
+  domain: ATM cash withdrawals (NN5)
+  lag: 9
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: nn5_weekly
+  file: nn5_weekly_dataset.tsf
+  bytes: 215630
+  bundle: main
+  domain: ATM cash withdrawals (NN5)
+  lag: 65
+  lag_origin: study
+  horizon_override: 8
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: sample
+  file: sample.tsf
+  bytes: 351888
+  bundle: main
+  domain: Sample dataset
+  lag: 25
+  lag_origin: suggested
+  horizon_override: 8
+  integer_conversion: false
+  use_timestamps: true
+  local_methods: []
+  global_methods: []
+  deep_methods: []
+- id: tourism_monthly
+  file: tourism_monthly_dataset.tsf
+  bytes: 516457
+  bundle: main
+  domain: Tourism
+  lag: 15
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: tourism_quarterly
+  file: tourism_quarterly_dataset.tsf
+  bytes: 226526
+  bundle: main
+  domain: Tourism
+  lag: 5
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: tourism_yearly
+  file: tourism_yearly_dataset.tsf
+  bytes: 88771
+  bundle: main
+  domain: Tourism
+  lag: 2
+  lag_origin: study
+  horizon_override: null
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: traffic_hourly
+  file: traffic_hourly_dataset.tsf
+  bytes: 103476945
+  bundle: main
+  domain: Road occupancy (traffic)
+  lag: 30
+  lag_origin: study
+  horizon_override: 168
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: traffic_weekly
+  file: traffic_weekly_dataset.tsf
+  bytes: 676465
+  bundle: main
+  domain: Road occupancy (traffic)
+  lag: 65
+  lag_origin: study
+  horizon_override: 8
+  integer_conversion: false
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - dhr_arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+- id: vehicle_trips
+  file: vehicle_trips_dataset_without_missing_values.tsf
+  bytes: 147792
+  bundle: main
+  domain: Vehicle trips
+  lag: 9
+  lag_origin: study
+  horizon_override: 30
+  integer_conversion: true
+  use_timestamps: true
+  local_methods:
+  - ses
+  - ets
+  - theta
+  - tbats
+  - arima
+  global_methods:
+  - catboost
+  - pooled_regression
+  deep_methods:
+  - feed_forward
+  - deepar
+  - nbeats
+  - wavenet
+  - transformer
+referenced_but_not_bundled:
+- id: kaggle_web_traffic_daily
+  file: kaggle_web_traffic_dataset_without_missing_values.tsf
+- id: saugeen_river_flow
+  file: saugeenday_dataset.tsf
+- id: sunspot
+  file: sunspot_dataset_without_missing_values.tsf
+- id: us_births
+  file: us_births_dataset.tsf

@@ -1,0 +1,4 @@
+Latin Modern fonts (lmroman10-*, lmsans10-*): GUST Font License (GFL, an LPPL-based free license).
+Copyright 2003-2009 B. Jackowski and J. M. Nowacki (on behalf of TeX Users Groups). Files in this folder are
+subsets (Latin, Latin-1/Extended-A incl. Turkish letters, common punctuation/math signs) converted to WOFF.
+Modified subsets are redistributed under the same license; the unmodified fonts are available from CTAN (fonts/lm).

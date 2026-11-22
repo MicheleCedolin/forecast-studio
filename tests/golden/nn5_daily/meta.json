@@ -1,0 +1,15 @@
+{
+  "name": "nn5_daily",
+  "frequency": "daily",
+  "horizon": 56,
+  "lag": 9,
+  "source": "Kullanıcının R çıktıları (NN5 yarışma verisi)",
+  "methods": [
+    "ses",
+    "ets",
+    "theta",
+    "tbats",
+    "arima",
+    "pooled_regression_lag_9"
+  ]
+}

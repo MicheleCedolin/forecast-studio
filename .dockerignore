@@ -1,0 +1,10 @@
+.git
+**/__pycache__
+**/*.pyc
+.pytest_cache
+runs
+uploads
+reference
+*.zip
+data/tsf/_index.json
+tests/golden/**/*.xlsx

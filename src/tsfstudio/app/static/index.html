@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="tsf-token" content="{{TOKEN}}">
+<title>Forecast Studio</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="masthead">
+    <div class="brand">
+      <h1>Forecast Studio</h1>
+      <p>A workbench for time-series forecasting models</p>
+    </div>
+    <div class="status" id="status" aria-label="System status"></div>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Steps">
+    <ol class="steps" id="steps">
+      <li><a href="#veri" data-step="veri"><span class="n">1</span>Data</a></li>
+      <li><a href="#model" data-step="model"><span class="n">2</span>Model</a></li>
+      <li><a href="#ayarlar" data-step="ayarlar"><span class="n">3</span>Settings</a></li>
+      <li><a href="#kosu" data-step="kosu"><span class="n">4</span>Run</a></li>
+      <li><a href="#sonuc" data-step="sonuc"><span class="n">5</span>Results</a></li>
+    </ol>
+    <div class="picked" id="picked" aria-live="polite"></div>
+    <div class="views">
+      <button type="button" class="linkish" id="view-history">Past runs <span id="history-count"></span></button>
+      <button type="button" class="linkish" id="view-work" hidden>Back to workspace</button>
+    </div>
+    <button type="button" class="linkish quit" id="quit">Quit application</button>
+  </nav>
+
+  <main class="sheet" id="sheet">
+    <div id="view-work-body">
+      <section class="sec" id="veri" aria-labelledby="h-veri"></section>
+      <section class="sec" id="model" aria-labelledby="h-model"></section>
+      <section class="sec" id="ayarlar" aria-labelledby="h-ayarlar"></section>
+      <section class="sec" id="kosu" aria-labelledby="h-kosu"></section>
+      <section class="sec" id="sonuc" aria-labelledby="h-sonuc"></section>
+    </div>
+    <div id="view-history-body" hidden></div>
+  </main>
+
+  <aside class="margin" id="margin" aria-live="polite" aria-label="Margin note">
+    <button type="button" class="margin-toggle" id="margin-toggle" aria-controls="margin-body">Collapse note</button>
+    <div id="margin-body"></div>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

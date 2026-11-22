@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+build/
+dist/
+
+# Data and outputs (large / user-specific; see README "Veri paketi")
+data/tsf/*
+!data/tsf/.gitkeep
+runs/
+uploads/*
+!uploads/.gitkeep
+setup_log.txt
+golden_hizli.csv
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json

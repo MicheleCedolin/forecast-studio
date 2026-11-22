@@ -1,0 +1,7 @@
+# Docker Desktop (WSL2 arka ucu) icin onerilen sinirlar - 8 GB RAM / 6 cekirdekli makine (i5-8400) icin.
+# Konum: C:\Users\<kullanici>\.wslconfig   (degisiklikten sonra PowerShell'de:  wsl --shutdown  ve Docker Desktop'i yeniden baslatin)
+# Varsayilan WSL2 sanal makinesi RAM'in %50'sini alir (~4 GB); M5 gibi buyuk veri icin yetersizdir.
+[wsl2]
+memory=6GB
+swap=8GB
+processors=5

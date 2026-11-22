@@ -1,0 +1,28 @@
+# Kullanım (PowerShell):
+#   docker compose build
+#   docker compose run --rm studio doctor
+#   docker compose run --rm studio run --dataset nn5_weekly --engine r --method ets --out /app/runs
+name: forecast-studio
+
+services:
+  studio:
+    build:
+      context: .
+      args:
+        R_VERSION: "4.5.1"
+        CATBOOST_VERSION: "1.2.10"
+        PY_EXTRAS: "dev"
+    image: forecast-studio:0.1.0
+    ports:
+      - "127.0.0.1:8501:8501"          # yalnızca yerel makineden erişilir
+    volumes:
+      - ./runs:/app/runs               # çıktılar (tahmin, metrik Excel, manifest) burada kalır
+      - ./uploads:/app/uploads         # kullanıcı Excel/TSF yüklemeleri
+      # Veriyi imaja gömmeden bağlamak (imaj küçülür): bu satırı açın ve Dockerfile'daki `COPY data/tsf` satırını silin.
+      # - ./data/tsf:/app/data/tsf:ro
+    environment:
+      TSFSTUDIO_DATA_DIR: /app/data/tsf
+      TSFSTUDIO_RUNS_DIR: /app/runs
+      OPENBLAS_NUM_THREADS: "1"
+    shm_size: "1gb"
+    # İzinler: Docker Desktop (Windows) ile bind mount yazma sorunu çıkarmaz; bu yüzden kök kullanıcı kullanılır.
