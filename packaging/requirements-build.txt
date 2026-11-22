@@ -1,0 +1,13 @@
+# Build environment for the standalone Windows package (see packaging/README.md).
+# Versions match the environment the golden tests were validated with.
+numpy==2.5.4
+scipy==1.18.1
+pandas==2.3.3
+openpyxl==3.1.5
+xlsxwriter==3.3.1
+PyYAML==6.0.3
+statsforecast==2.1.1
+catboost==1.2.10
+scikit-learn==1.9.1
+pyinstaller
+pytest

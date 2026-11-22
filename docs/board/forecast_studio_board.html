@@ -1,0 +1,305 @@
+<title>Forecast Studio Yol Haritası</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: summary band (donut + per-area stacked bars) above a filterable card wall grouped by status. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --ink: #18212b; --muted: #5b6875; --line: #dbe1e7; --accent: #2457c5;
+  --done-bg: #dcf3e2; --done-ink: #14532d; --done-mark: #2f9e55;
+  --pend-bg: #fdf1c7; --pend-ink: #6b4a00; --pend-mark: #d9a400;
+  --rej-bg: #fbdcdc; --rej-ink: #7a1d1d; --rej-mark: #d64545;
+  --shadow: 0 1px 2px rgba(20,30,45,.06), 0 4px 14px rgba(20,30,45,.05);
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f151c; --surface: #17202a; --ink: #e6ecf2; --muted: #9aa8b6; --line: #2a3644; --accent: #7aa2ff;
+  --done-bg: #143322; --done-ink: #b9ecc9; --done-mark: #4cc27a;
+  --pend-bg: #3a300c; --pend-ink: #f7e3a1; --pend-mark: #f0c234;
+  --rej-bg: #3d1717; --rej-ink: #f6c0c0; --rej-mark: #ef6a6a;
+  --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f151c; --surface: #17202a; --ink: #e6ecf2; --muted: #9aa8b6; --line: #2a3644; --accent: #7aa2ff;
+  --done-bg: #143322; --done-ink: #b9ecc9; --done-mark: #4cc27a;
+  --pend-bg: #3a300c; --pend-ink: #f7e3a1; --pend-mark: #f0c234;
+  --rej-bg: #3d1717; --rej-ink: #f6c0c0; --rej-mark: #ef6a6a;
+  --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--f-display); font-size: clamp(24px, 4vw, 34px); margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; }
+.status-note { font-size: 12px; color: var(--muted); font-family: var(--f-mono); }
+.btn { font: 600 13px var(--f-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn:focus-visible, .chip:focus-visible, .card:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.summary { display: grid; grid-template-columns: minmax(220px, 280px) 1fr; gap: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
+@media (max-width: 760px) { .summary { grid-template-columns: 1fr; } }
+.donut-box { display: flex; align-items: center; gap: 16px; }
+.donut-box svg { width: 132px; height: 132px; flex: none; }
+.legend { display: grid; gap: 6px; font-size: 13px; }
+.legend div { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.areas { display: grid; gap: 8px; min-width: 0; }
+.areas h2, .wall h2 { font: 600 12px var(--f-body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 4px; }
+.area-row { display: grid; grid-template-columns: 110px 1fr 54px; align-items: center; gap: 10px; font-size: 13px; }
+.bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.bar span { display: block; height: 100%; }
+.area-row .n { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-family: var(--f-mono); font-size: 12px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { font: 500 13px var(--f-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.search { flex: 1 1 200px; min-width: 0; max-width: 320px; font: 14px var(--f-body); padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+
+.wall { display: grid; gap: 22px; }
+.group-head { display: flex; align-items: center; gap: 10px; }
+.group-head .count { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card { border-radius: 12px; padding: 14px 14px 12px; display: grid; gap: 8px; border: 1px solid transparent; cursor: pointer; min-width: 0; }
+.card.done { background: var(--done-bg); color: var(--done-ink); }
+.card.pending { background: var(--pend-bg); color: var(--pend-ink); }
+.card.rejected { background: var(--rej-bg); color: var(--rej-ink); }
+.card:hover { border-color: currentColor; }
+.card .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.tag { font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .05em; opacity: .85; }
+.badge { font: 600 11px var(--f-body); border-radius: 999px; padding: 2px 8px; background: rgba(255,255,255,.55); color: inherit; white-space: nowrap; }
+:root[data-theme="dark"] .badge { background: rgba(0,0,0,.25); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge { background: rgba(0,0,0,.25); } }
+.card h3 { font: 600 15px/1.35 var(--f-display); margin: 0; overflow-wrap: anywhere; }
+.card p { margin: 0; font-size: 13px; opacity: .9; overflow-wrap: anywhere; }
+.card .date { font: 11px var(--f-mono); opacity: .7; }
+.empty { border: 1px dashed var(--line); border-radius: 12px; padding: 28px; text-align: center; color: var(--muted); background: var(--surface); }
+
+dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--surface); color: var(--ink); width: min(520px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+dialog::backdrop { background: rgba(10,15,25,.45); }
+.dlg { padding: 20px; display: grid; gap: 12px; }
+.dlg h2 { font: 600 18px var(--f-display); margin: 0; }
+.dlg label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.dlg input, .dlg select, .dlg textarea { font: 14px var(--f-body); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
+.dlg textarea { min-height: 80px; resize: vertical; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button { flex: 1 1 0; border-radius: 8px; padding: 8px; font: 600 13px var(--f-body); cursor: pointer; border: 2px solid transparent; }
+.seg .done { background: var(--done-bg); color: var(--done-ink); }
+.seg .pending { background: var(--pend-bg); color: var(--pend-ink); }
+.seg .rejected { background: var(--rej-bg); color: var(--rej-ink); }
+.seg button[aria-pressed="true"] { border-color: currentColor; }
+.row { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+.row .right { display: flex; gap: 8px; margin-left: auto; }
+.confirm { font-size: 13px; color: var(--rej-ink); background: var(--rej-bg); border-radius: 8px; padding: 8px 10px; }
+@media (prefers-reduced-motion: no-preference) { .card { transition: transform .12s ease; } .card:hover { transform: translateY(-1px); } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Forecast Studio Yol Haritası</h1>
+      <p class="sub">Uygulama, modeller, metrikler ve makale işleri. Bir karta tıklayıp durumunu ya da notunu değiştirin.</p>
+    </div>
+    <div style="display:grid;gap:6px;justify-items:end">
+      <button class="btn primary" id="addBtn" type="button">+ Yeni iş</button>
+      <span class="status-note" id="syncNote">Bağlanıyor…</span>
+    </div>
+  </header>
+
+  <section class="summary" aria-label="Özet">
+    <div class="donut-box">
+      <svg viewBox="0 0 42 42" role="img" aria-labelledby="donutTitle" id="donut"><title id="donutTitle">Durum dağılımı</title></svg>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="areas">
+      <h2>Alanlara göre</h2>
+      <div id="areaBars"></div>
+    </div>
+  </section>
+
+  <div class="filters" role="toolbar" aria-label="Filtreler">
+    <div id="statusChips" class="filters"></div>
+    <select id="areaSel" class="chip" aria-label="Alan"></select>
+    <input id="q" class="search" type="search" placeholder="Ara…" aria-label="Ara">
+  </div>
+
+  <main class="wall" id="wall"></main>
+</div>
+
+<dialog id="dlg">
+  <form class="dlg" id="form" method="dialog">
+    <h2 id="dlgTitle">İş</h2>
+    <label>Başlık<input id="fTitle" required maxlength="160"></label>
+    <label>Alan<select id="fArea"></select></label>
+    <div><div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px">Durum</div>
+      <div class="seg" id="fStatus" role="group" aria-label="Durum"></div></div>
+    <label>Not<textarea id="fNote" maxlength="1200"></textarea></label>
+    <div id="confirmBox" class="confirm" hidden>Bu iş kalıcı olarak silinecek. Emin misiniz?</div>
+    <div class="row">
+      <button class="btn" type="button" id="delBtn">Sil</button>
+      <div class="right">
+        <button class="btn" type="button" id="cancelBtn">Vazgeç</button>
+        <button class="btn primary" type="submit" id="saveBtn">Kaydet</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const STATUS = {
+  done:     { label: "Tamamlandı", mark: "--done-mark" },
+  pending:  { label: "Beklemede",  mark: "--pend-mark" },
+  rejected: { label: "Reddedildi", mark: "--rej-mark" },
+};
+const ORDER = ["pending", "done", "rejected"];
+const AREAS = ["Uygulama", "Modeller", "Metrikler", "Arayüz", "Testler", "Paketleme", "Araştırma", "Makale"];
+const S = { tasks: [], db: null, canWrite: true, filterStatus: new Set(), area: "", q: "", editing: null, loaded: false };
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "text") e.textContent = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k);
+  return e;
+}
+
+function counts(list) { const c = { done: 0, pending: 0, rejected: 0 }; list.forEach(t => c[t.status] = (c[t.status] || 0) + 1); return c; }
+
+function renderSummary() {
+  const c = counts(S.tasks), total = S.tasks.length;
+  const svg = $("donut"); svg.querySelectorAll(":not(title)").forEach(n => n.remove());
+  const NS = "http://www.w3.org/2000/svg", r = 15.915, C = 2 * Math.PI * r;
+  const ring = document.createElementNS(NS, "circle");
+  Object.entries({ cx: 21, cy: 21, r, fill: "none", stroke: css("--line"), "stroke-width": 6 }).forEach(([k, v]) => ring.setAttribute(k, v));
+  svg.append(ring);
+  let off = 0;
+  for (const s of ["done", "pending", "rejected"]) {
+    if (!total || !c[s]) continue;
+    const len = c[s] / total * C, seg = document.createElementNS(NS, "circle");
+    Object.entries({ cx: 21, cy: 21, r, fill: "none", stroke: css(STATUS[s].mark), "stroke-width": 6,
+      "stroke-dasharray": `${len} ${C - len}`, "stroke-dashoffset": C / 4 - off }).forEach(([k, v]) => seg.setAttribute(k, v));
+    svg.append(seg); off += len;
+  }
+  const pct = total ? Math.round(c.done / total * 100) : 0;
+  const t1 = document.createElementNS(NS, "text");
+  Object.entries({ x: 21, y: 21, "text-anchor": "middle", "dominant-baseline": "central", fill: css("--ink"),
+    "font-size": 8, "font-family": css("--f-display"), "font-weight": 700 }).forEach(([k, v]) => t1.setAttribute(k, v));
+  t1.textContent = total ? `%${pct}` : "–"; svg.append(t1);
+  $("legend").replaceChildren(
+    ...["done", "pending", "rejected"].map(s => el("div", {}, el("span", { class: "dot", style: `background:var(${STATUS[s].mark})` }),
+      el("span", { text: `${STATUS[s].label}` }), el("strong", { text: String(c[s]) }))),
+    el("div", { style: "color:var(--muted);font-size:12px" }, el("span", { text: `Toplam ${total} iş · tamamlanan %${pct}` })));
+  const rows = AREAS.map(a => { const l = S.tasks.filter(t => t.area === a); return [a, l, counts(l)]; }).filter(r => r[1].length);
+  $("areaBars").replaceChildren(...(rows.length ? rows.map(([a, l, k]) => el("div", { class: "area-row" },
+    el("span", { text: a }),
+    el("div", { class: "bar", role: "img", "aria-label": `${a}: ${k.done} tamamlandı, ${k.pending} beklemede, ${k.rejected} reddedildi` },
+      ...["done", "pending", "rejected"].map(s => el("span", { style: `width:${k[s] / l.length * 100}%;background:var(${STATUS[s].mark})` }))),
+    el("span", { class: "n", text: `${k.done}/${l.length}` }))) : [el("p", { class: "sub", text: "Henüz iş yok." })]));
+}
+
+function renderFilters() {
+  $("statusChips").replaceChildren(...ORDER.map(s => el("button", { class: "chip", type: "button", "aria-pressed": String(S.filterStatus.has(s)),
+    onclick: () => { S.filterStatus.has(s) ? S.filterStatus.delete(s) : S.filterStatus.add(s); renderFilters(); renderWall(); } },
+    el("span", { class: "dot", style: `display:inline-block;margin-right:6px;background:var(${STATUS[s].mark})` }), STATUS[s].label)));
+  const sel = $("areaSel");
+  if (!sel.options.length) {
+    sel.append(el("option", { value: "", text: "Tüm alanlar" }), ...AREAS.map(a => el("option", { value: a, text: a })));
+    sel.addEventListener("change", () => { S.area = sel.value; renderWall(); });
+  }
+}
+
+function fmtDate(iso) { try { return new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" }); } catch { return ""; } }
+
+function renderWall() {
+  const q = S.q.toLowerCase();
+  const vis = S.tasks.filter(t => (!S.filterStatus.size || S.filterStatus.has(t.status)) && (!S.area || t.area === S.area)
+    && (!q || (t.title + " " + (t.note || "") + " " + t.area).toLowerCase().includes(q)));
+  const wall = $("wall");
+  if (!S.loaded) { wall.replaceChildren(el("div", { class: "empty", text: "İşler yükleniyor…" })); return; }
+  if (!S.tasks.length) { wall.replaceChildren(el("div", { class: "empty" }, el("strong", { text: "Henüz iş yok." }), el("br"),
+    el("span", { text: "“+ Yeni iş” ile ilk işi ekleyin; Claude da bu panoya iş ekleyip güncelleyebilir." }))); return; }
+  const groups = ORDER.map(s => [s, vis.filter(t => t.status === s).sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || a.title.localeCompare(b.title, "tr"))]).filter(g => g[1].length);
+  if (!groups.length) { wall.replaceChildren(el("div", { class: "empty", text: "Filtreye uyan iş yok." })); return; }
+  wall.replaceChildren(...groups.map(([s, list]) => el("section", {},
+    el("div", { class: "group-head" }, el("span", { class: "dot", style: `background:var(${STATUS[s].mark})` }),
+      el("h2", { text: STATUS[s].label }), el("span", { class: "count", text: String(list.length) })),
+    el("div", { class: "cards" }, ...list.map(t => el("article", { class: `card ${t.status}`, tabindex: 0, role: "button",
+      "aria-label": `${t.title}, ${STATUS[t.status].label}. Düzenlemek için açın.`,
+      onclick: () => openEditor(t), onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEditor(t); } } },
+      el("div", { class: "top" }, el("span", { class: "tag", text: t.area }), el("span", { class: "badge", text: STATUS[t.status].label })),
+      el("h3", { text: t.title }),
+      t.note ? el("p", { text: t.note }) : null,
+      t.updatedAt ? el("span", { class: "date", text: fmtDate(t.updatedAt) }) : null))))));
+}
+
+function renderAll() { renderSummary(); renderFilters(); renderWall(); }
+
+// ---------------------------------------------------------------- editor
+let fStatus = "pending";
+function renderSeg() {
+  $("fStatus").replaceChildren(...["done", "pending", "rejected"].map(s => el("button", { type: "button", class: s, "aria-pressed": String(fStatus === s),
+    onclick: () => { fStatus = s; renderSeg(); } }, STATUS[s].label)));
+}
+function openEditor(t) {
+  S.editing = t || null;
+  $("dlgTitle").textContent = t ? "İşi düzenle" : "Yeni iş";
+  $("fTitle").value = t ? t.title : "";
+  const fa = $("fArea"); if (!fa.options.length) fa.append(...AREAS.map(a => el("option", { value: a, text: a })));
+  fa.value = t ? t.area : (S.area || "Uygulama");
+  $("fNote").value = t ? (t.note || "") : "";
+  fStatus = t ? t.status : "pending"; renderSeg();
+  $("delBtn").hidden = !t; $("confirmBox").hidden = true; $("delBtn").textContent = "Sil";
+  for (const id of ["saveBtn", "delBtn"]) $(id).disabled = !S.canWrite || !S.db;
+  $("dlg").showModal(); $("fTitle").focus();
+}
+$("addBtn").addEventListener("click", () => openEditor(null));
+$("cancelBtn").addEventListener("click", () => $("dlg").close());
+$("q").addEventListener("input", e => { S.q = e.target.value; renderWall(); });
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!S.db || !S.canWrite) return;
+  const title = $("fTitle").value.trim(); if (!title) return;
+  const body = { title, area: $("fArea").value, status: fStatus, note: $("fNote").value.trim(), updatedAt: new Date().toISOString() };
+  $("saveBtn").disabled = true;
+  try {
+    if (S.editing) await S.db.collection("tasks").doc(S.editing.id).update(body);
+    else await S.db.collection("tasks").add({ ...body, order: 500 });
+    $("dlg").close();
+  } catch (err) { noteWrite(err); }
+  finally { $("saveBtn").disabled = false; }
+});
+$("delBtn").addEventListener("click", async () => {
+  if (!S.editing || !S.db) return;
+  if ($("confirmBox").hidden) { $("confirmBox").hidden = false; $("delBtn").textContent = "Evet, sil"; return; }
+  try { await S.db.collection("tasks").doc(S.editing.id).delete(); $("dlg").close(); } catch (err) { noteWrite(err); }
+});
+function noteWrite(err) {
+  if (err && err.code === "invalid_argument") { S.canWrite = false; $("syncNote").textContent = "Bu panoyu yalnızca görüntüleyebilirsiniz."; $("addBtn").disabled = true; }
+  else $("syncNote").textContent = "Kaydedilemedi, tekrar deneyin.";
+}
+
+// ---------------------------------------------------------------- data
+renderAll();
+(async () => {
+  const db = await window.claude?.use?.("db").catch(() => null) ?? null;
+  if (!db) { S.loaded = true; $("syncNote").textContent = "Veri deposuna bu görünümden ulaşılamıyor."; $("addBtn").disabled = true; renderAll(); return; }
+  S.db = db;
+  const user = await window.claude.use("user").catch(() => null);
+  const can = user ? await user.can("data.write").catch(() => null) : null;
+  if (can === false) { S.canWrite = false; $("addBtn").disabled = true; }
+  const timer = setTimeout(() => { if (!S.loaded) $("syncNote").textContent = "Veriye henüz ulaşılamadı; bağlantı bekleniyor."; }, 10000);
+  db.collection("tasks").onSnapshot(snap => {
+    S.tasks = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => STATUS[t.status]);
+    if (!snap.metadata.fromCache) { S.loaded = true; clearTimeout(timer);
+      $("syncNote").textContent = S.canWrite ? "Canlı · değişiklikler herkese anında yansır" : "Salt okunur görünüm"; }
+    else if (!S.loaded && S.tasks.length) S.loaded = true;
+    renderAll();
+  }, err => { clearTimeout(timer); S.loaded = true; $("syncNote").textContent = "Veri bağlantısı kesildi; sayfayı daha sonra yeniden açın."; renderAll(); });
+})();
+</script>

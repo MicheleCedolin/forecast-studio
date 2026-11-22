@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+.venv-build/
 venv/
 .pytest_cache/
 build/
@@ -15,6 +16,8 @@ runs/
 uploads/*
 !uploads/.gitkeep
 setup_log.txt
+build_log.txt
+cache/
 golden_hizli.csv
 
 # Editors / OS
