@@ -114,6 +114,27 @@ const Note = {
   restore() { this.hovering = false; this.set(this.base ? this.base() : introNote()); },
   refresh() { if (!this.hovering) this.restore(); },
 };
+// Roving tabindex for a radiogroup (UI review H3): the whole list is ONE Tab stop; Up/Down/Home/End move focus between rows,
+// Enter or Space selects. (Selection does not follow focus, because selecting a dataset loads it.)
+function roving(group, rowSel) {
+  const rows = () => $$(rowSel, group).filter(r => r.getAttribute("aria-disabled") !== "true");
+  const all = rows();
+  if (!all.length) return group;
+  const cur = all.find(r => r.getAttribute("aria-checked") === "true") || all[0];
+  all.forEach(r => r.setAttribute("tabindex", r === cur ? "0" : "-1"));
+  group.addEventListener("keydown", ev => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) return;
+    const list = rows(), i = list.indexOf(document.activeElement);
+    if (i < 0) return;
+    ev.preventDefault();
+    const j = ev.key === "Home" ? 0 : ev.key === "End" ? list.length - 1 : Math.max(0, Math.min(list.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)));
+    list[i].setAttribute("tabindex", "-1"); list[j].setAttribute("tabindex", "0"); list[j].focus();
+  });
+  return group;
+}
+// Keep keyboard focus on the same row when a list is redrawn (otherwise it falls back to <body>).
+function keptFocus(sel) { const a = document.activeElement; return a && a.matches && a.matches(sel) ? a.getAttribute("data-id") : null; }
+function restoreFocus(sel, id) { if (!id) return; const r = $$(sel).find(x => x.getAttribute("data-id") === id); if (r) { r.setAttribute("tabindex", "0"); r.focus({ preventScroll: true }); } }
 function bindNote(elm, build) {
   const on = () => { Note.hovering = true; Note.set(build()); };
   const off = () => Note.restore();
@@ -292,7 +313,7 @@ function renderDatasetList() {
     items.length ? items.map(d => {
       const ok = d.status === "ok" || d.status === "user";
       const on = S.sel.dataset === d.id;
-      const row = el("div", { class: "drow" + (ok ? "" : " dim"), role: "radio", "aria-checked": String(on), tabindex: ok ? 0 : -1, "aria-disabled": ok ? null : "true",
+      const row = el("div", { class: "drow" + (ok ? "" : " dim"), role: "radio", "aria-checked": String(on), tabindex: ok ? 0 : -1, "aria-disabled": ok ? null : "true", "data-id": d.id,
         onclick: () => ok && selectDataset(d.id), onkeydown: ev => { if (ok && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); selectDataset(d.id); } } },
         el("span", { class: "t" }, on ? el("span", { class: "hl", text: d.id.replace(/^upload:/, "") }) : d.id.replace(/^upload:/, "")),
         el("span", { class: "d", text: d.title || "" }),
@@ -301,7 +322,9 @@ function renderDatasetList() {
         el("span", { class: "m" + (ok ? "" : " pen"), text: d.status === "ok" ? "ready" : d.status === "user" ? "uploaded" : d.status === "missing" ? "file missing" : "size mismatch" }));
       return bindNote(row, () => datasetNote(d));
     }) : el("p", { class: "empty", text: "No matching dataset." }));
-  $("#dlist").replaceChildren(list);
+  const focusId = keptFocus("#dlist .drow");
+  $("#dlist").replaceChildren(roving(list, ".drow[role=radio]"));
+  restoreFocus("#dlist .drow", focusId);
 }
 function datasetNote(d) {
   const nodes = [el("h3", { text: d.id.replace(/^upload:/, "") }), el("p", { class: "lead", text: d.title || "" })];
@@ -423,23 +446,25 @@ function engineBadges(m) {
 }
 function renderModel() {
   const sec = $("#model");
+  const focusId = keptFocus("#model .mrow");
+  queueMicrotask(() => restoreFocus("#model .mrow", focusId));
   const studied = new Set(S.detail ? [...(S.detail.study_methods || []), ...(S.detail.recommended_global || [])] : []);
   sec.replaceChildren(
     ...secHead("model", 2, "Model", "Choose a method. Its explanation appears in the right margin; below you can also choose which engine runs it."),
-    el("div", { class: "groups" }, S.models.groups.map(g => {
+    roving(el("div", { class: "groups", role: "radiogroup", "aria-label": "Models" }, S.models.groups.map(g => {
       const ms = S.models.models.filter(m => m.group === g.id);
       return el("div", { class: "group" }, el("h3", { text: g.title }), el("p", { text: g.text }),
         ms.map(m => {
           const on = S.sel.method === m.id;
           const any = ["python", "r"].some(k => m.engines[k].available);
-          const row = el("div", { class: "mrow", role: "radio", "aria-checked": String(on), tabindex: 0, onclick: () => selectModel(m.id),
+          const row = el("div", { class: "mrow", role: "radio", "aria-checked": String(on), tabindex: 0, "data-id": m.id, onclick: () => selectModel(m.id),
             onkeydown: ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectModel(m.id); } } },
             el("span", { class: "t" }, on ? el("span", { class: "hl", text: m.name }) : m.name, studied.has(m.id) ? el("span", { class: "studied", text: "used in your study" }) : null),
             el("span", { class: "s" }, m.summary, any ? null : el("span", { class: "pen", text: " Not installed on this machine." })),
             el("span", { class: "e" }, engineBadges(m)));
           return bindNote(row, () => modelNote(m));
         }));
-    })),
+    })), ".mrow[role=radio]"),
     el("div", { id: "enginepick" }));
   renderEnginePick();
 }

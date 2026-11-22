@@ -45,7 +45,9 @@
     <div id="view-history-body" hidden></div>
   </main>
 
-  <aside class="margin" id="margin" aria-live="polite" aria-label="Margin note">
+  <!-- Not a live region: it changes on every hover/focus, and a screen reader would re-read a whole paragraph each time
+       (UI review H3). It stays reachable as a labelled landmark. -->
+  <aside class="margin" id="margin" aria-label="Margin note">
     <button type="button" class="margin-toggle" id="margin-toggle" aria-controls="margin-body">Collapse note</button>
     <div id="margin-body"></div>
   </aside>
