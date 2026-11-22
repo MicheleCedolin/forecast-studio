@@ -3,10 +3,9 @@
 Runs without installing Python. Download `ForecastStudio-0.1.1-win64.zip`, unzip it outside OneDrive and double-click
 `ForecastStudio.exe`. See `README.txt` inside the zip.
 
-- **File:** `ForecastStudio-0.1.1-win64.zip`, 224 MB (234,820,278 bytes), Windows 10/11 64-bit
-- **SHA-256:** `73F86588E3AA546FC1046F08DAF636621AF037AEDC0B040218C88F852BE72333`
-- **Built from:** commit `fa78802` (Python 3.12, PyInstaller 6.22.3). Tested in a fresh folder: the Comb S-H-D example run gives a
-  mean MASE of 0.8929, the same as the Python engine, and the interface answers.
+- **File:** `ForecastStudio-0.1.1-win64.zip`, about 224 MB, Windows 10/11 64-bit. Its SHA-256 is in the attached `.sha256` file.
+- **Built by:** GitHub Actions (`.github/workflows/windows-package.yml`, Python 3.12, PyInstaller 6.22.3). A local build of the same
+  code was tested in a fresh folder: the Comb S-H-D example run gives a mean MASE of 0.8929, the same as the Python engine.
 
 ## Changes since 0.1.0
 **Results**

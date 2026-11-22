@@ -9,5 +9,5 @@ PyYAML==6.0.3
 statsforecast==2.1.1
 catboost==1.2.10
 scikit-learn==1.9.1
-pyinstaller
-pytest
+pyinstaller==6.22.3
+pytest==9.2.0

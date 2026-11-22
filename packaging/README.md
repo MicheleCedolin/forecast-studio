@@ -15,13 +15,27 @@ catboost, scipy and scikit-learn).
 The R engine is used only if R is installed on that computer (`Rscript` on PATH or `TSFSTUDIO_RSCRIPT`).
 Windows SmartScreen may warn about an unsigned program the first time ("More info" → "Run anyway").
 
-## Building
+## Publishing a release (no manual upload)
+`.github/workflows/windows-package.yml` builds the package on GitHub's Windows machine:
+1. Push the code. Bump `version` in `pyproject.toml` and `src/tsfstudio/__init__.py`, and add `packaging/RELEASE_NOTES_<version>.md`.
+2. On GitHub, open Releases → Draft a new release. Choose the tag `vX.Y.Z` (create it on publish), add a title and the notes,
+   and press **Publish release**. Do not attach anything.
+3. After about 10–15 minutes, `ForecastStudio-X.Y.Z-win64.zip` and its `.sha256` file appear under the release's Assets.
+   Progress is shown in the repository's Actions tab. If the job fails, nothing is attached; open the run to see the log.
+
+"Run workflow" in the Actions tab builds the zip without a release and keeps it for 14 days as a workflow artifact.
+
+## Building by hand
 ```powershell
 py -3.12 -m venv .venv-build
 .venv-build\Scripts\python.exe -m pip install -r packaging\requirements-build.txt
 cd packaging
 ..\.venv-build\Scripts\pyinstaller.exe forecast_studio.spec --noconfirm --distpath ..\dist --workpath ..\build
+cd ..
+.venv-build\Scripts\python.exe packaging\make_dist.py --dist dist\ForecastStudio --version vX.Y.Z --out dist
 ```
+`make_dist.py` adds `README.txt` (from `README_dist.txt`), the NN5 example and the empty `data\tsf` folder, removes folders left by
+test runs, and writes the zip and its `.sha256` file.
 Checked on 2026-11-22 (Windows 11, Python 3.12, PyInstaller 6.22.3):
 - `ForecastStudio.exe engines`: Python, R and baseline engines are found.
 - `ForecastStudio.exe run --file nn5_weekly.tsf --method scum --workers 4`: 30 s, the same MASE (0.8485) and SMAPE (0.1153)
