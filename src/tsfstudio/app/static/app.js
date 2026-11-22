@@ -47,6 +47,18 @@ const nf2 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const fmt = v => (v == null || Number.isNaN(v) ? "—" : nfSig.format(v));
 const fint = v => (v == null ? "—" : nf0.format(v));
 const fpct = (v, d) => (v == null ? "—" : (d === 0 ? nf0 : d === 2 ? nf2 : nf1).format(v * 100) + "%");
+// Metric-aware numbers (UI review M1): a fixed number of decimals per measure so columns line up, and units where they apply.
+const nf3fix = new Intl.NumberFormat("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const nf1fix = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf2fix = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const PCT_METRICS = new Set(["WAPE", "MAPE", "PBias"]);
+const SCALE_FREE = new Set(["SMAPE", "mSMAPE", "MASE", "RMSSE", "nRMSE_Mean", "nRMSE_Range", "MAAPE", "RMSLE"]);
+function fmtM(k, v) {
+  if (v == null || Number.isNaN(v)) return "—";
+  if (PCT_METRICS.has(k)) return nf1fix.format(v) + "%";
+  if (SCALE_FREE.has(k)) return nf3fix.format(v);
+  return Math.abs(v) >= 1000 ? nf0.format(v) : nf2fix.format(v);      // data-unit measures (MAE, RMSE, MSE, MedAE, ME)
+}
 const FREQ = { "4_seconds": "4-second", minutely: "minutely", "10_minutes": "10-minute", "15_minutes": "15-minute", half_hourly: "half-hourly",
   hourly: "hourly", daily: "daily", weekly: "weekly", monthly: "monthly", quarterly: "quarterly", yearly: "yearly" };
 const frq = f => FREQ[f] || f || "—";
@@ -649,19 +661,34 @@ async function startRun() {
     S.run = null; renderSonuc(); renderKosu(); pollJob();
   } catch (e) { toast(e.message, true); }
 }
-function pollJob() {
+// UI review M8: one failed poll no longer stops progress for good; retry with backoff, then say the server is unreachable.
+function pollJob(failures = 0) {
   clearTimeout(S.pollTimer);
   S.pollTimer = setTimeout(async () => {
-    try {
-      S.job = await api("jobs/" + S.job.id);
-      renderProgress();
-      if (S.job.status === "running") return pollJob();
-      renderKosu();
-      if (S.job.status === "done") { await loadRun(S.job.run_id); refreshHistoryCount(); $("#sonuc").scrollIntoView({ behavior: "smooth" }); }
-    } catch (e) { toast(e.message, true); }
-  }, 600);
+    let j;
+    try { j = await api("jobs/" + S.job.id); }
+    catch (e) {
+      if (failures < 5) return pollJob(failures + 1);
+      const host = $("#progress");
+      if (host) host.replaceChildren(el("p", { class: "note err", text: "Lost contact with the server (" + e.message + "). Is the Forecast Studio window still open? " },
+        el("button", { type: "button", class: "btn ghost small", onclick: () => pollJob(0) }, "Try again")));
+      return;
+    }
+    S.job = j;
+    renderProgress();
+    if (S.job.status === "running") return pollJob(0);
+    renderKosu();
+    if (S.job.status === "done") { await loadRun(S.job.run_id); refreshHistoryCount(); $("#sonuc").scrollIntoView({ behavior: "smooth" }); }
+  }, failures ? Math.min(600 * 2 ** failures, 8000) : 600);
 }
-function mmss(s) { s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+// Durations (UI review M2): short runs are not "0:00": below 10 s one decimal, below a minute whole seconds, then m:ss.
+function mmss(s) {
+  if (s == null || Number.isNaN(s)) return "—";
+  if (s < 0.05) return "< 0.1 s";
+  if (s < 10) return nf1fix.format(s) + " s";
+  if (s < 60) return Math.round(s) + " s";
+  s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 function renderProgress() {
   const host = $("#progress"); if (!host) return;
   const j = S.job;
@@ -673,7 +700,7 @@ function renderProgress() {
       what ? el("div", { class: "hint", text: "Running: " + what }) : null,
       el("div", {}, `${STAGE[j.stage] || j.stage}` + (j.total > 1 ? `: ${fint(j.done)} / ${fint(j.total)} series` : "") + `, elapsed ${mmss(j.elapsed)}`),
       el("div", { class: "track" + (pct == null ? " indet" : ""), "aria-hidden": "true" }, el("i", { style: pct == null ? "" : `width:${pct}%` })),
-      el("div", { class: "row-actions", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", disabled: j.cancelling, onclick: () => api(`jobs/${j.id}/cancel`, {}).then(v => { S.job = v; renderProgress(); }) }, j.cancelling ? "Cancelling…" : "Cancel"))));
+      el("div", { class: "row-actions", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", disabled: j.cancelling, onclick: () => api(`jobs/${j.id}/cancel`, {}).then(v => { S.job = v; renderProgress(); }).catch(e => toast(e.message, true)) }, j.cancelling ? "Cancelling…" : "Cancel"))));
   } else if (j.status === "error") host.replaceChildren(el("p", { class: "note err", text: "Run failed: " + j.error }));
   else if (j.status === "cancelled") host.replaceChildren(el("p", { class: "note soft", text: "Run cancelled." }));
   else if (runIsStale()) host.replaceChildren(el("p", { class: "note", text: `The last run (${runLabel(S.run.detail.manifest)}) finished. Its results below do not match your current selection; start a run to get results for ${selLabel()}.` }));
@@ -728,7 +755,12 @@ function renderSonuc() {
   const head = secHead("sonuc", 5, "Results", "When a run finishes, the summary, diagnostics, a sample-series chart and per-series errors appear here.");
   if (!r) { sec.replaceChildren(...head, el("p", { class: "empty", text: S.job && S.job.status === "running" ? "Run in progress…" : "No results yet. Start a run or open one from Past runs." })); return; }
   const m = r.detail.manifest, d = r.detail, dg = d.diagnostics || {};
-  const fact = (k, v) => el("div", {}, el("dt", { text: k }), el("dd", {}, v));
+  const fact = (k, v, flag) => el("div", { class: flag ? "flag" : "" }, el("dt", { text: k }), el("dd", {}, v));
+  const fbs = d.fallbacks || [], nfb = (m.fallbacks && m.fallbacks.count) || 0;
+  const cfg = m.config || {}, eng = m.engine || {}, sw = m.software || {};
+  const kv = (k, v) => (v == null || v === "" ? null : el("div", {}, el("dt", { text: k }), el("dd", { text: String(v) })));
+  const params = cfg.params && Object.keys(cfg.params).length ? Object.entries(cfg.params).map(([k, v]) => `${k} = ${typeof v === "object" ? JSON.stringify(v) : v}`).join(", ") : "library defaults";
+  const versions = Object.entries(eng.versions || {}).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(", ");
   const warns = (m.warnings || []);
   const flagZero = dg.series_all_zero_forecast_share != null && dg.series_all_zero_forecast_share > 0.5;
   const diagItem = (k, v, flag, note) => bindNote(el("div", { class: flag ? "flag" : "", tabindex: 0 }, el("dt", { text: k }), el("dd", { text: v })), note);
@@ -737,7 +769,22 @@ function renderSonuc() {
     el("p", { class: "rtitle" }, el("span", { class: "hl", text: runLabel(m) })),
     el("p", { class: "rsub", text: r.id }),
     el("dl", { class: "facts" }, fact("Series", fint(m.dataset.n_series_run)), fact("Horizon", fint(m.config.effective_horizon)), fact("Run time", mmss(m.engine.elapsed_sec || 0)),
-      fact("Fallback forecasts", fint(m.fallbacks.count)), fact("Rounding", m.config.effective_integer_conversion ? "on" : "off")),
+      fact("Fallback forecasts", fint(nfb), nfb > 0), fact("Rounding", m.config.effective_integer_conversion ? "on" : "off")),
+    // UI review M3: which series fell back to the seasonal-naive forecast, and why.
+    nfb > 0 ? el("details", { class: "fbdetails" },
+      el("summary", { text: `${fint(nfb)} series received the fallback forecast (seasonal naive) instead of ${cfg.method}. Show which and why` }),
+      el("div", { class: "tablewrap" }, el("table", { class: "t" }, el("thead", {}, el("tr", {}, el("th", { text: "Series" }), el("th", { text: "Reason" }))),
+        el("tbody", {}, fbs.map(f => el("tr", {}, el("td", { class: "name", text: f.series_name || String(f.series_index) }), el("td", { text: f.message || "" })))))),
+      nfb > fbs.length ? el("p", { class: "hint", text: `Showing the first ${fbs.length}. The full list is in fallbacks.csv (Files, below).` }) : null) : null,
+    // UI review M4: what produced these numbers, without opening manifest.json.
+    el("details", { class: "runcfg" }, el("summary", { text: "Run configuration (for reproducing this result)" }),
+      el("dl", { class: "kvlist" },
+        kv("Method / engine", `${cfg.method} / ${ENGINE_NAME[cfg.engine] || cfg.engine}`), kv("Parameters", params),
+        kv("Horizon", cfg.effective_horizon), kv("Seasonal periods", (cfg.effective_seasonality || []).map(p => +(+p).toFixed(4)).join(", ")),
+        kv("Lag", cfg.lag), kv("Seed", cfg.seed), kv("Workers", cfg.workers), kv("Missing values", cfg.missing_policy),
+        kv("Series limit", cfg.max_series || "all"), kv("Measures", (cfg.metrics || []).join(", ")),
+        kv("Data file SHA-256", m.dataset && m.dataset.sha256), kv("Engine versions", versions),
+        kv("Forecast Studio", sw.tsfstudio && `${sw.tsfstudio} (Python ${sw.python}, ${sw.platform || ""})`), kv("Created (UTC)", (m.created_utc || "").replace("T", " ").slice(0, 19)))),
     warns.map(w => el("p", { class: "note", text: w })),
     flagZero ? el("p", { class: "note err", text: `${fpct(dg.series_all_zero_forecast_share, 0)} of the series received only 0 forecasts. MAE, MASE and WAPE can make this look good; SMAPE approaches exactly 2.0.` + (m.config.effective_integer_conversion ? " Turn off rounding to integers and run again." : " Rounding is already off, so the forecasts themselves are zero (typical for a naive method on sparse series); do not rely on these measures alone.") }) : null,
     el("h3", { text: "Summary" }),
@@ -767,9 +814,10 @@ function diagNote(k) {
 }
 function summaryTable(rows) {
   const best = {};
-  const t = el("table", { class: "t" }, el("thead", {}, el("tr", {}, ["Measure", "Mean", "Median", "Valid series", "Excluded"].map(h => el("th", { text: h })))),
+  const t = el("table", { class: "t" }, el("thead", {}, el("tr", {}, ["Measure", "Mean", "Median", "Unit", "Valid series", "Excluded"].map(h => el("th", { text: h })))),
     el("tbody", {}, rows.map(r => bindNote(el("tr", { tabindex: 0 }, el("td", { class: "name", text: (S.models.metrics[r.Metric] || { name: r.Metric }).name }),
-      el("td", { text: fmt(r.Mean) }), el("td", { text: fmt(r.Median) }), el("td", { text: fint(r.N_valid) }), el("td", { text: fint(r.N_excluded) })), () => metricNote(r.Metric)))));
+      el("td", { text: fmtM(r.Metric, r.Mean) }), el("td", { text: fmtM(r.Metric, r.Median) }), el("td", { class: "unit", text: (S.models.metrics[r.Metric] || {}).unit || "" }),
+      el("td", { text: fint(r.N_valid) }), el("td", { text: fint(r.N_excluded) })), () => metricNote(r.Metric)))));
   return t;
 }
 // ---- series chart
@@ -856,7 +904,7 @@ function renderChart(sweep) {
   host.replaceChildren(g);
   if (d.note) host.append(el("p", { class: "note soft", text: d.note }));
   const er = d.errors || {};
-  host.append(el("p", { class: "hint", style: "margin:6px 10px 8px", text: Object.keys(er).length ? "This series: " + Object.entries(er).map(([k, v]) => `${(S.models.metrics[k] || { name: k }).name} ${fmt(v)}`).join(", ") : "" }));
+  host.append(el("p", { class: "hint", style: "margin:6px 10px 8px", text: Object.keys(er).length ? "This series: " + Object.entries(er).map(([k, v]) => `${(S.models.metrics[k] || { name: k }).name} ${fmtM(k, v)}`).join(", ") : "" }));
 }
 // ---- distribution
 function renderHist() {
@@ -891,7 +939,7 @@ function renderErrorTable() {
       onchange: ev => { r.q = ev.target.value; r.offset = 0; loadErrors(); } }), el("span", { class: "hint", text: `${fint(e.total)} series; click a header to sort` })),
     el("div", { class: "tablewrap" }, el("table", { class: "t" }, el("thead", {}, el("tr", {}, cols.map(th))),
       el("tbody", {}, e.rows.map(row => el("tr", { class: "clickrow", style: "cursor:pointer", tabindex: 0, onclick: () => { showSeries(row.series_name); $("#chartbar").scrollIntoView({ behavior: "smooth", block: "center" }); },
-        onkeydown: ev => { if (ev.key === "Enter") ev.target.click(); } }, cols.map(c => el("td", { class: c === "series_name" ? "name" : "", text: c === "series_name" ? row[c] : fmt(row[c]) }))))))),
+        onkeydown: ev => { if (ev.key === "Enter") ev.target.click(); } }, cols.map(c => el("td", { class: c === "series_name" ? "name" : "", text: c === "series_name" ? row[c] : fmtM(c, row[c]) }))))))),
     el("div", { class: "pager" }, el("button", { type: "button", class: "btn ghost small", disabled: r.offset <= 0, onclick: () => { r.offset = Math.max(0, r.offset - 20); loadErrors(); } }, "‹ Previous"),
       el("span", { text: `Page ${page} / ${pages}` }),
       el("button", { type: "button", class: "btn ghost small", disabled: page >= pages, onclick: () => { r.offset += 20; loadErrors(); } }, "Next ›"),
@@ -914,7 +962,7 @@ async function renderHistory() {
     return el("div", { class: "runrow" }, cb,
       el("span", { class: "t" }, `${(r.dataset || "?").replace(/^upload:/, "")}, ${r.method} (${ENGINE_NAME[r.engine] || r.engine})`, r.n_warnings ? el("span", { class: "pen", text: `  ${r.n_warnings} warnings` }) : null),
       el("span", { text: (r.created || "").replace("T", " ").slice(0, 16) }), el("span", { class: "m", text: fint(r.n_series) }),
-      el("span", { class: "m", text: fmt(r.summary.SMAPE && r.summary.SMAPE.mean) }), el("span", { class: "m", text: fmt(r.summary.MASE && r.summary.MASE.mean) }),
+      el("span", { class: "m", text: fmtM("SMAPE", r.summary.SMAPE && r.summary.SMAPE.mean) }), el("span", { class: "m", text: fmtM("MASE", r.summary.MASE && r.summary.MASE.mean) }),
       el("span", { class: "m", text: r.elapsed != null ? mmss(r.elapsed) : "—" }),
       el("button", { type: "button", class: "linkish", onclick: async () => { await loadRun(r.run_id); setView("work"); $("#sonuc").scrollIntoView(); } }, "Open"));
   });
@@ -931,24 +979,29 @@ function renderCompare(runs, metricKeys) {
   if (sel.length < 2) { host.replaceChildren(el("p", { class: "empty", text: sel.length ? "Tick at least two runs to compare." : "" })); return; }
   const metrics = (S.models.metric_all || S.models.metric_defaults).filter(k => metricKeys.includes(k));
   const stat = S.cmpStat;
-  const best = {}; for (const k of metrics) { let b = null; for (const r of sel) { const v = r.summary[k] && r.summary[k][stat]; if (v != null && (b == null || v < b)) b = v; } best[k] = b; }
+  const SIGNED = new Set(["ME", "PBias"]);                   // bias measures: closest to 0 is best
+  const score = (k, v) => (SIGNED.has(k) ? Math.abs(v) : v);
+  const best = {}; for (const k of metrics) { let b = null; for (const r of sel) { const v = r.summary[k] && r.summary[k][stat]; if (v != null && (b == null || score(k, v) < score(k, b))) b = v; } best[k] = b; }
   const sameData = new Set(sel.map(r => r.dataset)).size === 1;
+  // UI review M5: a "best" marker only means something when the runs share the data and the horizon.
+  const comparable = sameData && new Set(sel.map(r => r.horizon)).size === 1;
+  const label = r => `${(r.dataset || "?").replace(/^upload:/, "")}, ${r.method} (${ENGINE_NAME[r.engine] || r.engine})`;
   const cm = metrics.includes(S.cmpMetric) ? S.cmpMetric : metrics[0];
   const vals = sel.map(r => r.summary[cm] ? r.summary[cm][stat] : null);
-  const mx = Math.max(...vals.filter(v => v != null), 1e-12);
+  const mx = Math.max(...vals.filter(v => v != null).map(Math.abs), 1e-12);
   host.replaceChildren(
     el("h3", { text: "Comparison" }),
     sameData ? null : el("p", { class: "note", text: "The selected runs use different datasets; comparing the measures directly may not be meaningful." }),
     new Set(sel.map(r => r.horizon)).size > 1 ? el("p", { class: "note", text: "The runs have different forecast horizons." }) : null,
     el("div", { class: "chartbar" }, el("div", { class: "seg", role: "group" }, [["mean", "Mean"], ["median", "Median"]].map(([k, l]) => el("button", { type: "button", "aria-pressed": String(stat === k), onclick: () => { S.cmpStat = k; renderCompare(runs, metricKeys); } }, l))),
-      el("span", { class: "hint", text: "The lowest value in each measure is highlighted (lower = better)." })),
+      el("span", { class: "hint", text: comparable ? "The lowest value in each measure is highlighted (lower is better; for ME and Percent bias, closer to 0 is better)." : "No value is highlighted: the runs do not share the same data and horizon, so they cannot be ranked." })),
     el("div", { class: "tablewrap" }, el("table", { class: "t" }, el("thead", {}, el("tr", {}, el("th", { text: "Run" }), metrics.map(k => el("th", { text: (S.models.metrics[k] || { name: k }).name })))),
-      el("tbody", {}, sel.map(r => el("tr", {}, el("td", { class: "name", text: `${(r.dataset || "?").replace(/^upload:/, "")}, ${r.method} (${ENGINE_NAME[r.engine] || r.engine})` }),
-        metrics.map(k => { const v = r.summary[k] && r.summary[k][stat]; return el("td", { class: v != null && v === best[k] ? "best" : "", text: fmt(v) }); })))))),
+      el("tbody", {}, sel.map(r => el("tr", {}, el("td", { class: "name", text: label(r) }),
+        metrics.map(k => { const v = r.summary[k] && r.summary[k][stat]; return el("td", { class: comparable && v != null && v === best[k] ? "best" : "", text: fmtM(k, v) }); })))))),
     el("div", { class: "chartbar", style: "margin-top:14px" }, el("span", { class: "hint", text: "Chart measure:" }),
       el("select", { onchange: ev => { S.cmpMetric = ev.target.value; renderCompare(runs, metricKeys); } }, metrics.map(k => el("option", { value: k, selected: k === cm }, (S.models.metrics[k] || { name: k }).name)))),
-    el("div", { class: "bars" }, sel.map((r, i) => el("div", { class: "b" + (vals[i] != null && vals[i] === Math.min(...vals.filter(v => v != null)) ? " best" : "") },
-      el("span", { text: `${r.method} (${ENGINE_NAME[r.engine] || r.engine})` }), el("div", {}, el("i", { style: `width:${vals[i] == null ? 0 : Math.max(0.5, vals[i] / mx * 100)}%` })), el("span", { text: fmt(vals[i]) })))));
+    el("div", { class: "bars" }, sel.map((r, i) => el("div", { class: "b" + (comparable && vals[i] != null && vals[i] === best[cm] ? " best" : "") },
+      el("span", { text: label(r) }), el("div", {}, el("i", { style: `width:${vals[i] == null ? 0 : Math.max(0.5, Math.abs(vals[i]) / mx * 100)}%` })), el("span", { text: fmtM(cm, vals[i]) })))));
 }
 
 init();
