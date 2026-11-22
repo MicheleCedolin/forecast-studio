@@ -195,7 +195,10 @@ async function init() {
     return;
   }
   S.settings.metrics = new Set(S.models.metric_defaults);
+  // A run started before a reload (or in another tab) is still going on the server: pick it up again (UI review H2).
+  if (S.sys.job && S.sys.job.status === "running") S.job = S.sys.job;
   renderStatus(); renderVeri(); renderModel(); renderAyarlar(); renderKosu(); renderSonuc();
+  if (S.job && S.job.status === "running") pollJob();
   bindRail();
   let lastW = window.innerWidth;
   window.addEventListener("resize", debounce(() => { if (window.innerWidth !== lastW) { lastW = window.innerWidth; if (S.run && S.run.series) renderChart(false); if (S.run && S.run.hist) renderHist(); } }, 250));
@@ -640,7 +643,9 @@ function renderProgress() {
   if (!j) { host.replaceChildren(); return; }
   if (j.status === "running") {
     const pct = j.total > 1 ? Math.min(100, (j.done / j.total) * 100) : null;
+    const what = j.dataset ? `${String(j.dataset).replace(/^upload:/, "")}, ${j.method} (${ENGINE_NAME[j.engine] || j.engine})` : "";
     host.replaceChildren(el("div", { class: "progress", role: "status" },
+      what ? el("div", { class: "hint", text: "Running: " + what }) : null,
       el("div", {}, `${STAGE[j.stage] || j.stage}` + (j.total > 1 ? `: ${fint(j.done)} / ${fint(j.total)} series` : "") + `, elapsed ${mmss(j.elapsed)}`),
       el("div", { class: "track" + (pct == null ? " indet" : ""), "aria-hidden": "true" }, el("i", { style: pct == null ? "" : `width:${pct}%` })),
       el("div", { class: "row-actions", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", disabled: j.cancelling, onclick: () => api(`jobs/${j.id}/cancel`, {}).then(v => { S.job = v; renderProgress(); }) }, j.cancelling ? "Cancelling…" : "Cancel"))));

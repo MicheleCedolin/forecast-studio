@@ -130,12 +130,15 @@ class AppService:
     def system(self, refresh: bool = False) -> dict:
         mem = available_memory_bytes()
         eng = self.engines(refresh)
+        cur = self.current_job()
         return {"version": __version__, "python": platform.python_version(), "platform": platform.platform(),
                 "cpu": os.cpu_count(), "free_memory_gb": None if not mem else round(mem / 1024 ** 3, 2),
                 "data_dir": str(self.data_dir.resolve()), "runs_dir": str(self.runs_dir.resolve()),
                 "uploads_dir": str(self.uploads_dir.resolve()),
                 "engines": {k: {"available": v["available"], "message": v["message"]} for k, v in eng.items()},
-                "busy": self.current_job() is not None}
+                "busy": cur is not None,
+                # The running job itself, so a reloaded page can show its progress and Cancel again (UI review H2).
+                "job": cur.view() if cur is not None else None}
 
     def models(self) -> dict:
         eng = self.engines()

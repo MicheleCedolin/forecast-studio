@@ -207,12 +207,17 @@ def test_single_concurrent_job_and_cancel(app, monkeypatch):
     assert st == 200
     st, j2 = app.call("run", {"config": CFG})
     assert st == 409 and "in progress" in j2["error"]
+    st, sysinfo = app.call("system")                         # a reloaded page finds the running job again (UI review H2)
+    assert st == 200 and sysinfo["busy"] is True and sysinfo["job"]["id"] == j["id"]
+    assert sysinfo["job"]["status"] == "running" and sysinfo["job"]["dataset"] == "upload:buyuk"
     time.sleep(0.5)
     st, v = app.call(f"jobs/{j['id']}/cancel", {})
     assert st == 200 and v["cancelling"] is True
     v = _wait(app, j["id"])
     assert v["status"] == "cancelled"
     assert 0 < v["done"] < 400
+    st, sysinfo = app.call("system")
+    assert sysinfo["busy"] is False and sysinfo["job"] is None
     st, runs = app.call("runs")
     assert not any(r["dataset"] == "upload:buyuk" for r in runs["runs"])           # a half-finished run does not enter the history
 
