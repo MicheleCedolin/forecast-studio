@@ -215,6 +215,46 @@ def test_mstl_decomposition_matches_statsforecast(periods):
     assert flags.all() and "no valid seasonal period" in msg
 
 
+def test_auto_mfles_matches_python_engine():
+    """C++ auto_mfles ports statsforecast 2.1.1's AutoMFLES (MFLES boosting, configuration grid, rolling-origin
+    selection) with scikit-learn's Lasso coordinate descent: forecasts equal the Python engine's to machine precision,
+    including short series whose validation windows are shorter than the season."""
+    import warnings
+    rng = np.random.default_rng(4)
+    items = [(r, (52.17857142857143,), 8) for r in [r[~np.isnan(r)] for r in _load(G / "nn5_weekly", "train")][:20]]
+    for k in range(24):
+        n = int(rng.integers(12, 120))
+        m = [1, 4, 7, 12][k % 4]
+        t = np.arange(n)
+        y = 50 + 0.1 * t + 8 * np.sin(2 * np.pi * t / max(m, 2)) + rng.normal(0, 3, n)
+        items.append((y - (60 if k % 6 == 0 else 0), (float(m),), 10))
+    for y, seas, h in items:
+        f, flags, _ = C.forecast_batch("auto_mfles", [y], h, seas)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ref = np.asarray(forecast_one("auto_mfles", y, h, seas, {}), dtype=float)
+        assert not flags[0]
+        np.testing.assert_allclose(f[0], ref, rtol=1e-10, atol=1e-10 * np.abs(ref).max())
+
+
+def test_lasso_matches_sklearn():
+    import warnings
+    from statsforecast.mfles import get_basis, lasso_nb
+    lib, dp = C.load_lib(), C.ctypes.POINTER(C.ctypes.c_double)
+    rng = np.random.default_rng(9)
+    for _ in range(30):
+        n = int(rng.integers(20, 300))
+        r = np.cumsum(rng.normal(size=n))
+        X = get_basis(r, max(1, int(0.1 * n)), -1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            w_ref = lasso_nb(X, r, 1.0)
+        Xf, out = np.asfortranarray(X), np.zeros(X.shape[1])
+        lib.tsf_lasso(Xf.ctypes.data_as(dp), n, X.shape[1], np.ascontiguousarray(r).ctypes.data_as(dp),
+                      C.ctypes.c_double(1.0), out.ctypes.data_as(dp))
+        np.testing.assert_allclose(X @ out, X @ w_ref, rtol=0, atol=1e-12 * np.abs(X @ w_ref).max())
+
+
 def test_auto_ces_matches_python_engine(case):
     """C++ auto_ces ports statsforecast 2.1.1's AutoCES (model "Z": N / S / P / F by AICc, three-pass fit, its
     Nelder-Mead): forecasts equal the Python engine's (weekly bit for bit, daily to ~1e-10)."""
