@@ -178,6 +178,15 @@ SPECS: dict[str, dict] = {
     "mstl":              {"cls": "MSTL", "group": "classical", "params": {}},
     "auto_mfles":        {"cls": "AutoMFLES", "group": "classical", "params": {"n_windows": 2, "metric": "smape"},
                           "requires": ("sklearn",), "pip": "scikit-learn"},
+    # 2026-11-23: simple benchmarks and fixed ETS forms from docs/RESEARCH_MODELS_METRICS.md section 1a (statsforecast 2.1.1
+    # signatures verified: HistoricAverage(), WindowAverage(window_size), SeasonalWindowAverage(season_length, window_size),
+    # SeasonalExponentialSmoothingOptimized(season_length), Holt(season_length=1, error_type='A'), ZeroModel()).
+    "holt_ets":          {"cls": "Holt", "group": "classical", "params": {"error_type": "A"}},
+    "historic_average":  {"cls": "HistoricAverage", "group": "classical", "params": {}},
+    "window_average":    {"cls": "WindowAverage", "group": "classical", "params": {"window_size": 4}},
+    "seasonal_window_average": {"cls": "SeasonalWindowAverage", "group": "classical", "params": {"window_size": 2}},
+    "seasonal_es":       {"cls": "SeasonalExponentialSmoothingOptimized", "group": "classical", "params": {}},
+    "zero_model":        {"cls": "ZeroModel", "group": "classical", "params": {}},
 }
 INTERMITTENT = tuple(k for k, v in SPECS.items() if v["group"] == "intermittent")
 
@@ -248,6 +257,22 @@ def forecast_spec(method: str, y: np.ndarray, h: int, m: int, periods: Sequence[
         if et == "M" and float(np.min(y)) <= 0:
             raise ValueError("multiplicative error (error_type='M') requires all values > 0")
         kw = {"season_length": usable_season(n, m, P["max_season"], "holt_winters"), "error_type": et}
+    elif method == "holt_ets":
+        et = str(P["error_type"]).upper()
+        if et not in ("A", "M"):
+            raise ValueError("error_type must be 'A' or 'M'")
+        if et == "M" and float(np.min(y)) <= 0:
+            raise ValueError("multiplicative error (error_type='M') requires all values > 0")
+        kw = {"error_type": et}
+    elif method in ("window_average", "seasonal_window_average"):
+        w = int(P["window_size"])
+        if w < 1:
+            raise ValueError("window_size must be >= 1")
+        kw = {"window_size": w}
+        if method == "seasonal_window_average":
+            kw["season_length"] = usable_season(n, m, None, method)
+    elif method == "seasonal_es":
+        kw = {"season_length": usable_season(n, m, None, method)}
     elif method == "mstl":
         per = valid_periods(n, periods)
         if not per:

@@ -192,6 +192,28 @@ def test_catboost_bit_identical_to_python():
                                     params={"catboost": {"depth": 4}}))
 
 
+@pytest.mark.parametrize("method", ["historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model"])
+def test_simple_benchmarks_match_python_bit_for_bit(case, method):
+    """Ports of statsforecast's HistoricAverage, WindowAverage, SeasonalWindowAverage,
+    SeasonalExponentialSmoothingOptimized and ZeroModel (numpy summation order kept): identical forecasts."""
+    name, seas, h, train, _ = case
+    f, flags, _ = C.forecast_batch(method, train, h, seas)
+    ref = np.vstack([forecast_one(method, y, h, seas, {}) for y in train])
+    assert not flags.any()
+    np.testing.assert_array_equal(f, ref, err_msg=f"{name}/{method}")
+
+
+def test_holt_ets_reproduces_r_ets_aan():
+    """C++ holt_ets = R ets(y, model = "AAN") through the ets port (undamped and damped trend by AICc). Reference: R 9.0.2
+    on NN5 daily (tests/golden/nn5_daily/r_ets_aan), 34 ETS(A,A,N) and 77 ETS(A,Ad,N) fits: equal to ~1e-12.
+    statsforecast's Holt (Python engine) differs from R by ~0.3%."""
+    train = [r[~np.isnan(r)] for r in _load(G / "nn5_daily", "train")]
+    ref = _load(G / "nn5_daily", "r_ets_aan")
+    f, flags, _ = C.forecast_batch("holt_ets", train, ref.shape[1], (7.0,))
+    assert not flags.any()
+    np.testing.assert_allclose(f, ref, rtol=1e-9, atol=0)
+
+
 def test_holt_winters_reproduces_r_ets_aaa():
     """C++ holt_winters = R ets(y, model = "AAA") (damped / undamped by AICc) through the C++ ets port. Reference:
     R 9.0.2 forecasts on NN5 daily (tests/golden/nn5_daily/r_ets_aaa). statsforecast's HoltWinters, which the
@@ -202,8 +224,7 @@ def test_holt_winters_reproduces_r_ets_aaa():
     f, flags, _ = C.forecast_batch("holt_winters", train, ref.shape[1], (7.0,))
     assert not flags.any()
     rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
-    assert np.median(rel) < 1e-9, f"median {np.median(rel):.2e}"
-    assert int((rel.max(axis=1) > 1e-3).sum()) <= 2
+    assert rel.max() < 1e-9, f"worst {rel.max():.2e}"            # exact since the damped-forecast fix
     # weekly: period 52 > 24, so no usable season -> "Nonseasonal data" and the snaive fallback, as statsforecast
     w = [r[~np.isnan(r)] for r in _load(G / "nn5_weekly", "train")][:5]
     _, flags, msg = C.forecast_batch("holt_winters", w, 8, (52.17857142857143,))

@@ -25,6 +25,9 @@ EtsResult ets_auto(const Vec& y, int m, int h);
 // data" (the caller falls back).
 EtsResult ets_holt_winters(const Vec& y, int m, int h);
 
+// Holt as statsforecast Holt(error_type = "A"): ets(y, model = "AAN") (undamped / damped trend by AICc), non-seasonal.
+EtsResult ets_holt(const Vec& y, int h);
+
 // Diagnostic for tests: initial state (R initstate) and fitted smoothing parameters of one fixed model; returns its lik.
 // error/trend/season: 1 = additive, 2 = multiplicative (trend/season 0 = none).
 double ets_debug(const Vec& y, int m, int error, int trend, int season, bool damped, Vec& init, Vec& fitted);

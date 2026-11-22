@@ -69,6 +69,7 @@ REFS = {
                             "International Journal of Forecasting, 36(1), 110–115."),
     "fiorucci2016": _ref("Fiorucci, J. A., Pellegrini, T. R., Louzada, F., Petropoulos, F., & Koehler, A. B. (2016). Models for optimising "
                          "the theta method and their relationship to state space models. International Journal of Forecasting, 32(4), 1151–1161."),
+    "holt2004": _ref("Holt, C. C. (2004). Forecasting seasonals and trends by exponentially weighted moving averages. International Journal of Forecasting, 20(1), 5-10 (reprint of the 1957 ONR memorandum).", "https://doi.org/10.1016/j.ijforecast.2003.09.015"),
     "gardner1985": _ref("Gardner, E. S., Jr., & McKenzie, E. (1985). Forecasting trends in time series. Management Science, 31(10), 1237–1246."),
     "kim2016": _ref("Kim, S., & Kim, H. (2016). A new metric of absolute percentage error for intermittent demand forecasts. "
                     "International Journal of Forecasting, 32(3), 669–679."),
@@ -377,7 +378,64 @@ MODELS: dict[str, dict] = {
         "refs": ["nixtla"], "cost": "Medium (measure with a short trial).",
     },
     # ---------------------------------------------------------------- global
-    "pooled_regression": {
+    "holt_ets": {
+        "name": "Holt (ETS with additive trend)", "group": "yerel", "task": "local",
+        "summary": "Exponential smoothing of level and trend, with the trend damped or not as the information criterion decides.",
+        "how": "ETS(A,A,N) and ETS(A,Ad,N) (or the multiplicative-error forms) are fitted and the one with the lower AICc is kept.",
+        "use": "Trended, non-seasonal series; a classical benchmark between SES and the full automatic ETS.",
+        "caution": "For multiplicative error all values must be greater than 0. Seasonality is ignored; use ETS or Holt-Winters for seasonal data.",
+        "engines": {PY: "statsforecast Holt."},
+        "params": [P("error_type", "Error type", "choice", "A", "A: additive; M: multiplicative (all values must be positive).",
+                     choices=(("A", "Additive"), ("M", "Multiplicative")), engines=(PY,))],
+        "refs": ["holt2004", "gardner1985", "nixtla"], "cost": "Fast.",
+    },
+    "historic_average": {
+        "name": "Historic average", "group": "yerel", "task": "local",
+        "summary": "Forecasts every future value with the mean of the whole training series.",
+        "how": "The arithmetic mean of all observations is repeated over the horizon (R: meanf).",
+        "use": "The simplest benchmark for stationary series without trend or seasonality.",
+        "caution": "Ignores trend, seasonality and recent level shifts; only useful as a lower bound.",
+        "engines": {PY: "statsforecast HistoricAverage."},
+        "params": [], "refs": ["fpp3", "nixtla"], "cost": "Very fast.",
+    },
+    "window_average": {
+        "name": "Window average", "group": "yerel", "task": "local",
+        "summary": "Forecasts with the mean of the last few observations.",
+        "how": "The mean of the last window_size values is repeated over the horizon.",
+        "use": "A benchmark that follows level shifts more quickly than the historic average.",
+        "caution": "A series shorter than the window falls back. The default window (4) is our own choice.",
+        "engines": {PY: "statsforecast WindowAverage."},
+        "params": [P("window_size", "Window size", "int", 4, "Number of last observations averaged. Our own choice.", min=1, max=10000, engines=(PY,))],
+        "refs": ["nixtla"], "cost": "Very fast.",
+    },
+    "seasonal_window_average": {
+        "name": "Seasonal window average", "group": "yerel", "task": "local",
+        "summary": "Forecasts each season position with the mean of that position over the last few seasons.",
+        "how": "The last window_size full seasons are averaged position by position and the seasonal profile is repeated.",
+        "use": "A seasonal benchmark that is less noisy than the seasonal naive method (daily data with weekly cycles, NN5).",
+        "caution": "Needs window_size full seasons, otherwise the series falls back; without a usable season it is the window average.",
+        "engines": {PY: "statsforecast SeasonalWindowAverage."},
+        "params": [P("window_size", "Number of seasons", "int", 2, "How many past seasons are averaged. Our own choice.", min=1, max=1000, engines=(PY,))],
+        "refs": ["nixtla"], "cost": "Very fast.",
+    },
+    "seasonal_es": {
+        "name": "Seasonal exponential smoothing (optimised)", "group": "yerel", "task": "local",
+        "summary": "Simple exponential smoothing run separately on each season position, with its own optimised alpha.",
+        "how": "The series is split into its m season positions; SES with alpha chosen in [0.01, 0.99] by golden-section search forecasts each one.",
+        "use": "Seasonal series whose seasonal pattern changes slowly; a smoother alternative to the seasonal naive method.",
+        "caution": "There is no trend component. A series shorter than one season falls back.",
+        "engines": {PY: "statsforecast SeasonalExponentialSmoothingOptimized."},
+        "params": [], "refs": ["fpp3", "nixtla"], "cost": "Very fast.",
+    },
+    "zero_model": {
+        "name": "Zero forecast", "group": "aralikli", "task": "local",
+        "summary": "Forecasts zero for every period.",
+        "how": "Returns 0 over the whole horizon.",
+        "use": "Sanity baseline for intermittent demand (M5): a model that cannot beat it on a given metric adds nothing.",
+        "caution": "Only meaningful for intermittent series and for metrics that do not divide by the forecast; rounding has no effect on it.",
+        "engines": {PY: "statsforecast ZeroModel."},
+        "params": [], "refs": ["makridakis2022", "nixtla"], "cost": "Instant.",
+    },    "pooled_regression": {
         "name": "Pooled regression", "group": "kuresel", "task": "global",
         "summary": "Learns a single linear model on the lagged values of all series.",
         "how": "Each series is divided by its own mean; rows made of (lag) lagged values are stacked from all series and a linear regression "

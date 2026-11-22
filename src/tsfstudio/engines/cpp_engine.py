@@ -161,7 +161,8 @@ def catboost(train: list[np.ndarray], lag: int, h: int, max_obs: int | None = No
 class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
-                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl", "auto_mfles", "tbats")
+                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl", "auto_mfles", "tbats",
+                     "holt_ets", "historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model")
     GLOBAL_METHODS = ("pooled_regression", "catboost")
 
     def methods(self) -> dict[str, tuple[str, ...]]:
@@ -227,6 +228,11 @@ class CppEngine(Engine):
         if job.method == "auto_mfles" and (int((job.params or {}).get("n_windows", 2)) != 2
                                            or str((job.params or {}).get("metric", "smape")) != "smape"):
             raise EngineError("The C++ auto_mfles uses n_windows = 2 and metric = 'smape' (the defaults); other settings need the Python engine.")
+        fixed = {"holt_ets": {"error_type": "A"}, "window_average": {"window_size": 4}, "seasonal_window_average": {"window_size": 2}}
+        for key, val in fixed.get(job.method, {}).items():
+            got = (job.params or {}).get(key, val)
+            if str(got).upper() != str(val).upper():
+                raise EngineError(f"The C++ {job.method} uses {key} = {val} (the default); other values need the Python engine.")
         if job.method == "tsb":
             ad, ap = (float((job.params or {}).get(k, 0.1)) for k in ("alpha_d", "alpha_p"))
             if ad != 0.1 or ap != 0.1:
