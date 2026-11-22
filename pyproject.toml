@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tsfstudio"
-version = "0.1.0"
+version = "0.1.1"
 description = "Forecast Studio: TSF veri kümeleri üzerinde tahmin modellerini seçip çalıştıran ve hata/analiz çıktısı üreten uygulama"
 requires-python = ">=3.10"
 dependencies = [
