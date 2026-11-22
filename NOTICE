@@ -1,0 +1,46 @@
+Forecast Studio
+Copyright (C) 2026 the Forecast Studio authors
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+version. See LICENSE.
+
+Third-party code
+================
+
+Parts of the C++ core (cpp/src) are translations of code from the following projects. Their copyright notices and
+licenses apply to the corresponding parts.
+
+R package "forecast" (GPL-3)
+  Copyright (C) Rob J Hyndman and contributors. https://github.com/robjhyndman/forecast
+  Translated: ets() and its likelihood / initialisation (cpp/src/ets.cpp), auto.arima(), ndiffs(), nsdiffs(),
+  seas.heuristic(), myarima() and the forecasting chain (cpp/src/autoarima.cpp), tbats() / bats() and their Rcpp
+  helpers (cpp/src/tbats.cpp).
+
+R "stats" package, part of R (GPL-2 or later)
+  Copyright (C) The R Core Team. https://www.r-project.org
+  Translated: arima() with ARIMA_Like / ARIMA_CSS / getQ0, optim()'s vmmin (BFGS) and nmmin (Nelder-Mead) and
+  optimhess (cpp/src/arima.cpp, cpp/src/ets.cpp), stl() / stl.f (cpp/src/autoarima.cpp).
+
+R package "urca" (GPL-2 or later)
+  Copyright (C) Bernhard Pfaff. Translated: ur.kpss() test statistic (cpp/src/autoarima.cpp).
+
+statsforecast (Apache License 2.0)
+  Copyright (C) Nixtla. https://github.com/Nixtla/statsforecast
+  Translated: intermittent-demand models and src/ses.cpp (cpp/src/intermittent.cpp), DynamicOptimizedTheta /
+  AutoTheta and src/theta.cpp (cpp/src/theta_sf.cpp), AutoCES and src/ces.cpp (cpp/src/ces_sf.cpp), the Nelder-Mead
+  of include/statsforecast/nelder_mead.h (cpp/src/sf_common.hpp), MSTL (cpp/src/mstl_sf.cpp), MFLES / AutoMFLES and
+  src/mfles.cpp (cpp/src/mfles_sf.cpp). Licensed under the Apache License, Version 2.0:
+  http://www.apache.org/licenses/LICENSE-2.0
+
+scikit-learn (BSD 3-Clause)
+  Copyright (C) the scikit-learn developers. https://scikit-learn.org
+  Translated: Lasso coordinate descent of sklearn/linear_model/_cd_fast.pyx (cpp/src/mfles_sf.cpp).
+
+statsmodels (BSD 3-Clause)
+  Copyright (C) Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+  Translated: STL defaults, seasonal_decompose, acf (cpp/src/mstl_sf.cpp, cpp/src/sf_common.cpp, cpp/src/theta_sf.cpp).
+
+Redistributions of the BSD-licensed parts must retain the above copyright notices; the BSD 3-Clause licenses also
+state that the names of the copyright holders may not be used to endorse products derived from this software without
+permission. The Apache-2.0 and BSD-3-Clause licenses are compatible with GPL-3.
