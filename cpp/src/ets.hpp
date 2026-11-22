@@ -20,6 +20,11 @@ struct EtsResult {
 // Throws std::runtime_error when no model can be fitted.
 EtsResult ets_auto(const Vec& y, int m, int h);
 
+// Holt-Winters as the Python engine's statsforecast HoltWinters(error_type = "A"): ets(y, model = "AAA") with damped
+// and undamped trend compared by AICc (the R port above); season length as usable_season(n, m, 24), else "Nonseasonal
+// data" (the caller falls back).
+EtsResult ets_holt_winters(const Vec& y, int m, int h);
+
 // Diagnostic for tests: initial state (R initstate) and fitted smoothing parameters of one fixed model; returns its lik.
 // error/trend/season: 1 = additive, 2 = multiplicative (trend/season 0 = none).
 double ets_debug(const Vec& y, int m, int error, int trend, int season, bool damped, Vec& init, Vec& fitted);

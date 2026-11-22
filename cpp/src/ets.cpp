@@ -1,4 +1,4 @@
-﻿// Port of R forecast::ets() (forecast 9.x): R/ets.R (ets, etsmodel, initparam, initstate, check.param),
+// Port of R forecast::ets() (forecast 9.x): R/ets.R (ets, etsmodel, initparam, initstate, check.param),
 // src/etscalc.c (etscalc, forecast, update), src/etsTargetFunction.cpp (bounds, admissibility) and R's optim
 // Nelder-Mead (nmmin, src/appl/optim.c) with the settings ets uses. Variable names follow the R/C sources.
 #include "ets.hpp"
@@ -511,9 +511,11 @@ double ets_debug(const Vec& y, int m, int error, int trend, int season, bool dam
     return f.lik;
 }
 
-EtsResult ets_auto(const Vec& y, int m, int h) {
+namespace {
+
+// ets() model search; fixE / fixT / fixS restrict a component (-1 = any), as ets(y, model = "...") does.
+EtsResult ets_select(const Vec& y, int m, int h, int fixE, int fixT, int fixS) {
     const int n = static_cast<int>(y.size());
-    if (m > 24 || m < 1) m = 1;                                // R: "Seasonality will be ignored" for m > 24
     double ymin = INF;
     for (double v : y) ymin = std::min(ymin, v);
     const bool data_positive = ymin > 0;
@@ -533,6 +535,7 @@ EtsResult ets_auto(const Vec& y, int m, int h) {
                     if (e == MULT && t == MULT && s == ADD) continue;
                     if (!data_positive && e == MULT) continue;
                     if (s != NONE && m == 1) continue;
+                    if ((fixE >= 0 && e != fixE) || (fixT >= 0 && t != fixT) || (fixS >= 0 && s != fixS)) continue;
                     Fit f;
                     try { f = etsmodel(y, e, t, s, d, m); } catch (const std::exception&) { continue; }
                     if (std::isfinite(f.aicc) && f.aicc < best.aicc) {
@@ -555,6 +558,20 @@ EtsResult ets_auto(const Vec& y, int m, int h) {
     best.model = std::string("ETS(") + E + "," + T + "," + S + ")";
     if (!bD) best.phi = 1.0;
     return best;
+}
+
+}  // namespace
+
+EtsResult ets_auto(const Vec& y, int m, int h) {
+    if (m > 24 || m < 1) m = 1;                                // R: "Seasonality will be ignored" for m > 24
+    return ets_select(y, m, h, -1, -1, -1);
+}
+
+EtsResult ets_holt_winters(const Vec& y, int m, int h) {
+    const int n = static_cast<int>(y.size());
+    if (m > 24 || n < 2 * m) m = 1;                            // the Python engine's usable_season(n, m, 24)
+    if (m <= 1) throw std::runtime_error("Nonseasonal data");  // ets(model = "AAA") on m = 1, as statsforecast / R
+    return ets_select(y, m, h, ADD, ADD, ADD);
 }
 
 }  // namespace tsf

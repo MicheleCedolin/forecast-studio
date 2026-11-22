@@ -43,6 +43,7 @@ Vec m_comb(const Vec& y, int h, int m, int) { return tsf::comb_shd(y, h, m); }
 Vec m_holt(const Vec& y, int h, int, int) { return tsf::holt_forecast(y, h, false); }
 Vec m_damped(const Vec& y, int h, int, int) { return tsf::holt_forecast(y, h, true); }
 Vec m_ets(const Vec& y, int h, int m, int) { return tsf::ets_auto(y, m, h).forecast; }
+Vec m_hw(const Vec& y, int h, int m, int) { return tsf::ets_holt_winters(y, m, h).forecast; }
 Vec m_arima(const Vec& y, int h, int m, int) { return tsf::auto_arima_study(y, m, h).forecast; }
 Vec m_dhr(const Vec& y, int h, int m, int np) { return tsf::dhr_arima(y, m, np, 1, h).forecast; }
 Vec m_crc(const Vec& y, int h, int, int) { return tsf::croston_classic(y, h); }
@@ -55,7 +56,7 @@ Vec m_imapa(const Vec& y, int h, int, int) { return tsf::imapa(y, h); }
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
-    {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets},
+    {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets}, {"holt_winters", m_hw},
     {"arima", m_arima}, {"dhr_arima", m_dhr}, {"croston_classic", m_crc}, {"croston_sba", m_crs},
     {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa},
 };
@@ -69,10 +70,10 @@ Fn find_method(const char* name) {
 }  // namespace
 
 TSF_API const char* tsf_version() {
-    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa)";
+    return "tsfcore 0.4.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, holt_winters, arima, dhr_arima, croston_classic, croston_sba, croston_optimized, tsb, adida, imapa)";
 }
 
-TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,arima,dhr_arima,"
+TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,holt_winters,arima,dhr_arima,"
                                          "croston_classic,croston_sba,croston_optimized,tsb,adida,imapa"; }
 
 // Test hook for auto.arima (the study's chain). info = {p, d, q, P, D, Q, period, drift, mean, step, loglik, aicc,

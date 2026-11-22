@@ -141,6 +141,24 @@ def test_dhr_arima_r_failure_modes():
                                     params={"fourier_k": 2}))
 
 
+def test_holt_winters_reproduces_r_ets_aaa():
+    """C++ holt_winters = R ets(y, model = "AAA") (damped / undamped by AICc) through the C++ ets port. Reference:
+    R 9.0.2 forecasts on NN5 daily (tests/golden/nn5_daily/r_ets_aaa). statsforecast's HoltWinters, which the
+    Python engine uses, differs from R by ~1% here; the C++ version follows R, as the C++ ets does."""
+    d = G / "nn5_daily"
+    train = [r[~np.isnan(r)] for r in _load(d, "train")]
+    ref = _load(d, "r_ets_aaa")
+    f, flags, _ = C.forecast_batch("holt_winters", train, ref.shape[1], (7.0,))
+    assert not flags.any()
+    rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
+    assert np.median(rel) < 1e-9, f"median {np.median(rel):.2e}"
+    assert int((rel.max(axis=1) > 1e-3).sum()) <= 2
+    # weekly: period 52 > 24, so no usable season -> "Nonseasonal data" and the snaive fallback, as statsforecast
+    w = [r[~np.isnan(r)] for r in _load(G / "nn5_weekly", "train")][:5]
+    _, flags, msg = C.forecast_batch("holt_winters", w, 8, (52.17857142857143,))
+    assert flags.all() and "Nonseasonal" in msg
+
+
 INTERMITTENT = ["croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa"]
 
 
