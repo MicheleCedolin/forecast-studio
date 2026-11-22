@@ -26,6 +26,7 @@
 #include "mstl_sf.hpp"
 #include "mfles_sf.hpp"
 #include "tbats.hpp"
+#include "global.hpp"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -184,6 +185,27 @@ TSF_API void tsf_lasso(const double* X, int32_t n, int32_t k, const double* y, d
     for (int j = 0; j < k; ++j) cols[j] = Vec(X + static_cast<size_t>(j) * n, X + static_cast<size_t>(j + 1) * n);
     const Vec w = tsf::sk_lasso(cols, Vec(y, y + n), alpha);
     std::copy(w.begin(), w.end(), coef);
+}
+
+// Global pooled regression over all series (values/offsets as tsf_forecast_batch): out is n_series x h; aliased gets the
+// 1-based lag numbers of aliased (NA) coefficients (room for lag values), n_aliased their count. Returns 0, or 1 on
+// error (message in msg).
+TSF_API int tsf_pooled_regression(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
+                                  int32_t max_obs, double* out, int32_t* aliased, int32_t* n_aliased, char* msg,
+                                  int32_t len) {
+    try {
+        std::vector<Vec> series(n_series);
+        for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
+        const tsf::PooledResult r = tsf::pooled_regression(series, lag, h, max_obs);
+        for (int32_t i = 0; i < n_series; ++i) std::copy(r.forecasts[i].begin(), r.forecasts[i].end(), out + static_cast<int64_t>(i) * h);
+        *n_aliased = static_cast<int32_t>(r.aliased.size());
+        std::copy(r.aliased.begin(), r.aliased.end(), aliased);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
 }
 
 // Diagnostic hook for auto.arima's differencing tests: out = {seas.heuristic, nsdiffs, ndiffs(after D), kpss stat

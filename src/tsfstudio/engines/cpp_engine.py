@@ -51,6 +51,9 @@ def load_lib():
             lib.tsf_forecast_batch.restype = ctypes.c_int32
             lib.tsf_forecast_batch.argtypes = [ctypes.c_char_p, dp, i64p, ctypes.c_int32, ctypes.c_int32, i32p, dp,
                                                ctypes.c_int32, ctypes.c_int32, dp, i32p, ctypes.c_char_p, ctypes.c_int32]
+            lib.tsf_pooled_regression.restype = ctypes.c_int32
+            lib.tsf_pooled_regression.argtypes = [dp, i64p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+                                                  dp, i32p, i32p, ctypes.c_char_p, ctypes.c_int32]
             lib.tsf_holt_sse.restype = ctypes.c_double
             lib.tsf_holt_sse.argtypes = [dp, ctypes.c_int32, ctypes.c_int32]
             _LIB = lib
@@ -88,14 +91,37 @@ def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, ho
     return out, flags, msg.value.decode("utf-8", "replace")
 
 
+def pooled_regression(train: list[np.ndarray], lag: int, h: int, max_obs: int | None = None):
+    """(forecasts n x h, aliased 1-based lag numbers). Global pooled regression as R glm / py_global."""
+    lib = load_lib()
+    if lib is None:
+        raise EngineError(_LIB_ERR or "native library not available")
+    n = len(train)
+    lens = np.array([len(s) for s in train], dtype=np.int64)
+    offsets = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(lens, out=offsets[1:])
+    values = np.ascontiguousarray(np.concatenate([np.asarray(s, dtype=np.float64) for s in train]) if n else np.zeros(0))
+    out = np.empty((n, h), dtype=np.float64)
+    aliased = np.zeros(max(int(lag), 1), dtype=np.int32)
+    na = ctypes.c_int32(0)
+    msg = ctypes.create_string_buffer(512)
+    rc = lib.tsf_pooled_regression(_ptr(values, ctypes.c_double), _ptr(offsets, ctypes.c_int64), n, int(lag), int(h),
+                                   int(max_obs or 0), _ptr(out, ctypes.c_double), _ptr(aliased, ctypes.c_int32),
+                                   ctypes.byref(na), msg, 512)
+    if rc != 0:
+        raise EngineError(msg.value.decode(errors="replace"))
+    return out, [int(a) for a in aliased[: na.value]]
+
+
 class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
                      "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl", "auto_mfles", "tbats")
-    GLOBAL_METHODS = ()
+    GLOBAL_METHODS = ("pooled_regression",)
 
     def methods(self) -> dict[str, tuple[str, ...]]:
-        return {"local": self.LOCAL_METHODS if load_lib() is not None else (), "global": ()}
+        ok = load_lib() is not None
+        return {"local": self.LOCAL_METHODS if ok else (), "global": self.GLOBAL_METHODS if ok else ()}
 
     def versions(self) -> dict:
         lib = load_lib()
@@ -110,6 +136,22 @@ class CppEngine(Engine):
 
     def run(self, job: EngineJob, progress: ProgressFn | None = None, cancel: threading.Event | None = None) -> EngineResult:
         job.validate()
+        if job.task == "global" and job.method in self.GLOBAL_METHODS:
+            t0 = time.time()
+            if progress:
+                progress("fitting", 0, 1)
+            max_obs = (job.params or {}).get("max_obs")
+            f, aliased = pooled_regression(list(job.train), int(job.lag), job.horizon, int(max_obs) if max_obs else None)
+            if job.integer_conversion:
+                f = np.round(f)
+            notes = []
+            if aliased:
+                notes.append(f"{len(aliased)} linearly dependent lag columns (Lag {aliased[:8]}{'…' if len(aliased) > 8 else ''}) "
+                             "were treated as NA coefficients and set to 0, as R glm does.")
+            if progress:
+                progress("finished", 1, 1)
+            return EngineResult(forecasts=f, elapsed_sec=time.time() - t0, fallbacks=[], na_replaced=0,
+                                versions=self.versions(), notes=notes)
         if job.task != "local" or job.method not in self.LOCAL_METHODS:
             raise EngineError(f"The C++ engine does not support '{job.task}/{job.method}'. Available: {self.LOCAL_METHODS}")
         if job.method == "dhr_arima":

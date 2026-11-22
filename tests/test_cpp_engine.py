@@ -154,6 +154,28 @@ def test_tbats_reproduces_r_tbats(case):
     assert rel.max() < 1e-6, f"{name}: worst relative difference {rel.max():.2e}"
 
 
+def test_pooled_regression_matches_r_and_python():
+    """Global pooled regression (mean-normalised lag rows of all series, OLS without intercept, R glm's aliasing,
+    recursive forecasts): equal to the study's R forecasts and to the Python engine to ~1e-14."""
+    from tsfstudio.engines import py_global as PG
+    for name, lag, h in (("nn5_weekly", 65, 8), ("nn5_daily", 9, 56)):
+        train = [r[~np.isnan(r)] for r in _load(G / name, "train")]
+        f, aliased = C.pooled_regression(train, lag, h)
+        ref = _load(G / name, f"forecasts_pooled_regression_lag_{lag}")
+        assert not aliased
+        np.testing.assert_allclose(f, ref, rtol=1e-12, atol=0, err_msg=name)
+    # collinear lags: two series that are exact geometric sequences make Lag2.. linear in Lag1 -> aliased, as R glm
+    train = [10.0 * 1.01 ** np.arange(40), 5.0 * 1.01 ** np.arange(30)]
+    f, aliased = C.pooled_regression(train, 4, 3)
+    ref, info = PG.pooled_regression_forecast(train, 4, 3)
+    assert aliased == info.aliased and aliased
+    np.testing.assert_allclose(f, ref, rtol=1e-10)
+    eng = C.CppEngine()
+    r = eng.run(EngineJob(task="global", method="pooled_regression", train=train, horizon=3, seasonality=(1.0,), lag=4))
+    np.testing.assert_allclose(r.forecasts, ref, rtol=1e-10)
+    assert any("linearly dependent" in n for n in r.notes)
+
+
 def test_holt_winters_reproduces_r_ets_aaa():
     """C++ holt_winters = R ets(y, model = "AAA") (damped / undamped by AICc) through the C++ ets port. Reference:
     R 9.0.2 forecasts on NN5 daily (tests/golden/nn5_daily/r_ets_aaa). statsforecast's HoltWinters, which the
