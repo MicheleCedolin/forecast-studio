@@ -90,7 +90,8 @@ def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, ho
 
 class CppEngine(Engine):
     name = "cpp"
-    LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "arima", "dhr_arima")
+    LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "arima", "dhr_arima",
+                     "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa")
     GLOBAL_METHODS = ()
 
     def methods(self) -> dict[str, tuple[str, ...]]:
@@ -116,6 +117,10 @@ class CppEngine(Engine):
             if int(k) != 1 or (job.params or {}).get("fourier_k_per_period"):
                 raise EngineError("The C++ dhr_arima uses K = 1 Fourier terms (the study's setting); "
                                   f"fourier_k = {k} / fourier_k_per_period need the R or Python engine.")
+        if job.method == "tsb":
+            ad, ap = (float((job.params or {}).get(k, 0.1)) for k in ("alpha_d", "alpha_p"))
+            if ad != 0.1 or ap != 0.1:
+                raise EngineError("The C++ tsb uses alpha_d = alpha_p = 0.1 (the defaults); other values need the Python engine.")
         t0 = time.time()
         n = len(job.train)
         if progress:

@@ -141,6 +141,41 @@ def test_dhr_arima_r_failure_modes():
                                     params={"fourier_k": 2}))
 
 
+INTERMITTENT = ["croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa"]
+
+
+@pytest.mark.parametrize("method", INTERMITTENT)
+def test_intermittent_methods_match_python_bit_for_bit(method):
+    """Ports of statsforecast 2.1.1 (src/ses.cpp, models.py) with numpy's pairwise mean and round-half-to-even:
+    the forecasts are identical to the Python engine's, including the error cases."""
+    rng = np.random.default_rng(11)
+    train = []
+    for k in range(80):
+        n = int(rng.integers(10, 300))
+        y = np.where(rng.uniform(size=n) < rng.uniform(0.4, 0.95), 0.0, np.round(rng.gamma(2.0, 5.0, n)))
+        if k % 20 == 0:
+            y[:] = 0.0
+            y[int(rng.integers(n))] = 3.0
+        train.append(y)
+    train += [np.array([0., 0, 5, 0, 0, 0, 7, 0]), np.array([0., 4, 0, 4]), np.array([2.0]), np.zeros(9),
+              np.array([1., 0, 1, 0, 0, 1, 0, 0, 0, 1]), np.array([0., -2, 0, -1, 0])]   # last: no positive demand
+    f, flags, _ = C.forecast_batch(method, train, 5, (7.0,), threads=2)
+    for i, y in enumerate(train):
+        try:
+            ref = np.asarray(forecast_one(method, y, 5, (7.0,), {}), dtype=float)
+        except Exception:
+            assert flags[i] == 1, f"{method} #{i}: Python fails, C++ did not"
+            continue
+        assert flags[i] == 0, f"{method} #{i}: C++ failed"
+        np.testing.assert_array_equal(f[i], ref, err_msg=f"{method} #{i}")
+
+
+def test_tsb_refuses_non_default_alphas():
+    with pytest.raises(Exception, match="alpha_d"):
+        C.CppEngine().run(EngineJob(task="local", method="tsb", train=[np.array([0., 1, 0, 2])], horizon=2,
+                                    seasonality=(1.0,), params={"alpha_d": 0.2}))
+
+
 def test_arima_q0_methods_agree():
     """Gardner's Q0 (as R's getQ0) and the autocovariance form used for large state dimension give the same matrix."""
     lib = C.load_lib()
