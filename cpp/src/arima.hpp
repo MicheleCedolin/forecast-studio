@@ -13,6 +13,11 @@ using CVec = std::vector<std::complex<double>>;
 // R polyroot(z): roots of z[0] + z[1] x + ... + z[n] x^n (trailing zeros must be removed by the caller).
 CVec polyroot(const Vec& z);
 
+// Stationary state covariance Q0 of the ARMA part (r x r, column-major): method 0 = Gardner et al. (1980) as
+// stats:::getQ0, 1 = from the autocovariances. arima_fit uses Gardner for r <= 8 and the autocovariance form above.
+Vec getQ0_acov(const Vec& phi, const Vec& theta);
+Vec arima_q0(const Vec& phi, const Vec& theta, int method);
+
 struct ArimaModel {                 // makeARIMA()
     Vec phi, theta, Delta;          // theta is padded to r - 1 by makeARIMA, not by upARIMA (as in R)
     int r = 1, d = 0, rd = 1;

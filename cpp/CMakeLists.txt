@@ -7,13 +7,13 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_library(tsfcore SHARED src/util.cpp src/basic.cpp src/ets.cpp src/arima.cpp src/capi.cpp)
+add_library(tsfcore SHARED src/util.cpp src/basic.cpp src/ets.cpp src/arima.cpp src/autoarima.cpp src/capi.cpp)
 target_include_directories(tsfcore PRIVATE src)
 set_target_properties(tsfcore PROPERTIES PREFIX "")        # tsfcore.dll / tsfcore.so (no "lib" prefix)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  # -O2 without -ffast-math: keep IEEE semantics so results match numpy/scipy.
-  target_compile_options(tsfcore PRIVATE -O2 -Wall -Wextra)
+  # -O3 without -ffast-math: IEEE semantics (no reassociation; baseline x86-64 has no FMA), so results match R/numpy.
+  target_compile_options(tsfcore PRIVATE -O3 -Wall -Wextra)
   if(MINGW)
     # No dependency on MinGW runtime DLLs: the DLL runs on any Windows machine.
     target_link_options(tsfcore PRIVATE -static -static-libgcc -static-libstdc++)

@@ -3,8 +3,6 @@
 #include "arima.hpp"
 
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <stdexcept>
 
 namespace tsf {
@@ -212,7 +210,95 @@ void inclu2(int np, const double* xnext, double* xrow, double ynext, double* d, 
     }
 }
 
+}  // namespace
+
+// Q0 = Var(state) of the stationary ARMA part, from its autocovariances (unit innovation variance):
+// x_t[i] = sum_{s=0}^{r-1-i} (phi_{i+s+1} y_{t-1-s} + theta_{i+s} e_{t-s}), so every entry is a finite sum of
+// autocovariances gamma(k), psi weights (Cov(y_a, e_b) = psi_{a-b}) and innovation variances. Same matrix as
+// Gardner et al. (1980) in O(r^4) instead of O(r^6); used for large r, where getQ0 dominated the run time.
+Vec getQ0_acov(const Vec& phi, const Vec& theta) {
+    const int p = static_cast<int>(phi.size()), q = static_cast<int>(theta.size());
+    const int r = std::max(p, q + 1);
+    auto PH = [&](int k) { return (k >= 1 && k <= p) ? phi[k - 1] : 0.0; };        // phi_k, k = 1..
+    auto TH = [&](int k) { return k == 0 ? 1.0 : ((k >= 1 && k <= q) ? theta[k - 1] : 0.0); };
+    Vec psi(r + 1, 0.0);
+    for (int j = 0; j <= r; ++j) {
+        double v = TH(j);
+        for (int k = 1; k <= std::min(j, p); ++k) v += PH(k) * psi[j - k];
+        psi[j] = v;
+    }
+    Vec cvec(r + 1, 0.0);                               // c_k = sum_{j=k}^{q} theta_j psi_{j-k}
+    for (int k = 0; k <= std::min(q, r); ++k) {
+        double v = 0.0;
+        for (int j = k; j <= q; ++j) v += TH(j) * psi[j - k];
+        cvec[k] = v;
+    }
+    // gamma(0..p): gamma(k) - sum_j phi_j gamma(|k - j|) = c_k, k = 0..p (Gaussian elimination, partial pivoting)
+    Vec gam(r + 1, 0.0);
+    if (p > 0) {
+        const int m = p + 1;
+        std::vector<Vec> A(m, Vec(m + 1, 0.0));
+        for (int k = 0; k < m; ++k) {
+            A[k][k] += 1.0;
+            for (int j = 1; j <= p; ++j) A[k][std::abs(k - j)] -= PH(j);
+            A[k][m] = cvec[k];
+        }
+        for (int c = 0; c < m; ++c) {
+            int piv = c;
+            for (int rr = c + 1; rr < m; ++rr) if (std::fabs(A[rr][c]) > std::fabs(A[piv][c])) piv = rr;
+            std::swap(A[c], A[piv]);
+            if (A[c][c] == 0.0) throw std::runtime_error("getQ0: singular autocovariance system");
+            for (int rr = c + 1; rr < m; ++rr) {
+                const double f = A[rr][c] / A[c][c];
+                if (f == 0.0) continue;
+                for (int k = c; k <= m; ++k) A[rr][k] -= f * A[c][k];
+            }
+        }
+        for (int c = m - 1; c >= 0; --c) {
+            double v = A[c][m];
+            for (int k = c + 1; k < m; ++k) v -= A[c][k] * gam[k];
+            gam[c] = v / A[c][c];
+        }
+    }
+    for (int k = (p > 0 ? p + 1 : 0); k <= r; ++k) {
+        double v = cvec[k];
+        for (int j = 1; j <= p; ++j) v += PH(j) * gam[k - j];
+        gam[k] = v;
+    }
+    auto cye = [&](int lag) { return lag >= 0 ? psi[lag] : 0.0; };   // Cov(y_a, e_b), lag = a - b
+    Vec Q(static_cast<size_t>(r) * r, 0.0);
+    for (int i = 0; i < r; ++i)
+        for (int k = i; k < r; ++k) {
+            double v = 0.0;
+            for (int s = 0; s <= r - 1 - i; ++s) {
+                const double ps = PH(i + s + 1), ts = TH(i + s);
+                for (int u = 0; u <= r - 1 - k; ++u) {
+                    const double pu = PH(k + u + 1), tu = TH(k + u);
+                    if (ps != 0.0 && pu != 0.0) v += ps * pu * gam[std::abs(s - u)];
+                    if (s == u) v += ts * tu;
+                    if (ps != 0.0 && tu != 0.0) v += ps * tu * cye(u - s - 1);   // Cov(y_{t-1-s}, e_{t-u})
+                    if (ts != 0.0 && pu != 0.0) v += ts * pu * cye(s - u - 1);   // Cov(e_{t-s}, y_{t-1-u})
+                }
+            }
+            Q[i + r * k] = Q[k + r * i] = v;
+        }
+    return Q;
+}
+
+namespace {
+
+constexpr int kGardnerMaxR = 8;     // Gardner costs O(r^6): ~50k flops at r = 8, ~9M at r = 20
+Vec getQ0_gardner(const Vec& phi, const Vec& theta);
+
+// Gardner et al. (1980), as stats:::getQ0, for small state dimension (bit-compatible with R); the autocovariance
+// form above for larger r.
 Vec getQ0(const Vec& phi, const Vec& theta) {
+    const int r = std::max(static_cast<int>(phi.size()), static_cast<int>(theta.size()) + 1);
+    if (!phi.empty() && r > kGardnerMaxR) return getQ0_acov(phi, theta);
+    return getQ0_gardner(phi, theta);
+}
+
+Vec getQ0_gardner(const Vec& phi, const Vec& theta) {
     const int p = static_cast<int>(phi.size()), q = static_cast<int>(theta.size());
     const int r = std::max(p, q + 1);
     const int np = r * (r + 1) / 2, nrbar = np * (np - 1) / 2;
@@ -327,13 +413,18 @@ void up_arima(ArimaModel& m, const Vec& phi, const Vec& theta) {   // upARIMA (t
 
 struct LikeOut { double ssq, sumlog; int nu; };
 
-// ARIMA_Like(y, mod, 0, giveResid): Kalman filter; updates m.a, m.P, m.Pn in place (as R does).
+// ARIMA_Like(y, mod, 0, giveResid): Kalman filter; updates m.a, m.P, m.Pn in place (as R does). Same arithmetic as R's
+// C code (each entry is computed with the same operations in the same order), with the loops arranged for contiguous
+// column-major access and exact zeros of Delta skipped.
 LikeOut arima_like(const Vec& y, ArimaModel& m, Vec* resid) {
     const int n = static_cast<int>(y.size()), rd = m.rd, r = m.r, d = m.d;
     const int p = static_cast<int>(m.phi.size()), q = static_cast<int>(m.theta.size());
     const double *phi = m.phi.data(), *theta = m.theta.data(), *delta = m.Delta.data();
     double *a = m.a.data(), *P = m.P.data(), *Pnew = m.Pn.data();
-    Vec anew(rd), M(rd), mm(d > 0 ? static_cast<size_t>(rd) * rd : 0);
+    Vec anew(rd), M(rd), mm(d > 0 ? static_cast<size_t>(rd) * rd : 0), V(r, 0.0);
+    for (int i = 0; i < r; ++i) V[i] = (i == 0) ? 1.0 : (i - 1 < q ? theta[i - 1] : 0.0);
+    std::vector<int> nz;                                // Delta is sparse for seasonal differencing
+    for (int k = 0; k < d; ++k) if (delta[k] != 0.0) nz.push_back(k);
     double ssq = 0.0, sumlog = 0.0;
     int nu = 0;
     if (resid) resid->assign(n, 0.0);
@@ -346,17 +437,17 @@ LikeOut arima_like(const Vec& y, ArimaModel& m, Vec* resid) {
         if (d > 0) {
             for (int i = r + 1; i < rd; ++i) anew[i] = a[i - 1];
             double tmp = a[0];
-            for (int i = 0; i < d; ++i) tmp += delta[i] * a[r + i];
+            for (int i : nz) tmp += delta[i] * a[r + i];
             anew[r] = tmp;
         }
         if (l > 0) {
             if (d == 0) {
-                for (int i = 0; i < r; ++i) {
-                    const double vi = (i == 0) ? 1.0 : (i - 1 < q ? theta[i - 1] : 0.0);
-                    for (int j = 0; j < r; ++j) {
-                        double tmp = 0.0;
-                        if (j == 0) tmp = vi; else if (j - 1 < q) tmp = vi * theta[j - 1];
-                        if (i < p && j < p) tmp += phi[i] * phi[j] * P[0];
+                const double P0 = P[0];
+                for (int j = 0; j < r; ++j) {
+                    const double vj = V[j];
+                    for (int i = 0; i < r; ++i) {
+                        double tmp = V[i] * vj;
+                        if (i < p && j < p) tmp += phi[i] * phi[j] * P0;
                         if (i < r - 1 && j < r - 1) tmp += P[i + 1 + r * (j + 1)];
                         if (i < p && j < r - 1) tmp += phi[i] * P[j + 1];
                         if (j < p && i < r - 1) tmp += phi[j] * P[i + 1];
@@ -364,51 +455,57 @@ LikeOut arima_like(const Vec& y, ArimaModel& m, Vec* resid) {
                     }
                 }
             } else {
-                for (int i = 0; i < r; ++i)                      // mm = TP
-                    for (int j = 0; j < rd; ++j) {
-                        double tmp = 0.0;
-                        if (i < p) tmp += phi[i] * P[rd * j];
-                        if (i < r - 1) tmp += P[i + 1 + rd * j];
-                        mm[i + rd * j] = tmp;
+                for (int j = 0; j < rd; ++j) {                  // mm = T P, column j
+                    const double* Pj = P + static_cast<size_t>(rd) * j;
+                    double* mj = mm.data() + static_cast<size_t>(rd) * j;
+                    const double P0j = Pj[0];
+                    const int lim = std::min(p, r - 1);
+                    for (int i = 0; i < lim; ++i) mj[i] = phi[i] * P0j + Pj[i + 1];
+                    for (int i = lim; i < r - 1; ++i) mj[i] = Pj[i + 1];
+                    if (r - 1 < p) mj[r - 1] = phi[r - 1] * P0j; else mj[r - 1] = 0.0;
+                    double tmp = P0j;
+                    for (int k : nz) tmp += delta[k] * Pj[r + k];
+                    mj[r] = tmp;
+                    for (int i = 1; i < d; ++i) mj[r + i] = Pj[r + i - 1];
+                }
+                for (int i = 0; i < r; ++i) {                   // Pnew = mm T', column i
+                    double* Pi = Pnew + static_cast<size_t>(rd) * i;
+                    const double* m1 = mm.data() + static_cast<size_t>(rd) * (i + 1);
+                    if (i < p && i < r - 1) { const double f = phi[i]; for (int j = 0; j < rd; ++j) Pi[j] = f * mm[j] + m1[j]; }
+                    else if (i < p) { const double f = phi[i]; for (int j = 0; j < rd; ++j) Pi[j] = f * mm[j]; }
+                    else if (i < r - 1) { for (int j = 0; j < rd; ++j) Pi[j] = m1[j]; }
+                    else { for (int j = 0; j < rd; ++j) Pi[j] = 0.0; }
+                }
+                {
+                    double* Pr = Pnew + static_cast<size_t>(rd) * r;
+                    for (int j = 0; j < rd; ++j) Pr[j] = mm[j];
+                    for (int k : nz) {
+                        const double dk = delta[k];
+                        const double* mk = mm.data() + static_cast<size_t>(rd) * (r + k);
+                        for (int j = 0; j < rd; ++j) Pr[j] += dk * mk[j];
                     }
-                for (int j = 0; j < rd; ++j) {
-                    double tmp = P[rd * j];
-                    for (int k = 0; k < d; ++k) tmp += delta[k] * P[r + k + rd * j];
-                    mm[r + rd * j] = tmp;
                 }
                 for (int i = 1; i < d; ++i)
-                    for (int j = 0; j < rd; ++j) mm[r + i + rd * j] = P[r + i - 1 + rd * j];
-                for (int i = 0; i < r; ++i)                      // Pnew = mm T'
-                    for (int j = 0; j < rd; ++j) {
-                        double tmp = 0.0;
-                        if (i < p) tmp += phi[i] * mm[j];
-                        if (i < r - 1) tmp += mm[rd * (i + 1) + j];
-                        Pnew[j + rd * i] = tmp;
-                    }
-                for (int j = 0; j < rd; ++j) {
-                    double tmp = mm[j];
-                    for (int k = 0; k < d; ++k) tmp += delta[k] * mm[rd * (r + k) + j];
-                    Pnew[j + rd * r] = tmp;
-                }
-                for (int i = 1; i < d; ++i)
-                    for (int j = 0; j < rd; ++j) Pnew[j + rd * (r + i)] = mm[rd * (r + i - 1) + j];
-                for (int i = 0; i <= q; ++i) {                   // + (1 theta) %o% (1 theta)
-                    const double vi = (i == 0) ? 1. : theta[i - 1];
-                    for (int j = 0; j <= q; ++j) Pnew[i + rd * j] += vi * ((j == 0) ? 1. : theta[j - 1]);
+                    std::copy(mm.data() + static_cast<size_t>(rd) * (r + i - 1), mm.data() + static_cast<size_t>(rd) * (r + i),
+                              Pnew + static_cast<size_t>(rd) * (r + i));
+                for (int j = 0; j <= q; ++j) {                  // + (1 theta) %o% (1 theta)
+                    const double vj = (j == 0) ? 1. : theta[j - 1];
+                    for (int i = 0; i <= q; ++i) Pnew[i + rd * j] += ((i == 0) ? 1. : theta[i - 1]) * vj;
                 }
             }
         }
         if (!std::isnan(y[l])) {
             double resid0 = y[l] - anew[0];
-            for (int i = 0; i < d; ++i) resid0 -= delta[i] * anew[r + i];
+            for (int i : nz) resid0 -= delta[i] * anew[r + i];
             double gain = Pnew[0];
-            for (int i = 0; i < d; ++i) gain += 2 * delta[i] * Pnew[r + i];
-            for (int i = 0; i < d; ++i)
-                for (int j = 0; j < d; ++j) gain += delta[i] * delta[j] * Pnew[r + i + rd * (r + j)];
-            for (int i = 0; i < rd; ++i) {
-                double tmp = Pnew[i];
-                for (int k = 0; k < d; ++k) tmp += Pnew[i + rd * (r + k)] * delta[k];
-                M[i] = tmp;
+            for (int i : nz) gain += 2 * delta[i] * Pnew[r + i];
+            for (int i : nz)
+                for (int j : nz) gain += delta[i] * delta[j] * Pnew[r + i + rd * (r + j)];
+            for (int i = 0; i < rd; ++i) M[i] = Pnew[i];
+            for (int k : nz) {
+                const double dk = delta[k];
+                const double* Pk = Pnew + static_cast<size_t>(rd) * (r + k);
+                for (int i = 0; i < rd; ++i) M[i] += Pk[i] * dk;
             }
             if (gain < 1e4) {
                 ++nu;
@@ -417,8 +514,12 @@ LikeOut arima_like(const Vec& y, ArimaModel& m, Vec* resid) {
             }
             if (resid) (*resid)[l] = resid0 / std::sqrt(gain);
             for (int i = 0; i < rd; ++i) a[i] = anew[i] + M[i] * resid0 / gain;
-            for (int i = 0; i < rd; ++i)
-                for (int j = 0; j < rd; ++j) P[i + rd * j] = Pnew[i + rd * j] - M[i] * M[j] / gain;
+            for (int j = 0; j < rd; ++j) {
+                const double Mj = M[j];
+                double* Pj = P + static_cast<size_t>(rd) * j;
+                const double* Nj = Pnew + static_cast<size_t>(rd) * j;
+                for (int i = 0; i < rd; ++i) Pj[i] = Nj[i] - M[i] * Mj / gain;
+            }
         } else {
             for (int i = 0; i < rd; ++i) a[i] = anew[i];
             for (int i = 0; i < rd * rd; ++i) P[i] = Pnew[i];
@@ -427,7 +528,6 @@ LikeOut arima_like(const Vec& y, ArimaModel& m, Vec* resid) {
     }
     return {ssq, sumlog, nu};
 }
-
 // ARIMA_CSS: conditional sum of squares / nu; residuals optional.
 double arima_css(const Vec& y, const Arma& arma, const Vec& phi, const Vec& theta, int ncond, Vec* resid_out) {
     const int n = static_cast<int>(y.size()), p = static_cast<int>(phi.size()), q = static_cast<int>(theta.size());
@@ -486,7 +586,7 @@ int vmmin(const Optim& os, Vec& b, double& Fmin, int maxit) {
     const double stepredn = 0.2, acctol = 0.0001, reltest = 10.0;
     const double abstol = -INF, reltol = 1.490116119384765625e-08;
     const int n = static_cast<int>(b.size());
-    if (maxit <= 0) { Fmin = os.fminfn(b); return 0; }
+    if (maxit <= 0 || n == 0) { Fmin = os.fminfn(b); return 0; }   // n == 0: arima's no.optim branch
     Vec g(n), t(n), X(n), c(n);
     std::vector<Vec> B(n, Vec(n, 0.0));
     double f = os.fminfn(b);
@@ -581,17 +681,23 @@ std::vector<Vec> optimhess(const Optim& os, const Vec& par) {
     return H;
 }
 
-// solve(H) via Gauss-Jordan with partial pivoting; returns false if singular (R would error).
+// solve(H) via Gauss-Jordan with partial pivoting; returns false where R's solve() errors: an exactly zero
+// pivot, or reciprocal 1-norm condition number below .Machine$double.eps (La_solve's dgecon test).
 bool invert(std::vector<Vec> A, std::vector<Vec>& inv) {
     const int n = static_cast<int>(A.size());
     inv.assign(n, Vec(n, 0.0));
     for (int i = 0; i < n; ++i) inv[i][i] = 1.0;
-    double scale = 0.0;
-    for (const Vec& r : A) for (double v : r) scale = std::max(scale, std::fabs(v));
+    auto norm1 = [n](const std::vector<Vec>& M) {
+        double mx = 0.0;
+        for (int j = 0; j < n; ++j) { double s = 0.0; for (int i = 0; i < n; ++i) s += std::fabs(M[i][j]); mx = std::max(mx, s); }
+        return mx;
+    };
+    const double anorm = norm1(A);
+    if (!std::isfinite(anorm)) return false;
     for (int c = 0; c < n; ++c) {
         int piv = c;
         for (int r = c + 1; r < n; ++r) if (std::fabs(A[r][c]) > std::fabs(A[piv][c])) piv = r;
-        if (!(std::fabs(A[piv][c]) > 1e-14 * std::max(scale, 1e-300))) return false;   // LAPACK-like rcond guard
+        if (A[piv][c] == 0.0) return false;
         std::swap(A[c], A[piv]);
         std::swap(inv[c], inv[piv]);
         const double d = A[c][c];
@@ -603,10 +709,18 @@ bool invert(std::vector<Vec> A, std::vector<Vec>& inv) {
             for (int k = 0; k < n; ++k) { A[r][k] -= f * A[c][k]; inv[r][k] -= f * inv[c][k]; }
         }
     }
+    if (n > 0) {
+        const double rcond = 1.0 / (anorm * norm1(inv));
+        if (!(rcond >= 2.220446049250313e-16)) return false;
+    }
     return true;
 }
 
 }  // namespace
+
+Vec arima_q0(const Vec& phi, const Vec& theta, int method) {
+    return method == 0 ? getQ0_gardner(phi, theta) : getQ0_acov(phi, theta);
+}
 
 // ------------------------------------------------------------------------------------------- stats::arima
 ArimaFit arima_fit(const Vec& x0, const ArimaSpec& s) {

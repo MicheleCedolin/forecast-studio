@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "arima.hpp"
+#include "autoarima.hpp"
 #include "basic.hpp"
 #include "ets.hpp"
 
@@ -41,11 +42,13 @@ Vec m_comb(const Vec& y, int h, int m) { return tsf::comb_shd(y, h, m); }
 Vec m_holt(const Vec& y, int h, int) { return tsf::holt_forecast(y, h, false); }
 Vec m_damped(const Vec& y, int h, int) { return tsf::holt_forecast(y, h, true); }
 Vec m_ets(const Vec& y, int h, int m) { return tsf::ets_auto(y, m, h).forecast; }
+Vec m_arima(const Vec& y, int h, int m) { return tsf::auto_arima_study(y, m, h).forecast; }
 
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
     {"naive2", m_naive2}, {"comb_shd", m_comb}, {"holt", m_holt}, {"holt_damped", m_damped}, {"ets", m_ets},
+    {"arima", m_arima},
 };
 
 Fn find_method(const char* name) {
@@ -56,9 +59,51 @@ Fn find_method(const char* name) {
 
 }  // namespace
 
-TSF_API const char* tsf_version() { return "tsfcore 0.2.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets)"; }
+TSF_API const char* tsf_version() {
+    return "tsfcore 0.3.0 (naive, snaive, drift, ses, theta, naive2, holt, comb_shd, ets, arima)";
+}
 
-TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets"; }
+TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,comb_shd,holt,holt_damped,ets,arima"; }
+
+// Test hook for auto.arima (the study's chain). info = {p, d, q, P, D, Q, period, drift, mean, step, loglik, aicc,
+// sigma2}. Returns 0, or 1 on error (message in msg).
+TSF_API int tsf_auto_arima(const double* y, int32_t n, int32_t freq, int32_t h, double* fc, double* info, char* msg,
+                           int32_t len) {
+    try {
+        const tsf::AutoArimaResult r = tsf::auto_arima_study(Vec(y, y + n), freq, h);
+        std::copy(r.forecast.begin(), r.forecast.end(), fc);
+        const double v[13] = {double(r.p), double(r.d), double(r.q), double(r.P), double(r.D), double(r.Q),
+                              double(r.period), r.drift ? 1.0 : 0.0, r.mean ? 1.0 : 0.0, double(r.step),
+                              r.loglik, r.aicc, r.sigma2};
+        std::copy(v, v + 13, info);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
+// Test hook: Q0 of an ARMA(p, q) by method 0 (Gardner, as R) or 1 (autocovariances); out gets r*r values.
+TSF_API int tsf_arima_q0(const double* phi, int32_t p, const double* theta, int32_t q, int32_t method, double* out) {
+    try {
+        const Vec Q = tsf::arima_q0(Vec(phi, phi + p), Vec(theta, theta + q), method);
+        std::copy(Q.begin(), Q.end(), out);
+        return 0;
+    } catch (...) { return 1; }
+}
+
+// Diagnostic hook for auto.arima's differencing tests: out = {seas.heuristic, nsdiffs, ndiffs(after D), kpss stat
+// of the level series}.
+TSF_API void tsf_arima_tests(const double* y, int32_t n, int32_t freq, double* out) {
+    const Vec x(y, y + n);
+    double s = std::numeric_limits<double>::quiet_NaN();
+    try { s = tsf::seas_heuristic(x, freq); } catch (...) {}
+    const int D = (n > 2 * freq && freq > 1) ? tsf::nsdiffs(x, freq) : 0;
+    Vec dx = x;
+    if (D > 0) { Vec t(dx.size() - freq); for (size_t i = 0; i < t.size(); ++i) t[i] = dx[i + freq] - dx[i]; dx = t; }
+    out[0] = s; out[1] = D; out[2] = tsf::ndiffs(dx, 2); out[3] = tsf::kpss_stat(x);
+}
 
 // Diagnostic hook: one fixed ETS model; init gets the initial state (up to 26 values), par the smoothing parameters
 // (alpha, [beta], [gamma], [phi]); returns lik (Inf on failure).

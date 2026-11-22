@@ -99,6 +99,38 @@ def test_ets_reproduces_r_forecast_ets(case):
     assert d < 1e-3, name
 
 
+def test_arima_reproduces_r_auto_arima(case):
+    """C++ arima is a port of R forecast::auto.arima (9.0.2) with the study's call chain auto.arima(lambda = 0) ->
+    auto.arima() -> auto.arima(seasonal = FALSE). The study's R forecasts are the reference; the same model is chosen
+    on all NN5 series and forecasts agree to ~1e-12 (worst ~1e-4). Daily uses the first 12 series to keep the suite
+    fast; tools/r_reference/compare_auto_arima.py checks all of them."""
+    name, seas, h, train, act = case
+    ref = _load(G / name, "forecasts_arima")
+    k = len(train) if name == "nn5_weekly" else 12
+    f, flags, _ = C.forecast_batch("arima", train[:k], h, seas)
+    assert not flags.any()
+    rel = np.abs(f - ref[:k]) / np.maximum(np.abs(ref[:k]), 1e-9)
+    assert np.median(rel) < 1e-9, f"{name}: median relative difference {np.median(rel):.2e}"
+    assert rel.max() < 1e-3, f"{name}: worst relative difference {rel.max():.2e}"
+
+
+def test_arima_q0_methods_agree():
+    """Gardner's Q0 (as R's getQ0) and the autocovariance form used for large state dimension give the same matrix."""
+    lib = C.load_lib()
+    dp = C.ctypes.POINTER(C.ctypes.c_double)
+    rng = np.random.default_rng(3)
+    for p, q in [(1, 0), (2, 1), (5, 5), (8, 2), (15, 7), (19, 14)]:
+        phi = np.r_[rng.uniform(-0.5, 0.5, 1), np.zeros(p - 1)] if p > 1 else rng.uniform(-0.9, 0.9, 1)
+        phi[-1] = rng.uniform(-0.6, 0.6)                 # (1 - a B)(1 - b B^p)-like: sparse, stationary
+        phi = np.ascontiguousarray(phi)
+        th = np.ascontiguousarray(rng.uniform(-0.6, 0.6, q))
+        r = max(p, q + 1)
+        out = [np.zeros(r * r), np.zeros(r * r)]
+        for m in (0, 1):
+            assert lib.tsf_arima_q0(phi.ctypes.data_as(dp), p, th.ctypes.data_as(dp), q, m, out[m].ctypes.data_as(dp)) == 0
+        np.testing.assert_allclose(out[1], out[0], rtol=1e-9, atol=1e-11 * np.abs(out[0]).max(), err_msg=f"({p},{q})")
+
+
 def test_engine_run_horizons_threads_and_fallback():
     eng = C.CppEngine()
     assert eng.available()[0]
@@ -110,4 +142,4 @@ def test_engine_run_horizons_threads_and_fallback():
     np.testing.assert_array_equal(r1.forecasts, r4.forecasts)                       # threading does not change results
     assert np.isnan(r1.forecasts[30, 3:]).all() and np.isfinite(r1.forecasts[30, :3]).all()
     with pytest.raises(Exception, match="does not support"):
-        eng.run(EngineJob(task="local", method="arima", train=train, horizon=3, seasonality=(7.0,)))
+        eng.run(EngineJob(task="local", method="tbats", train=train, horizon=3, seasonality=(7.0,)))
