@@ -827,6 +827,17 @@ int lm_qr(const Vec& y, const std::vector<Vec>& cols, Vec& coef, Vec& se) {
     return rank;
 }
 
+int r_optim_bfgs(const std::function<double(const Vec&)>& fn, const Vec& parscale, Vec& par, double& value, int maxit) {
+    Optim os;
+    os.fn = fn;
+    os.parscale = parscale;
+    Vec b(par.size());
+    for (size_t i = 0; i < par.size(); ++i) b[i] = par[i] / parscale[i];
+    const int code = vmmin(os, b, value, maxit);
+    for (size_t i = 0; i < par.size(); ++i) par[i] = b[i] * parscale[i];
+    return code;
+}
+
 Vec arima_q0(const Vec& phi, const Vec& theta, int method) {
     return method == 0 ? getQ0_gardner(phi, theta) : getQ0_acov(phi, theta);
 }

@@ -141,6 +141,19 @@ def test_dhr_arima_r_failure_modes():
                                     params={"fourier_k": 2}))
 
 
+def test_tbats_reproduces_r_tbats(case):
+    """C++ tbats is a port of R forecast::tbats (9.0.2) with its BATS alternative, ARMA errors, harmonic search and
+    Guerrero lambda. Against the study's R forecasts (tests/golden/<case>/forecasts_tbats): all 111 weekly and 111 daily
+    series agree to <= 1.3e-9 (median ~2e-15); a subset keeps the suite fast."""
+    name, seas, h, train, _ = case
+    ref = _load(G / name, "forecasts_tbats")
+    k = 30 if name == "nn5_weekly" else 10
+    f, flags, _ = C.forecast_batch("tbats", train[:k], h, seas)
+    assert not flags.any()
+    rel = np.abs(f - ref[:k]) / np.maximum(np.abs(ref[:k]), 1e-9)
+    assert rel.max() < 1e-6, f"{name}: worst relative difference {rel.max():.2e}"
+
+
 def test_holt_winters_reproduces_r_ets_aaa():
     """C++ holt_winters = R ets(y, model = "AAA") (damped / undamped by AICc) through the C++ ets port. Reference:
     R 9.0.2 forecasts on NN5 daily (tests/golden/nn5_daily/r_ets_aaa). statsforecast's HoltWinters, which the

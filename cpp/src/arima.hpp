@@ -2,6 +2,7 @@
 #pragma once
 
 #include <complex>
+#include <functional>
 #include <vector>
 
 #include "util.hpp"
@@ -17,6 +18,10 @@ CVec polyroot(const Vec& z);
 // stats:::getQ0, 1 = from the autocovariances. arima_fit uses Gardner for r <= 8 and the autocovariance form above.
 Vec getQ0_acov(const Vec& phi, const Vec& theta);
 Vec arima_q0(const Vec& phi, const Vec& theta, int method);
+
+// R optim(par, fn, method = "BFGS", control = list(parscale, maxit)): vmmin with numerical gradients (ndeps 1e-3).
+// par is updated to the optimum; returns the convergence code.
+int r_optim_bfgs(const std::function<double(const Vec&)>& fn, const Vec& parscale, Vec& par, double& value, int maxit = 100);
 
 // svd(X)$v of the columns X (n x k), columns by decreasing singular value (d gets the singular values).
 std::vector<Vec> svd_v(const std::vector<Vec>& cols, Vec* d = nullptr);

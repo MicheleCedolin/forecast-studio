@@ -40,7 +40,7 @@ struct AutoArimaResult {
 // auto.arima(y, seasonal, lambda = log_transform ? 0 : NULL, xreg) with frequency(y) = freq;
 // forecast(fit, h, xreg = newxreg)$mean. xreg / newxreg: columns of length n / h. Throws where R stops.
 AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_transform, int h,
-                           const std::vector<Vec>& xreg = {}, const std::vector<Vec>& newxreg = {});
+                           const std::vector<Vec>& xreg = {}, const std::vector<Vec>& newxreg = {}, int fixed_d = -1);
 
 // The study's chain: auto.arima(y, lambda = 0), else auto.arima(y), else auto.arima(y, seasonal = FALSE).
 AutoArimaResult auto_arima_study(const Vec& y, int freq, int h);

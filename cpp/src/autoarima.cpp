@@ -401,7 +401,7 @@ Vec differencing_forecast(const Vec& x, int d, int D, int m, double c, int reg, 
 }  // namespace
 
 AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_transform, int h,
-                           const std::vector<Vec>& xreg, const std::vector<Vec>& newxreg) {
+                           const std::vector<Vec>& xreg, const std::vector<Vec>& newxreg, int fixed_d) {
     AutoArimaResult out;
     const int n = static_cast<int>(y.size());
     if (n == 0) throw std::runtime_error("All data are missing");
@@ -465,8 +465,8 @@ AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_trans
     Vec dx = D > 0 ? diff_lag(xx, m) : xx;
     std::vector<Vec> diffxreg;
     for (const Vec& c : xregg) diffxreg.push_back(D > 0 ? diff_lag(c, m) : c);
-    int d = ndiffs(dx, 2);
-    if (d > 0 && !xregg.empty()) {
+    int d = (fixed_d >= 0) ? fixed_d : ndiffs(dx, 2);
+    if (fixed_d < 0 && d > 0 && !xregg.empty()) {
         for (Vec& c : diffxreg) for (int i = 0; i < d; ++i) c = diff_lag(c, 1);
         if (any_constant(diffxreg)) --d;
     }
