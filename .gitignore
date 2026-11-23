@@ -12,6 +12,8 @@ dist/
 # Data and outputs (large / user-specific; see README "Veri paketi")
 data/tsf/*
 !data/tsf/.gitkeep
+# M5 price/calendar files for the official WRMSSE weights (not redistributed)
+data/m5/
 runs/
 uploads/*
 !uploads/.gitkeep
