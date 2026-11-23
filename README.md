@@ -155,7 +155,7 @@ docs/APP.md                  interface: use, security, limits, references
 docs/DOCKER_WINDOWS.md       installation, .wslconfig, troubleshooting
 docs/VALIDATION.md           golden tests: what, how, results
 docs/HPC.md                  cluster runs: set-up, SLURM script, time estimate, outputs, agreement on Linux
-Dockerfile, docker-compose.yml, docker/, scripts/windows/, scripts/hpc/ (setup.sh, setup_conda.sh, sweep.sge, sweep.sbatch, run_sweep.sh)
+Dockerfile, docker-compose.yml, docker/, scripts/windows/, scripts/hpc/ (setup.sh, setup_conda.sh, sweep.sge, submit_datasets.sh, sweep.sbatch, run_sweep.sh)
 ```
 
 Language note: the interface, the run messages and the CLI output are in English. Source comments, the older documents (`docs/METRICS.md`, `docs/CHANGES_R.md`, `docs/PYTHON_ENGINE.md`, `docs/VALIDATION.md`, `docs/DOCKER_WINDOWS.md`) and the Windows set-up scripts are still in Turkish.

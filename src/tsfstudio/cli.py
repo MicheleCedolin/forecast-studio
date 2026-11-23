@@ -194,6 +194,17 @@ def _cmd_sweep(a) -> int:
     if a.report_only:
         print(f"Report -> {S.build_report(Path(a.out) / 'probe' if a.probe else a.out)}")
         return 0
+    if a.list_datasets:                                     # for scripts that submit one job per dataset
+        try:
+            plan, _ = S.build_plan(_csv_list(a.datasets) or ["all"], _csv_list(a.methods) or ["study"], engine=a.engine,
+                                   exclude_datasets=_csv_list(a.exclude_datasets), exclude_methods=_csv_list(a.exclude_methods),
+                                   data_dir=a.data_dir, lag=a.lag)
+        except S.SweepError as exc:
+            print("ERROR:", exc, file=sys.stderr)
+            return 2
+        # catalogue datasets by id, other files by path: either can be given back to --datasets
+        print("\n".join(dict.fromkeys(p["dataset"] if p["catalog"] else p["path"] for p in plan)))
+        return 0
     metrics = _csv_list(a.metrics) or ["default"]
     metrics = list(dict.fromkeys(m for item in metrics for m in (DEFAULT_METRICS if item == "default" else ALL_METRICS if item == "all" else (item,))))
     bad = [m for m in metrics if m not in ALL_METRICS]
@@ -687,6 +698,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--no-report", action="store_true", help="do not write <out>/report at the end")
     sp.add_argument("--report-only", action="store_true", help="only rebuild <out>/report from the task folders")
     sp.add_argument("--dry-run", action="store_true", help="print the plan and stop")
+    sp.add_argument("--list-datasets", action="store_true", help="print the dataset ids of the plan, one per line, and stop")
     sp.add_argument("--in-process", action="store_true",
                     help="run the tasks inside this process (no isolation, no time limit, no memory per task); for debugging")
     sp.set_defaults(fn=_cmd_sweep)

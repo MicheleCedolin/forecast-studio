@@ -112,6 +112,23 @@ SWEEP_METHODS=study,benchmarks qsub -V scripts/hpc/sweep.sge        # values wit
 qstat; tail -f sge-tsf-sweep.<job id>.log; qdel <job id>
 ```
 
+One job per dataset (`scripts/hpc/submit_datasets.sh`, run on the login node): every dataset becomes its own job
+`tsf-<dataset>` with its own log, the methods run in turn inside it on all slots of the job, and a last job
+`tsf-report`, held until the others end, builds the report. A dataset can then be followed, stopped (`qdel tsf-m4_monthly`)
+or resubmitted on its own.
+
+```bash
+DRY=1 bash scripts/hpc/submit_datasets.sh                              # print the qsub commands only
+PROBE=20 bash scripts/hpc/submit_datasets.sh                           # time estimate per dataset
+bash scripts/hpc/submit_datasets.sh                                    # all datasets, 32 slots each
+SWEEP_DATASETS=m4_monthly,nn5_daily bash scripts/hpc/submit_datasets.sh
+SLOTS=8 bash scripts/hpc/submit_datasets.sh                            # 8 slots per job
+```
+
+With a limit of 32 slots per user, jobs of 32 slots run one after another, smallest dataset first; with `SLOTS=8` four
+datasets run side by side, each with 8 threads. All jobs write into the same `--out` folder (one sub-folder per
+dataset), so the report covers them together.
+
 `qdel` first sends a notice (`-notify`), so the running tasks are recorded as `interrupted` and the report is written.
 Where a slot is a hardware thread (hyper-threading on), 32 slots can be the two threads of 16 physical cores when the
 rest of the node is busy; computation times measured then are longer and noisier than on 32 free cores. For times that

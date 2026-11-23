@@ -7,6 +7,7 @@
 #   qsub -v SWEEP_METHODS=study,benchmarks,SWEEP_EXCLUDE_DATASETS=london_smart_meters scripts/hpc/sweep.sge
 #
 # (a comma inside a value needs the other form:  SWEEP_METHODS=study,benchmarks qsub -V scripts/hpc/sweep.sge)
+# One job per dataset instead of one job for everything:  bash scripts/hpc/submit_datasets.sh
 # Submitting the same command again continues: finished tasks are skipped. Submit from the repository root.
 #$ -N tsf-sweep
 #$ -S /bin/bash
@@ -45,6 +46,8 @@ args=(--out "$SWEEP_OUT" --datasets "$SWEEP_DATASETS" --methods "$SWEEP_METHODS"
 [ -n "$SWEEP_EXCLUDE_DATASETS" ] && args+=(--exclude-datasets "$SWEEP_EXCLUDE_DATASETS")
 [ -n "$SWEEP_EXCLUDE_METHODS" ] && args+=(--exclude-methods "$SWEEP_EXCLUDE_METHODS")
 [ -n "${PROBE:-}" ] && args+=(--probe "$PROBE")
+[ -n "${SWEEP_NO_REPORT:-}" ] && args+=(--no-report)
+[ -n "${SWEEP_REPORT_ONLY:-}" ] && args=(--out "$SWEEP_OUT" --report-only)
 
 echo "host $(hostname) | job ${JOB_ID:-none} | slots ${NSLOTS:-?} | $(date)"
 echo "python -m tsfstudio sweep ${args[*]} $SWEEP_EXTRA"
