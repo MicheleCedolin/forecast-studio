@@ -65,12 +65,14 @@ class RunConfig:
     write_xlsx: bool = True
     origins: int = 1                         # rolling origin: number of forecast origins (1 = last H only)
     origin_step: int | None = None           # observations between origins (None -> horizon: windows do not overlap)
+    intervals: tuple[int, ...] = ()          # prediction-interval levels in percent (e.g. (80, 95)); () = none
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["output_dir"] = None if self.output_dir is None else str(self.output_dir)
         d["seasonality"] = None if self.seasonality is None else list(self.seasonality)
         d["metrics"] = list(self.metrics)
+        d["intervals"] = list(self.intervals)
         return d
 
 
@@ -192,8 +194,12 @@ def prepare_origins(dataset: TSFDataset, cfg: RunConfig, entry: DatasetEntry | N
     step = int(cfg.origin_step or prep.horizon)
     if step < 1:
         raise RunError("The step between forecast origins must be at least 1.")
-    if n_orig > 1:
-        prep = prepare(dataset, cfg, entry, cut=0, min_extra=(n_orig - 1) * step)
+    levels = tuple(cfg.intervals or ())
+    if any(int(lv) != lv or not 50 <= lv <= 99 for lv in levels):
+        raise RunError("Prediction-interval levels must be whole percentages between 50 and 99.")
+    extra = (n_orig - 1) * step + (prep.horizon if levels else 0)     # intervals: one calibration window before
+    if extra:
+        prep = prepare(dataset, cfg, entry, cut=0, min_extra=extra)
     return prep, n_orig, step
 
 
@@ -303,7 +309,9 @@ def run(dataset: TSFDataset, cfg: RunConfig, *, entry: DatasetEntry | None = Non
     if progress:
         progress("prepare", 0, 1)
     prep, n_orig, step = prepare_origins(dataset, cfg, entry)
-    extra = (n_orig - 1) * step
+    levels = tuple(sorted(set(int(lv) for lv in (cfg.intervals or ()))))
+    extra = (n_orig - 1) * step + (prep.horizon if levels else 0)
+    latest_bounds = None
     eng = engine or get_engine(cfg.engine)
 
     ok, msg = eng.available()
@@ -341,6 +349,20 @@ def run(dataset: TSFDataset, cfg: RunConfig, *, entry: DatasetEntry | None = Non
             raise RunError(f"Engine output has an unexpected shape: {r_o.forecasts.shape} != {p_o.test.shape}")
         ps_o = compute_error_table(r_o.forecasts, p_o.test, p_o.train, p_o.seasonality, series_names=p_o.names,
                                    metrics=cfg.metrics, mase_digits=cfg.mase_digits)
+        if levels:
+            # conformal intervals: the same model fitted one horizon earlier gives the calibration errors
+            from . import intervals as IV
+            p_c = prepare(dataset, cfg, entry, cut=cut + prep.horizon, min_extra=extra)
+            cprog = (lambda st, d, tot: progress(f"calibration: {st}", d, tot)) if progress else None
+            r_c = eng.run(build_job(p_c, cfg, entry), progress=cprog, cancel=cancel)
+            probs = IV.probs_for(levels)
+            q = IV.conformal_quantiles(r_c.forecasts, p_c.test, IV.series_scales(p_c.train, p_c.seasonality), probs)
+            scales = IV.series_scales(p_o.train, p_o.seasonality)
+            bnds = IV.bounds(r_o.forecasts, scales, q, probs)
+            ps_o = ps_o.join(IV.interval_metrics(r_o.forecasts, p_o.test, scales, levels, bnds, p_o.names))
+            elapsed += r_c.elapsed_sec
+            if cut == 0:
+                latest_bounds = (probs, bnds)
         origin_rows.append((cut, p_o, r_o.forecasts, ps_o))
         fallbacks_all += [dict(f, origin_cut=cut) for f in r_o.fallbacks] if n_orig > 1 else list(r_o.fallbacks)
         notes_all += [m for m in r_o.notes if m not in notes_all]
@@ -397,6 +419,7 @@ def run(dataset: TSFDataset, cfg: RunConfig, *, entry: DatasetEntry | None = Non
         },
         "split": {"horizon": prep.horizon, "n_excluded": len(prep.excluded), "excluded": prep.excluded,
                   "origins": n_orig, "origin_step": step if n_orig > 1 else None,
+                  "interval_levels": list(levels), "interval_method": "split conformal, one calibration window" if levels else None,
                   "origin_cuts": [c for c, *_ in origin_rows]},
         "missing": prep.missing_info,
         "engine": {"name": eng.name, "versions": res.versions, "elapsed_sec": res.elapsed_sec},
@@ -420,6 +443,17 @@ def run(dataset: TSFDataset, cfg: RunConfig, *, entry: DatasetEntry | None = Non
     manifest["outputs"] = _write_outputs(run_dir, prep, res.forecasts, res.fallbacks, per_series, summary, run_info, cfg.write_xlsx)
     if n_orig > 1:
         manifest["outputs"].update(_write_origin_outputs(run_dir, origin_rows))
+    if latest_bounds is not None:
+        probs, bnds = latest_bounds
+        cols = [f"h{k}" for k in range(1, prep.horizon + 1)]
+        frames = []
+        for p in probs:
+            fr = pd.DataFrame(bnds[p], columns=cols)
+            fr.insert(0, "quantile", p)
+            fr.insert(0, "series_name", prep.names)
+            frames.append(fr)
+        pd.concat(frames, ignore_index=True).to_csv(run_dir / "intervals.csv", index=False)
+        manifest["outputs"]["intervals_csv"] = "intervals.csv"
     manifest["timing"]["total_sec"] = time.time() - t_start
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     manifest["outputs"]["manifest"] = "manifest.json"

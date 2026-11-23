@@ -569,6 +569,15 @@ MODELS: dict[str, dict] = {
 
 # ----------------------------------------------------------------------------------------------------
 METRICS_INFO = {
+    # Prediction intervals (shown when a run asks for them; tsfstudio.intervals)
+    "Coverage80": {"name": "Coverage (80%)", "unit": "share", "text": "Share of the test points inside the 80% prediction interval. Ideal: 0.80.",
+                   "caution": "Coverage alone rewards wide intervals; read it together with MSIS. With few series the intervals rest on few calibration errors."},
+    "Coverage95": {"name": "Coverage (95%)", "unit": "share", "text": "Share of the test points inside the 95% prediction interval. Ideal: 0.95.",
+                   "caution": "Coverage alone rewards wide intervals; read it together with MSIS."},
+    "MSIS": {"name": "MSIS", "unit": "scale-free", "text": "Mean scaled interval score of the 95% interval (the widest level when 95 is not requested), as in the M4 competition: interval width plus 2/α times every miss, divided by the in-sample seasonal-naive MAE (the MASE scale). Lower is better.",
+             "caution": "Intervals are split-conformal: built from the model's own errors one horizon earlier, pooled across series, so every engine and method is treated alike (not the model's analytic interval)."},
+    "WQL": {"name": "Weighted quantile loss", "unit": "ratio", "text": "Pinball loss of the interval bounds and of the point forecast (as the median), times 2, summed over the horizon and divided by the sum of |actual|; averaged over the quantiles (GluonTS mean wQL). Lower is better.",
+            "caution": "Undefined when all actuals are 0. Uses the point forecast as the median."},
     "SMAPE": {"name": "SMAPE", "unit": "ratio (0–2)",
               "text": "Mean of 2·|forecast−actual| / (|forecast|+|actual|). Given as a ratio (0–2), NOT a percentage. It is undefined when forecast and actual are both 0, and that point is excluded.",
               "caution": "Misleading for intermittent demand: every point with forecast 0 and actual > 0 gives exactly 2; a model that forecasts all zeros scores exactly 2.0."},

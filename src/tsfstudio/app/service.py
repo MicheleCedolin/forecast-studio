@@ -338,17 +338,38 @@ class AppService:
                         integer_conversion={"auto": None, None: None, "on": True, "off": False}[ic], missing_policy=mp,
                         params=self._params(info, engine, payload.get("params") or {}), seed=opt_int("seed", 0) if payload.get("seed") not in (None, "") else 1,
                         workers=workers, max_series=opt_int("max_series"), metrics=tuple(metrics), output_dir=self.runs_dir,
-                        origins=opt_int("origins") or 1, origin_step=opt_int("origin_step"))
+                        origins=opt_int("origins") or 1, origin_step=opt_int("origin_step"),
+                        intervals=self._levels(payload.get("intervals")))
         if cfg.origins > 50:
             raise AppError("At most 50 forecast origins.")
         return cfg, entry, ds_id
 
     @staticmethod
-    def _scale_for_origins(rep, origins: int) -> None:
+    def _levels(v) -> tuple[int, ...]:
+        if v in (None, "", []):
+            return ()
+        if not isinstance(v, list):
+            raise AppError("intervals must be a list of levels.")
+        try:
+            levels = sorted({int(x) for x in v})
+        except (TypeError, ValueError):
+            raise AppError("Prediction-interval levels must be whole numbers.") from None
+        if any(not 50 <= lv <= 99 for lv in levels):
+            raise AppError("Prediction-interval levels must be between 50 and 99.")
+        return tuple(levels)
+
+    @staticmethod
+    def _scale_for_origins(rep, origins: int, intervals: bool = False) -> None:
         """A rolling-origin run fits the model once per origin: scale the one-origin time estimate."""
-        if origins > 1 and rep.runtime is not None and rep.runtime.seconds:
-            rep.runtime.seconds *= origins
-            rep.runtime.message = f"{rep.runtime.message} Rolling origin: {origins} fits, about {origins} times as long."
+        fits = origins * (2 if intervals else 1)
+        if fits > 1 and rep.runtime is not None and rep.runtime.seconds:
+            rep.runtime.seconds *= fits
+            why = []
+            if origins > 1:
+                why.append(f"{origins} forecast origins")
+            if intervals:
+                why.append("a calibration fit for the prediction intervals")
+            rep.runtime.message = f"{rep.runtime.message} With {' and '.join(why)}: {fits} fits, about {fits} times as long."
 
     @staticmethod
     def _params(info: dict, engine: str, given: dict) -> dict:
@@ -414,9 +435,9 @@ class AppService:
         if probe and self.current_job() is not None:
             probe = False
         rep = preflight(job, engine=eng, probe=probe)
-        self._scale_for_origins(rep, cfg.origins)
+        self._scale_for_origins(rep, cfg.origins, bool(cfg.intervals))
         return clean({"ok": True, "n_series_run": len(prep.train), "horizon": prep.horizon, "seasonality": list(prep.seasonality),
-                      "origins": cfg.origins, "origin_step": step if cfg.origins > 1 else None,
+                      "origins": cfg.origins, "origin_step": step if cfg.origins > 1 else None, "intervals": list(cfg.intervals),
                       "integer_conversion": prep.integer_conversion, "lag": job.lag, "missing": prep.missing_info,
                       "excluded": len(prep.excluded), "warnings": list(prep.warnings) + list(rep.warnings),
                       "memory": None if rep.memory is None else asdict(rep.memory),
@@ -455,7 +476,7 @@ class AppService:
             if not confirm_long:
                 prep, _, _ = prepare_origins(ds, cfg, entry)
                 pre = preflight(build_job(prep, cfg, entry), engine=get_engine(cfg.engine))
-                self._scale_for_origins(pre, cfg.origins)
+                self._scale_for_origins(pre, cfg.origins, bool(cfg.intervals))
                 if pre.long_running:
                     raise RunError("Long run: the estimated time exceeds 15 minutes. Read the time estimate, tick the confirmation box and start again.")
             res = run(ds, cfg, entry=entry, dataset_id=ds_id, engine=get_engine(cfg.engine), progress=progress, cancel=job.cancel)
@@ -845,7 +866,21 @@ class AppService:
         except Exception as exc:  # noqa: BLE001
             hist_note = f"Past data could not be read ({type(exc).__name__}); showing only the test and forecast."
         errs = fr["er"][fr["er"]["series_name"].astype(str) == name]
-        return clean({"name": name, "index": i, "horizon": H, "history": hist, "test": a.tolist(), "forecast": f.tolist(),
+        band = None
+        ivp = fr["dir"] / "intervals.csv"
+        if ivp.is_file():                                  # the widest requested interval, as a band in the chart
+            try:
+                iv = pd.read_csv(ivp)
+                iv = iv[iv["series_name"].astype(str) == name]
+                if len(iv):
+                    lo_q, hi_q = iv["quantile"].min(), iv["quantile"].max()
+                    cols = [c for c in iv.columns if c.startswith("h")]
+                    band = {"level": round((hi_q - lo_q) * 100),
+                            "lower": iv[iv["quantile"] == lo_q][cols].iloc[0].to_numpy(float).tolist(),
+                            "upper": iv[iv["quantile"] == hi_q][cols].iloc[0].to_numpy(float).tolist()}
+            except (OSError, ValueError, KeyError):
+                band = None
+        return clean({"name": name, "index": i, "horizon": H, "history": hist, "test": a.tolist(), "forecast": f.tolist(), "band": band,
                       "errors": {} if errs.empty else {k: v for k, v in errs.iloc[0].to_dict().items() if k != "series_name"}, "note": hist_note,
                       "names_count": len(names)})
 

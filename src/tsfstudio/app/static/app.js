@@ -55,6 +55,7 @@ const PCT_METRICS = new Set(["WAPE", "MAPE", "PBias"]);
 const SCALE_FREE = new Set(["SMAPE", "mSMAPE", "MASE", "RMSSE", "nRMSE_Mean", "nRMSE_Range", "MAAPE", "RMSLE"]);
 function fmtM(k, v) {
   if (v == null || Number.isNaN(v)) return "—";
+  if (/^Coverage\d+$/.test(k)) return nf1fix.format(v * 100) + "%";
   if (PCT_METRICS.has(k)) return nf1fix.format(v) + "%";
   if (SCALE_FREE.has(k)) return nf3fix.format(v);
   return Math.abs(v) >= 1000 ? nf0.format(v) : nf2fix.format(v);      // data-unit measures (MAE, RMSE, MSE, MedAE, ME)
@@ -107,7 +108,7 @@ const S = {
   tab: "all", filter: "",
   detail: null, detailErr: null,
   sel: { dataset: null, method: null, engine: "python" },
-  settings: { horizon: "", lag: "", integer: "auto", missing: "error", max_series: "", seed: "1", workers: "1", metrics: null, origins: "1", origin_step: "" },
+  settings: { horizon: "", lag: "", integer: "auto", missing: "error", max_series: "", seed: "1", workers: "1", metrics: null, origins: "1", origin_step: "", intervals: new Set() },
   params: {},
   est: null, estBusy: false, estSeq: 0, confirmLong: false,
   job: null, pollTimer: null,
@@ -212,6 +213,7 @@ const SETTING_NOTES = {
   workers: ["Workers", "In the Python engine, series are run in this many parallel processes. The C++ engine uses this many threads (1 = all CPU cores). The R engine runs on a single core on Windows. With 8 GB of memory we suggest 1-2 for Python."],
   metrics: ["Measures", "The error measures to compute. Hover over a measure name to see its definition and what to watch out for."],
   origins: ["Forecast origins (rolling origin)", "With more than one origin the model is fitted and evaluated several times: at the usual split, and again with the last step, 2 x step, ... observations removed. Each fit sees only the data before its origin. Per-series measures are the mean over the origins, which gives steadier rankings than a single split (Tashman, 2000). The run takes about as many times longer. Series shorter than horizon + 2 + (origins - 1) x step are left out."],
+  intervals: ["Prediction intervals", "Adds prediction intervals at the chosen levels and scores them (coverage, MSIS, weighted quantile loss). The intervals are split-conformal: the model is also fitted one horizon earlier, and its errors there, scaled per series like MASE and pooled across series for each forecast step, set the interval around the final forecast. This works the same for every engine and method, costs one extra fit and leaves out series shorter than two horizons plus two."],
   origin_step: ["Step between origins", "How many observations each earlier origin moves back. Empty: the horizon, so the test windows do not overlap."],
 };
 function settingNote(k, extra) {
@@ -560,10 +562,13 @@ function renderAyarlar() {
         return el("div", {}, el("h3", { text: SETTING_NOTES.missing[0] }), el("p", { text: SETTING_NOTES.missing[1] }), pol ? runIn(pol.label + ".", pol.help) : null);
       })),
     el("div", { class: "sub" }, bindNote(el("div", { class: "field" }, el("div", { class: "lab", text: "Measures" }), metricsBox), settingNote("metrics"))),
-    el("details", { class: "adv", open: s.origins !== "1" && s.origins !== "" ? true : null }, el("summary", { text: "Rolling origin" }),
+    el("details", { class: "adv", open: (s.origins !== "1" && s.origins !== "") || s.intervals.size ? true : null }, el("summary", { text: "Rolling origin and prediction intervals" }),
       el("div", { class: "grid3 sub" },
         field("Forecast origins", inp("origins", "number", "1", { min: 1 }), settingNote("origins"), s.origins !== "1" && s.origins !== ""),
-        field("Step between origins", inp("origin_step", "number", "horizon", { min: 1 }), settingNote("origin_step"), s.origin_step !== ""))),
+        field("Step between origins", inp("origin_step", "number", "horizon", { min: 1 }), settingNote("origin_step"), s.origin_step !== ""),
+        field("Prediction intervals", el("div", { class: "chips", role: "group", "aria-label": "Prediction interval levels" }, [80, 90, 95].map(lv => el("label", {},
+          el("input", { type: "checkbox", checked: s.intervals.has(lv), onchange: ev => { ev.target.checked ? s.intervals.add(lv) : s.intervals.delete(lv); renderKosuDebounced(); } }), `${lv}%`))),
+          settingNote("intervals"), s.intervals.size > 0))),
     el("details", { class: "adv" }, el("summary", { text: "Seed and workers" }),
       el("div", { class: "grid3 sub" },
         field("Seed", inp("seed", "number", "1", { min: 0 }), settingNote("seed"), s.seed !== "1"),
@@ -609,7 +614,7 @@ function buildConfig() {
     params[p.key] = p.kind === "bool" ? v === "true" : v;
   }
   return { dataset: S.sel.dataset, engine: S.sel.engine, method: S.sel.method, horizon: s.horizon, lag: s.lag, integer_conversion: s.integer, missing_policy: s.missing,
-    max_series: s.max_series, seed: s.seed, workers: s.workers, metrics: [...s.metrics], params, origins: s.origins, origin_step: s.origin_step };
+    max_series: s.max_series, seed: s.seed, workers: s.workers, metrics: [...s.metrics], params, origins: s.origins, origin_step: s.origin_step, intervals: [...s.intervals] };
 }
 // Load a past run's configuration into the workspace (UI review M4): dataset, model, engine, settings and parameters.
 async function loadSettings(m) {
@@ -623,7 +628,7 @@ async function loadSettings(m) {
   Object.assign(S.settings, {
     horizon: str(c.horizon), lag: str(c.lag), missing: c.missing_policy || "error", max_series: str(c.max_series),
     seed: str(c.seed == null ? 1 : c.seed), workers: str(c.workers == null ? 1 : c.workers),
-    origins: str(c.origins == null ? 1 : c.origins), origin_step: str(c.origin_step),
+    origins: str(c.origins == null ? 1 : c.origins), origin_step: str(c.origin_step), intervals: new Set(c.intervals || []),
     integer: c.integer_conversion == null ? "auto" : (c.integer_conversion ? "on" : "off"),
   });
   if (Array.isArray(c.metrics)) S.settings.metrics = new Set(c.metrics.filter(k => S.models.metrics[k]));
@@ -670,7 +675,7 @@ function renderKosu() {
     const row = (k, v) => { dl.append(el("dt", { text: k }), el("dd", {}, v)); };
     const total = S.detail && S.detail.stats ? S.detail.stats.n_series : null;
     row("Series", `${fint(est.n_series_run)}` + (total && est.n_series_run < total ? ` (of ${fint(total)})` : "") + (est.excluded ? `, ${est.excluded} series excluded` : ""));
-    row("Horizon", fint(est.horizon)); if (est.origins > 1) row("Rolling origin", `${est.origins} origins, ${fint(est.origin_step)} observations apart`); row("Seasonality", est.seasonality.map(x => nf2.format(x)).join(", "));
+    row("Horizon", fint(est.horizon)); if (est.intervals && est.intervals.length) row("Prediction intervals", est.intervals.map(l => l + "%").join(", ") + " (split conformal)"); if (est.origins > 1) row("Rolling origin", `${est.origins} origins, ${fint(est.origin_step)} observations apart`); row("Seasonality", est.seasonality.map(x => nf2.format(x)).join(", "));
     row("Rounding", est.integer_conversion ? "on" : "off"); if (est.lag != null) row("Lag", fint(est.lag));
     if (est.runtime) row("Run time", est.runtime.message + (est.probed ? "" : ""));
     if (est.memory) row("Memory", est.memory.message);
@@ -817,7 +822,7 @@ function renderSonuc() {
       el("dl", { class: "kvlist" },
         kv("Method / engine", `${cfg.method} / ${ENGINE_NAME[cfg.engine] || cfg.engine}`), kv("Parameters", params),
         kv("Horizon", cfg.effective_horizon), kv("Seasonal periods", (cfg.effective_seasonality || []).map(p => +(+p).toFixed(4)).join(", ")),
-        kv("Lag", cfg.lag), kv("Forecast origins", cfg.origins > 1 ? `${cfg.origins} (step ${m.split.origin_step})` : null), kv("Seed", cfg.seed), kv("Workers", cfg.workers), kv("Missing values", cfg.missing_policy),
+        kv("Lag", cfg.lag), kv("Prediction intervals", cfg.intervals && cfg.intervals.length ? cfg.intervals.map(l => l + "%").join(", ") + " (split conformal)" : null), kv("Forecast origins", cfg.origins > 1 ? `${cfg.origins} (step ${m.split.origin_step})` : null), kv("Seed", cfg.seed), kv("Workers", cfg.workers), kv("Missing values", cfg.missing_policy),
         kv("Series limit", cfg.max_series || "all"), kv("Measures", (cfg.metrics || []).join(", ")),
         kv("Data file SHA-256", m.dataset && m.dataset.sha256), kv("Engine versions", versions),
         kv("Forecast Studio", sw.tsfstudio && `${sw.tsfstudio} (Python ${sw.python}, ${sw.platform || ""})`), kv("Created (UTC)", (m.created_utc || "").replace("T", " ").slice(0, 19)))),
@@ -898,7 +903,8 @@ function renderChart(sweep) {
   const input = $("#chartbar input"); if (input) input.value = d.name;
   const W = Math.round(Math.max(330, Math.min(780, (host.clientWidth || 780) - 2))), narrow = W < 520, H = narrow ? 270 : 310, m = { l: narrow ? 46 : 58, r: 14, t: 22, b: 34 };
   const hist = d.history, nh = hist.length, H_ = d.horizon, N = nh + H_;
-  const vals = [...hist, ...d.test, ...d.forecast].filter(v => v != null);
+  const band = d.band;
+  const vals = [...hist, ...d.test, ...d.forecast, ...(band ? [...band.lower, ...band.upper] : [])].filter(v => v != null && Number.isFinite(v));
   if (!vals.length) { host.replaceChildren(el("p", { class: "empty", text: "No data to plot for this series." })); return; }
   let lo = Math.min(...vals), hi = Math.max(...vals); if (lo === hi) { lo -= 1; hi += 1; }
   const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
@@ -918,6 +924,12 @@ function renderChart(sweep) {
   g.append(svg("text", { x: cutX - 4, y: H - m.b + 17, "text-anchor": "end" }, "cut-off"));
   g.append(svg("text", { x: x(nh + H_ - 1) + step / 2 - 2, y: H - m.b + 17, "text-anchor": "end" }, "t+" + H_));
   g.append(svg("line", { x1: x(nh) - step / 2, x2: x(nh) - step / 2, y1: m.t, y2: H - m.b, stroke: "var(--ink)", "stroke-width": 1, "stroke-dasharray": "2 3" }));
+  if (band) {                                         // prediction interval as a translucent area under the lines
+    let s = "", ok = true;
+    band.upper.forEach((v, i) => { if (v == null) ok = false; else s += (s ? "L" : "M") + x(nh + i).toFixed(1) + " " + y(v).toFixed(1); });
+    for (let i = band.lower.length - 1; i >= 0; i--) { const v = band.lower[i]; if (v == null) ok = false; else s += "L" + x(nh + i).toFixed(1) + " " + y(v).toFixed(1); }
+    if (ok && s) g.append(svg("path", { d: s + "Z", fill: "var(--blue)", opacity: 0.14, stroke: "none" }));
+  }
   g.append(svg("path", { d: path(hist, 0), fill: "none", stroke: "var(--pencil)", "stroke-width": 1.5 }));
   g.append(svg("path", { d: path(d.test, nh), fill: "none", stroke: "var(--ink)", "stroke-width": 2 }));
   d.test.forEach((v, i) => v != null && g.append(svg("circle", { cx: x(nh + i), cy: y(v), r: 3, fill: "var(--ink)" })));
@@ -933,13 +945,14 @@ function renderChart(sweep) {
     const i = Math.max(0, Math.min(N - 1, Math.floor((px - m.l) / step)));
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
     if (i < nh) read.textContent = `t−${nh - i}: ${hist[i] == null ? "—" : fmt(hist[i])}`;
-    else { const k = i - nh, a = d.test[k], f = d.forecast[k]; read.textContent = `t+${k + 1}: actual ${fmt(a)}, forecast ${fmt(f)}` + (a != null && f != null ? `, error ${fmt(f - a)}` : ""); }
+    else { const k = i - nh, a = d.test[k], f = d.forecast[k]; read.textContent = `t+${k + 1}: actual ${fmt(a)}, forecast ${fmt(f)}` + (band ? `, ${band.level}% interval ${fmt(band.lower[k])} to ${fmt(band.upper[k])}` : "") + (a != null && f != null ? `, error ${fmt(f - a)}` : ""); }
   };
   ov.addEventListener("mousemove", move); ov.addEventListener("mouseleave", () => { cross.setAttribute("opacity", 0); read.textContent = ""; });
   g.append(ov);
   host.className = "chart" + (sweep ? " sweep" : "");
   host.replaceChildren(g);
   if (d.note) host.append(el("p", { class: "note soft", text: d.note }));
+  if (band) host.append(el("p", { class: "hint", style: "margin:6px 10px 0", text: `Shaded: the ${band.level}% prediction interval (split conformal).` }));
   const er = d.errors || {};
   host.append(el("p", { class: "hint", style: "margin:6px 10px 8px", text: Object.keys(er).length ? "This series: " + Object.entries(er).map(([k, v]) => `${(S.models.metrics[k] || { name: k }).name} ${fmtM(k, v)}`).join(", ") : "" }));
 }
