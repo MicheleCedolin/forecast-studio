@@ -140,17 +140,17 @@ def _mp_context():
 class PythonEngine(Engine):
     name = "python"
     LOCAL_METHODS = NATIVE_LOCAL + tuple(SF_LOCAL)          # üst küme; `methods()` kuruluma göre süzer
-    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm")
+    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat")
     # Bellek: pooled_regression akış hâlinde (tasarım matrisi yok); catboost float32 matris + Pool kopyası;
     # lightgbm float64 matris + kutulanmış Dataset (matrisin yaklaşık 1/8'i).
-    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5}
+    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5, "lightgbm_feat": 2.0}
 
     def methods(self) -> dict[str, tuple[str, ...]]:
         local = list(NATIVE_LOCAL)
         if S.sf_available():
             local += [k for k, cls in SF_LOCAL.items() if S.has_model(cls) and not S.missing_requirements(k)]
         glob = (["pooled_regression"] + (["catboost"] if G.catboost_available() else [])
-                + (["lightgbm"] if G.lightgbm_available() else []))
+                + (["lightgbm", "lightgbm_feat"] if G.lightgbm_available() else []))
         return {"local": tuple(local), "global": tuple(glob)}
 
     def versions(self) -> dict:
@@ -293,6 +293,10 @@ class PythonEngine(Engine):
                 f, info = G.pooled_regression_forecast(job.train, lag, H, max_obs)
             elif job.method == "lightgbm":
                 f, info = G.lightgbm_forecast(job.train, lag, H, max_obs, (job.params or {}).get("lightgbm"), job.workers)
+            elif job.method == "lightgbm_feat":
+                seas = [float(v) for v in np.asarray(job.seasonality, dtype=np.float64).reshape(-1)] or [1.0]
+                f, info = G.lightgbm_feat_forecast(job.train, lag, H, max(1, int(np.floor(max(seas)))), max_obs,
+                                                   (job.params or {}).get("lightgbm"), job.workers)
             else:
                 f, info = G.catboost_forecast(job.train, lag, H, max_obs, (job.params or {}).get("catboost"), job.workers)
         except ValueError as exc:

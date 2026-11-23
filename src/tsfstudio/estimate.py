@@ -97,7 +97,7 @@ class MemoryEstimate:
 
 # Tepe bellek katsayıları (tasarım matrisi X'in kaç katı): glm.fit (QR + ağırlıklar + artıklar) ağırdır;
 # catboost R matrisi + Pool kopyası. Katsayılar muhafazakâr kaba değerlerdir (ölçüm değil).
-_PEAK_FACTOR = {"pooled_regression": 4.5, "catboost": 3.0, "lightgbm": 1.5}
+_PEAK_FACTOR = {"pooled_regression": 4.5, "catboost": 3.0, "lightgbm": 1.5, "lightgbm_feat": 2.0}
 
 
 def global_rows(lengths: Sequence[int], lag: int, max_obs: int | None = None) -> int:

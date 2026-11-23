@@ -339,6 +339,26 @@ TSF_API int tsf_lightgbm(const double* values, const int64_t* offsets, int32_t n
     }
 }
 
+// Global LightGBM with M5-style features (lightgbm_feat_forecast); m = seasonal period. Returns 0 / 1 (msg).
+TSF_API int tsf_lightgbm_feat(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
+                              int32_t m, int32_t max_obs, const char* lib_path, const char* params, int32_t rounds,
+                              double* out, char* msg, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;
+    try {
+        std::vector<Vec> series(n_series);
+        for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
+        tsf::LightgbmSetup s;
+        s.lib = lib_path; s.params = params; s.rounds = rounds;
+        const std::vector<Vec> f = tsf::lightgbm_feat_forecast(series, lag, h, m, max_obs, s);
+        for (int32_t i = 0; i < n_series; ++i) std::copy(f[i].begin(), f[i].end(), out + static_cast<int64_t>(i) * h);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
 // Diagnostic hook for auto.arima's differencing tests: out = {seas.heuristic, nsdiffs, ndiffs(after D), kpss stat
 // of the level series}.
 TSF_API void tsf_arima_tests(const double* y, int32_t n, int32_t freq, double* out) {

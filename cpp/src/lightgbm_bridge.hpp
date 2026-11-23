@@ -19,4 +19,10 @@ struct LightgbmSetup {
 
 std::vector<Vec> lightgbm_forecast(const std::vector<Vec>& series, int lag, int h, int max_obs, const LightgbmSetup& s);
 
+// py_global.lightgbm_feat_forecast: lags 1..lag, seasonal lags m and 2m, rolling mean / population sd over windows
+// w1 = max(4, m_eff) and w2 = 2 w1 (sequential sums, oldest to newest), position t mod m; m_eff = m when the shortest
+// series holds three seasons, else 1 (no seasonal features). Recursive forecasts.
+std::vector<Vec> lightgbm_feat_forecast(const std::vector<Vec>& series, int lag, int h, int m, int max_obs,
+                                        const LightgbmSetup& s);
+
 }  // namespace tsf

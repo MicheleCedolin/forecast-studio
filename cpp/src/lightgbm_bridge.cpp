@@ -1,5 +1,7 @@
 #include "lightgbm_bridge.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <stdexcept>
 
@@ -76,7 +78,99 @@ struct Handles {
     ~Handles() { if (booster) lib.b_free(booster); if (ds) lib.ds_free(ds); }
 };
 
+// py_global.normalise
+void normalise(const std::vector<Vec>& series, int lag, int max_obs, std::vector<Vec>& norm, Vec& means) {
+    for (size_t i = 0; i < series.size(); ++i) {
+        Vec x = series[i];
+        if (max_obs > 0 && static_cast<int>(x.size()) > max_obs) x = Vec(x.end() - max_obs, x.end());
+        if (static_cast<int>(x.size()) < lag + 1)
+            throw std::runtime_error("Series " + std::to_string(i + 1) + " is too short for lag = " + std::to_string(lag) +
+                                     " (length " + std::to_string(x.size()) + "; at least " + std::to_string(lag + 1) +
+                                     " required).");
+        double mu = np_mean(x.data(), x.size());
+        if (mu == 0.0) mu = 1.0;
+        for (double& v : x) v /= mu;
+        norm.push_back(std::move(x));
+        means.push_back(mu);
+    }
+}
+
+// one feature row for the target at position t of hist (py_global.lgb_features)
+void feature_row(const double* hist, int t, int lag, int m_eff, int w1, int w2, double* row) {
+    int c = 0;
+    for (int j = 1; j <= lag; ++j) row[c++] = hist[t - j];
+    if (m_eff > 1) { row[c++] = hist[t - m_eff]; row[c++] = hist[t - 2 * m_eff]; }
+    for (int w : {w1, w2}) {
+        double s = 0.0;                                  // np.cumsum(win)[-1] / w
+        for (int k = 0; k < w; ++k) s = s + hist[t - w + k];
+        const double mean = s / w;
+        double ss = 0.0;
+        for (int k = 0; k < w; ++k) { const double d = hist[t - w + k] - mean; ss = ss + d * d; }
+        row[c++] = mean;
+        row[c++] = std::sqrt(ss / w);
+    }
+    if (m_eff > 1) row[c++] = static_cast<double>(t % m_eff);
+}
+
 }  // namespace
+
+std::vector<Vec> lightgbm_feat_forecast(const std::vector<Vec>& series, int lag, int h, int m, int max_obs,
+                                        const LightgbmSetup& s) {
+    if (lag < 1) throw std::runtime_error("lag must be >= 1");
+    if (s.rounds < 1) throw std::runtime_error("lightgbm: num_iterations must be >= 1");
+    std::vector<Vec> norm;
+    Vec means;
+    normalise(series, lag, max_obs, norm, means);
+    size_t nmin = norm[0].size();
+    for (const Vec& x : norm) nmin = std::min(nmin, x.size());
+    const int m_eff = (m > 1 && static_cast<int>(nmin) >= 3 * m) ? m : 1;
+    const int w1 = std::max(4, m_eff), w2 = 2 * w1;
+    const int h0 = std::max({lag, m_eff > 1 ? 2 * m_eff : 0, w2});
+    const int nf = lag + (m_eff > 1 ? 3 : 0) + 4;
+    for (size_t i = 0; i < norm.size(); ++i)
+        if (static_cast<int>(norm[i].size()) <= h0)
+            throw std::runtime_error("Series " + std::to_string(i + 1) + " is too short for the LightGBM features (at least " +
+                                     std::to_string(h0 + 1) + " observations required).");
+    size_t n_rows = 0;
+    for (const Vec& x : norm) n_rows += x.size() - h0;
+    if (n_rows > 2147483647u) throw std::runtime_error("lightgbm: more than 2^31 - 1 training rows; use max_obs");
+    Lib lib(s.lib);
+    Handles hd(lib);
+    {
+        Vec X(n_rows * static_cast<size_t>(nf));
+        std::vector<float> y(n_rows);
+        size_t r = 0;
+        for (const Vec& x : norm)
+            for (int t = h0; t < static_cast<int>(x.size()); ++t, ++r) {
+                feature_row(x.data(), t, lag, m_eff, w1, w2, &X[r * nf]);
+                y[r] = static_cast<float>(x[t]);
+            }
+        lib.check(lib.ds_mat(X.data(), kFloat64, static_cast<int32_t>(n_rows), nf, 1, s.params.c_str(), nullptr, &hd.ds));
+        lib.check(lib.ds_field(hd.ds, "label", y.data(), static_cast<int>(n_rows), kFloat32));
+    }
+    lib.check(lib.b_create(hd.ds, s.params.c_str(), &hd.booster));
+    for (int it = 0; it < s.rounds; ++it) {
+        int finished = 0;
+        lib.check(lib.b_update(hd.booster, &finished));
+        if (finished) break;
+    }
+    const size_t ns = norm.size();
+    std::vector<Vec> hist(ns), out(ns, Vec(h));
+    for (size_t i = 0; i < ns; ++i) { hist[i] = norm[i]; hist[i].resize(norm[i].size() + h, 0.0); }
+    Vec F(ns * static_cast<size_t>(nf)), pred(ns);
+    for (int k = 0; k < h; ++k) {
+        for (size_t i = 0; i < ns; ++i)
+            feature_row(hist[i].data(), static_cast<int>(norm[i].size()) + k, lag, m_eff, w1, w2, &F[i * nf]);
+        int64_t len = 0;
+        lib.check(lib.b_predict(hd.booster, F.data(), kFloat64, static_cast<int32_t>(ns), nf, 1, kPredictNormal, 0, -1, "",
+                                &len, pred.data()));
+        for (size_t i = 0; i < ns; ++i) {
+            hist[i][norm[i].size() + k] = pred[i];
+            out[i][k] = pred[i] * means[i];
+        }
+    }
+    return out;
+}
 
 std::vector<Vec> lightgbm_forecast(const std::vector<Vec>& series, int lag, int h, int max_obs, const LightgbmSetup& s) {
     if (lag < 1) throw std::runtime_error("lag must be >= 1");

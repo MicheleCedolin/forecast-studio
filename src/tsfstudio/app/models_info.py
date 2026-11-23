@@ -553,6 +553,18 @@ MODELS: dict[str, dict] = {
                         "does not exist in the R engine."},
         "params": LIGHTGBM_PARAMS, "refs": ["ke2017", "montero2021"], "cost": "Depends on the data; typically seconds for NN5.",
     },
+    "lightgbm_feat": {
+        "name": "LightGBM (M5-style features)", "group": "kuresel", "task": "global",
+        "summary": "Global LightGBM on lags plus seasonal lags, rolling means / standard deviations and the position in the season.",
+        "how": "Mean-scaled series; features per row: lags 1..lag, seasonal lags m and 2m, rolling mean and standard deviation over the last "
+               "max(4, m) and 2·max(4, m) values, and t mod m. Seasonal features are used only when the shortest series holds three full "
+               "seasons (otherwise windows of 4 and 8). Recursive forecasting: each prediction extends the history used for the next features.",
+        "use": "Many related series with weekly or daily patterns, as in the M5 competition; usually a little more accurate than LightGBM on lags alone.",
+        "caution": "Every series needs more than max(lag, 2m, 2·max(4, m)) observations. Like all tree models it does not extrapolate trends beyond the training range.",
+        "engines": {PY: "Requires the lightgbm Python package. The C++ engine builds the same features and gives the same forecasts bit for bit. "
+                        "This method does not exist in the R engine."},
+        "params": LIGHTGBM_PARAMS, "refs": ["ke2017", "makridakis2022", "montero2021"], "cost": "About the cost of LightGBM; NN5 daily about 1 s in C++.",
+    },
 }
 
 # ----------------------------------------------------------------------------------------------------

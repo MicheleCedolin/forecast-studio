@@ -223,6 +223,79 @@ def lag_matrix(norm_series: Sequence[np.ndarray], lag: int) -> tuple[np.ndarray,
     return X, y
 
 
+def lgb_feature_spec(norm_series: Sequence[np.ndarray], lag: int, m: int) -> tuple[int, int, int]:
+    """(m_eff, w1, w2): seasonal features only when the shortest series holds three full seasons (m_eff = m, else 1);
+    rolling windows w1 = max(4, m_eff) and w2 = 2 w1."""
+    nmin = min(len(x) for x in norm_series)
+    m_eff = m if (m > 1 and nmin >= 3 * m) else 1
+    w1 = max(4, m_eff)
+    return m_eff, w1, 2 * w1
+
+
+def lgb_feature_names(lag: int, m_eff: int, w1: int, w2: int) -> list[str]:
+    names = [f"lag{j}" for j in range(1, lag + 1)]
+    if m_eff > 1:
+        names += [f"slag{m_eff}", f"slag{2 * m_eff}"]
+    names += [f"rmean{w1}", f"rstd{w1}", f"rmean{w2}", f"rstd{w2}"]
+    if m_eff > 1:
+        names.append("season_pos")
+    return names
+
+
+def _roll_mean_std(win: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Row-wise mean and population sd of windows (oldest -> newest), with sequential sums (np.cumsum), so the C++
+    engine reproduces them exactly."""
+    w = win.shape[1]
+    mean = np.cumsum(win, axis=1)[:, -1] / w
+    dev = win - mean[:, None]
+    return mean, np.sqrt(np.cumsum(dev * dev, axis=1)[:, -1] / w)
+
+
+def lgb_features(hist: np.ndarray, t: np.ndarray, lag: int, m_eff: int, w1: int, w2: int) -> np.ndarray:
+    """Feature rows for targets at positions t of the (normalised) history hist."""
+    cols = [hist[t - j] for j in range(1, lag + 1)]
+    if m_eff > 1:
+        cols += [hist[t - m_eff], hist[t - 2 * m_eff]]
+    for w in (w1, w2):
+        win = np.stack([hist[t - w + k] for k in range(w)], axis=1)
+        mu, sd = _roll_mean_std(win)
+        cols += [mu, sd]
+    if m_eff > 1:
+        cols.append((t % m_eff).astype(np.float64))
+    return np.column_stack(cols)
+
+
+def lightgbm_feat_forecast(series: Sequence[np.ndarray], lag: int, horizon: int, m: int, max_obs: int | None = None,
+                           params: dict | None = None, workers: int = 1) -> tuple[np.ndarray, GlobalFitInfo]:
+    """Global LightGBM with M5-style features (lags, seasonal lags, rolling mean / sd over two windows, position in
+    the season) on mean-scaled series; recursive forecasts (the history grows by each prediction)."""
+    import lightgbm as lgb
+
+    p = lightgbm_params(params, workers)
+    norm, means = normalise(series, lag, max_obs)
+    m_eff, w1, w2 = lgb_feature_spec(norm, lag, m)
+    h0 = max(lag, 2 * m_eff if m_eff > 1 else 0, w2)
+    short = [i + 1 for i, x in enumerate(norm) if len(x) <= h0]
+    if short:
+        raise ValueError(f"Series {short[0]} is too short for the LightGBM features (at least {h0 + 1} observations required).")
+    X = np.vstack([lgb_features(x, np.arange(h0, len(x)), lag, m_eff, w1, w2) for x in norm])
+    y = np.concatenate([x[h0:] for x in norm])
+    rounds = p.pop("num_iterations")
+    model = lgb.train(p, lgb.Dataset(X, label=y, params=p), num_boost_round=rounds)
+    info = GlobalFitInfo(n_rows=X.shape[0], rank=X.shape[1])
+    info.notes.append(f"Features: {', '.join(lgb_feature_names(lag, m_eff, w1, w2))}.")
+    del X, y
+    hists = [np.concatenate([x, np.zeros(horizon)]) for x in norm]
+    out = np.empty((len(norm), horizon))
+    for k in range(horizon):
+        F = np.vstack([lgb_features(hh, np.array([len(x) + k]), lag, m_eff, w1, w2) for hh, x in zip(hists, norm)])
+        pred = model.predict(np.ascontiguousarray(F))
+        for i, (hh, x) in enumerate(zip(hists, norm)):
+            hh[len(x) + k] = pred[i]
+        out[:, k] = pred
+    return out * means[:, None], info
+
+
 def lightgbm_forecast(series: Sequence[np.ndarray], lag: int, horizon: int, max_obs: int | None = None,
                       params: dict | None = None, workers: int = 1) -> tuple[np.ndarray, GlobalFitInfo]:
     """Global LightGBM (Ke et al. 2017) on the same lag matrix as pooled regression; recursive forecasts."""

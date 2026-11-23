@@ -61,6 +61,10 @@ def load_lib():
             lib.tsf_lightgbm.restype = ctypes.c_int32
             lib.tsf_lightgbm.argtypes = [dp, i64p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
                                          ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int32, dp, ctypes.c_char_p, ctypes.c_int32]
+            lib.tsf_lightgbm_feat.restype = ctypes.c_int32
+            lib.tsf_lightgbm_feat.argtypes = [dp, i64p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+                                              ctypes.c_int32, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int32, dp,
+                                              ctypes.c_char_p, ctypes.c_int32]
             lib.tsf_holt_sse.restype = ctypes.c_double
             lib.tsf_holt_sse.argtypes = [dp, ctypes.c_int32, ctypes.c_int32]
             _LIB = lib
@@ -213,18 +217,53 @@ def lightgbm(train: list[np.ndarray], lag: int, h: int, max_obs: int | None = No
     return out
 
 
+def lightgbm_feat(train: list[np.ndarray], lag: int, h: int, m: int, max_obs: int | None = None, params: dict | None = None,
+                  workers: int = 1) -> np.ndarray:
+    """Global LightGBM with M5-style features (py_global.lightgbm_feat_forecast) through LightGBM's C library."""
+    from .py_global import lightgbm_params
+    lib = load_lib()
+    if lib is None:
+        raise EngineError(_LIB_ERR or "native library not available")
+    path = lightgbm_lib_path()
+    if path is None:
+        raise EngineError("LightGBM's C library (lib_lightgbm) not found; install the lightgbm package or set TSFSTUDIO_LIGHTGBM_LIB")
+    try:
+        p = lightgbm_params(params, workers)
+    except ValueError as exc:
+        raise EngineError(str(exc)) from exc
+    rounds = p.pop("num_iterations")
+    n = len(train)
+    lens = np.array([len(s) for s in train], dtype=np.int64)
+    offsets = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(lens, out=offsets[1:])
+    values = np.ascontiguousarray(np.concatenate([np.asarray(s, dtype=np.float64) for s in train]) if n else np.zeros(0))
+    out = np.empty((n, h), dtype=np.float64)
+    msg = ctypes.create_string_buffer(1024)
+    rc = lib.tsf_lightgbm_feat(_ptr(values, ctypes.c_double), _ptr(offsets, ctypes.c_int64), n, int(lag), int(h), int(m),
+                               int(max_obs or 0), str(path).encode(), _lgb_param_str(p).encode(), int(rounds),
+                               _ptr(out, ctypes.c_double), msg, 1024)
+    if rc != 0:
+        raise EngineError(msg.value.decode(errors="replace"))
+    return out
+
+
+def _season(seasonality) -> int:
+    vals = [float(v) for v in np.asarray(seasonality, dtype=np.float64).reshape(-1)] or [1.0]
+    return max(1, int(np.floor(max(vals))))
+
+
 class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
                      "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl", "auto_mfles", "tbats",
                      "holt_ets", "historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model",
                      "stl_ets", "stl_arima", "bagged_ets", "thief", "mapa")
-    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm")
+    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat")
 
     def methods(self) -> dict[str, tuple[str, ...]]:
         ok = load_lib() is not None
         glob = tuple(m for m in self.GLOBAL_METHODS if (m != "catboost" or catboost_paths() is not None)
-                     and (m != "lightgbm" or lightgbm_lib_path() is not None))
+                     and (not m.startswith("lightgbm") or lightgbm_lib_path() is not None))
         return {"local": self.LOCAL_METHODS if ok else (), "global": glob if ok else ()}
 
     def versions(self) -> dict:
@@ -256,6 +295,9 @@ class CppEngine(Engine):
             elif job.method == "lightgbm":
                 f = lightgbm(list(job.train), int(job.lag), job.horizon, max_obs, (job.params or {}).get("lightgbm"),
                              job.workers or 1)
+            elif job.method == "lightgbm_feat":
+                f = lightgbm_feat(list(job.train), int(job.lag), job.horizon, _season(job.seasonality), max_obs,
+                                  (job.params or {}).get("lightgbm"), job.workers or 1)
             else:
                 f, aliased = pooled_regression(list(job.train), int(job.lag), job.horizon, max_obs)
             if job.integer_conversion:

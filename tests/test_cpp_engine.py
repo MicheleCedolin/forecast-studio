@@ -388,6 +388,25 @@ def test_ets_class3_mean_forecasts_reproduce_r_daily():
 
 
 @pytest.mark.skipif(C.lightgbm_lib_path() is None, reason="lightgbm package (lib_lightgbm) not installed")
+@pytest.mark.parametrize("dataset,lag,h,m", [("nn5_weekly", 12, 8, 52), ("nn5_daily", 21, 56, 7)])
+def test_lightgbm_feat_bit_identical_to_python(dataset, lag, h, m):
+    """C++ lightgbm_feat builds the Python engine's M5-style features (lags, seasonal lags, rolling mean / sd with
+    sequential sums, season position) and gives its forecasts bit for bit; weekly drops the seasonal features
+    (m = 52 needs 156 observations), daily keeps them. Too short series raise the same error."""
+    from tsfstudio.engines import py_global as PG
+    train = [r[~np.isnan(r)] for r in _load(G / dataset, "train")]
+    ref, info = PG.lightgbm_feat_forecast(train, lag, h, m)
+    np.testing.assert_array_equal(C.lightgbm_feat(train, lag, h, m), ref)
+    assert ("season_pos" in info.notes[0]) == (dataset == "nn5_daily")
+    job = EngineJob(task="global", method="lightgbm_feat", train=train, horizon=h, seasonality=(float(m),), lag=lag,
+                    params={"max_obs": 300, "lightgbm": {"num_iterations": 50}})
+    ref2, _ = PG.lightgbm_feat_forecast(train, lag, h, m, max_obs=300, params={"num_iterations": 50})
+    np.testing.assert_array_equal(C.CppEngine().run(job).forecasts, ref2)
+    with pytest.raises(Exception, match="too short for the LightGBM features"):
+        C.lightgbm_feat([np.arange(1.0, 9.0)] * 3, 4, 3, 7)    # 8 values: needs > max(lag 4, w2 8)
+
+
+@pytest.mark.skipif(C.lightgbm_lib_path() is None, reason="lightgbm package (lib_lightgbm) not installed")
 @pytest.mark.parametrize("dataset,lag,h", [("nn5_weekly", 12, 8), ("nn5_daily", 21, 56)])
 def test_lightgbm_bit_identical_to_python(dataset, lag, h):
     """C++ lightgbm (same data pipeline and parameter string, LightGBM C API from C++) gives the Python engine's
