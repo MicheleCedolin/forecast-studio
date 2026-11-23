@@ -218,7 +218,7 @@ class CppEngine(Engine):
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
                      "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl", "auto_mfles", "tbats",
                      "holt_ets", "historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model",
-                     "stl_ets", "stl_arima", "bagged_ets")
+                     "stl_ets", "stl_arima", "bagged_ets", "thief", "mapa")
     GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm")
 
     def methods(self) -> dict[str, tuple[str, ...]]:

@@ -16,7 +16,17 @@ R package "forecast" (GPL-3)
   Translated: ets() and its likelihood / initialisation (cpp/src/ets.cpp), auto.arima(), ndiffs(), nsdiffs(),
   seas.heuristic(), myarima() and the forecasting chain (cpp/src/autoarima.cpp), tbats() / bats() and their Rcpp
   helpers (cpp/src/tbats.cpp), stlf() / mstl() / forecast.stl() (cpp/src/stlf.cpp, src/tsfstudio/engines/py_sf.py),
-  baggedETS() / bld.mbb.bootstrap() / MBB() / BoxCox.lambda() (cpp/src/bagged.cpp, src/tsfstudio/engines/r_boot.py).
+  baggedETS() / bld.mbb.bootstrap() / MBB() / BoxCox.lambda() (cpp/src/bagged.cpp, src/tsfstudio/engines/r_boot.py),
+  HoltWintersZZ() / zzhw(), forecast.ets()'s class3() and src/etspolyroot.c (R_cpolyroot) (cpp/src/ets.cpp,
+  cpp/src/cpoly.cpp).
+
+R package "thief" (GPL-3)
+  Copyright (C) Rob J Hyndman and Nikolaos Kourentzes. Translated: thief(), tsaggregates(), th.forecast(),
+  reconcilethief() with comb = "struc" (cpp/src/temporal.cpp, src/tsfstudio/engines/py_sf.py).
+
+R package "MAPA" (GPL-2 or later)
+  Copyright (C) Nikolaos Kourentzes and Fotios Petropoulos. Translated: mapaest(), mapacalc(), statetranslate(),
+  mapacomb() with type = "ets" (cpp/src/temporal.cpp, src/tsfstudio/engines/py_sf.py).
 
 R "stats" package, part of R (GPL-2 or later)
   Copyright (C) The R Core Team. https://www.r-project.org
@@ -25,6 +35,8 @@ R "stats" package, part of R (GPL-2 or later)
   optimize() (Brent_fmin), loess() for one predictor (loessc.c / loessf.f by W. S. Cleveland, E. Grosse and
   M. J. Shyu, in cpp/src/loess.cpp and src/tsfstudio/engines/r_loess.py); LINPACK dqrdc / dqrsl / dsvdc (R's src/appl)
   and the reference BLAS of R's src/extra/blas (ddot, daxpy, dscal, drot, dnrm2, drotg) in the same files;
+  L-BFGS-B (src/appl/lbfgsb.c, after Zhu, Byrd, Lu & Nocedal), optim()'s lbfgsb driver and finite-difference
+  gradient, LINPACK dpofa / dtrsl / dqrdc2 (cpp/src/lbfgsb.cpp, cpp/src/rlinpack.hpp);
   and from R's base sources the Mersenne-Twister seeding, unif_rand() and R_unif_index()
   of src/main/RNG.c, mean() / colMeans() / var() summation (cpp/src/rstats.hpp, src/tsfstudio/engines/r_boot.py).
 

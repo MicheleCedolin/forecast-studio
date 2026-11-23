@@ -32,6 +32,7 @@
 #include "stlf.hpp"
 #include "bagged.hpp"
 #include "loess.hpp"
+#include "temporal.hpp"
 #include "rstats.hpp"
 #include "simple_sf.hpp"
 
@@ -80,6 +81,8 @@ Vec m_zero(const Vec&, int h, int, const Vec&) { return tsf::zero_model(h); }
 Vec m_stlf_ets(const Vec& y, int h, int, const Vec& per) { return tsf::stlf_ets(y, per, h); }
 Vec m_stlf_arima(const Vec& y, int h, int, const Vec& per) { return tsf::stlf_arima(y, per, h); }
 Vec m_bagged_ets(const Vec& y, int h, int, const Vec& per) { return tsf::bagged_ets(y, per, h, 100, 0); }
+Vec m_thief(const Vec& y, int h, int, const Vec& per) { return tsf::thief_ets(y, per, h); }
+Vec m_mapa(const Vec& y, int h, int, const Vec& per) { return tsf::mapa_ets(y, per, h); }
 
 // SCUM (Petropoulos & Svetunkov 2020): pointwise median of ets, auto_ces, arima and dotm, as the Python engine's
 // forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
@@ -123,7 +126,7 @@ const Entry METHODS[] = {
     {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum}, {"auto_theta", m_atheta}, {"mstl", m_mstl}, {"auto_mfles", m_mfles}, {"tbats", m_tbats},
     {"holt_ets", m_holt_ets}, {"historic_average", m_hist}, {"window_average", m_wavg},
     {"seasonal_window_average", m_swavg}, {"seasonal_es", m_ses_seas}, {"zero_model", m_zero},
-    {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets},
+    {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets}, {"thief", m_thief}, {"mapa", m_mapa},
 };
 
 Fn find_method(const char* name) {

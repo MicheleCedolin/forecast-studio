@@ -86,15 +86,14 @@ def test_comb_shd_matches_r_at_decision_level(case):
 
 def test_ets_reproduces_r_forecast_ets(case):
     """C++ ets is a port of R forecast::ets (9.x). The study's R forecasts (tests/golden/<case>/forecasts_ets) are the
-    reference: on NN5 weekly (non-seasonal, m > 24) and daily (m = 7) the same model is chosen and forecasts agree to
-    machine precision, except where R's Nelder-Mead and ours drift apart over a long run (1 daily series)."""
+    reference: on NN5 weekly (non-seasonal, m > 24) and daily (m = 7) the same model is chosen and every forecast
+    agrees to <= 1e-10 (since the class-3 mean forecasts, R's initstate arithmetic and cpolyroot were ported)."""
     name, seas, h, train, act = case
     ref = _load(G / name, "forecasts_ets")
     f, flags, _ = C.forecast_batch("ets", train, h, seas)
     assert not flags.any()
     rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
-    assert np.median(rel) < 1e-9, f"{name}: median relative difference {np.median(rel):.2e}"
-    assert int((rel.max(axis=1) > 1e-3).sum()) <= 2, name
+    assert rel.max() < 1e-10, f"{name}: worst relative difference {rel.max():.2e}"
     m = M.r_frequency(seas)
     d = abs(np.nanmean(mase(f, act, train, m)) - np.nanmean(mase(ref, act, train, m))) / np.nanmean(mase(ref, act, train, m))
     assert d < 1e-3, name
@@ -244,15 +243,14 @@ def test_bagged_ets_reproduces_r_bagged_ets():
     assert not flags.any()
     rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
     assert rel.max() < 1e-10 and np.median(rel) < 1e-13, f"worst {rel.max():.2e}"
-    # Daily (R: 5473 s, C++ ~200 s on 6 cores): 97 of 111 series <= 1e-6; the rest inherit the known ETS
-    # multiplicative-season differences (worst: series 73, 0.3%). Slow, so only checked against the stored output
+    # Daily (R: 5473 s): all 111 series <= 1e-13 with the exact ETS. Slow, so only checked against the stored output
     # of a few series here.
     tr = [r[~np.isnan(r)] for r in _load(G / "nn5_daily", "train")]
     refd = _load(G / "nn5_daily", "r_bagged_ets")
     idx = [0, 1, 2, 3]
     fd, flags, _ = C.forecast_batch("bagged_ets", [tr[i] for i in idx], refd.shape[1], (7.0,))
     assert not flags.any()
-    np.testing.assert_allclose(fd, refd[idx], rtol=1e-6)
+    np.testing.assert_allclose(fd, refd[idx], rtol=1e-12)
     with pytest.raises(Exception, match="n_boot = 100"):
         C.CppEngine().run(EngineJob(task="local", method="bagged_ets", train=train[:2], horizon=3, seasonality=(52.0,),
                                     params={"n_boot": 20}))
@@ -334,6 +332,59 @@ def test_bagged_ets_non_seasonal_reproduces_r():
     assert lib.tsf_bld_mbb(y.ctypes.data_as(dp), len(y), 1, 30, 0, out.ctypes.data_as(dp), msg, 256) == 0
     assert np.array_equal(out.reshape(30, -1), boot)
     assert np.array_equal(np.vstack(B.bld_mbb_bootstrap(y, 1, 30, 0)), boot)
+
+
+@pytest.mark.parametrize("method,ref", [("ets", "r_ets_zzz"), ("holt_ets", "r_ets_aan")])
+def test_ets_small_samples_reproduce_r(method, ref):
+    """ets() on 60 series of 3..12 observations (n <= npars + 4: R's HoltWintersZZ branch, SES / Holt fitted by
+    optim(method = "L-BFGS-B"), the one with the smaller sigma2 kept) and ets(model = "AAN"): the C++ port (L-BFGS-B
+    from R's lbfgsb.c with optim's bounded finite differences) gives R's forecasts to <= 1e-10, most bit for bit."""
+    train = [r[~np.isnan(r)] for r in _rows(G / "r_small" / "small_train.csv.gz")]
+    R = np.vstack(_rows(G / "r_small" / f"{ref}.csv.gz"))
+    f, flags, _ = C.forecast_batch(method, train, R.shape[1], (1.0,))
+    assert not flags.any()
+    rel = np.abs(f - R) / np.maximum(np.abs(R), 1e-9)
+    assert rel.max() < 1e-10
+    assert sum(np.array_equal(f[i], R[i]) for i in range(len(R))) >= len(R) // 2
+
+
+@pytest.mark.parametrize("method", ["thief", "mapa"])
+@pytest.mark.parametrize("data,m,h", [("monthly", 12, 18), ("quarterly", 4, 8)])
+def test_temporal_aggregation_reproduces_r(method, data, m, h):
+    """C++ thief / mapa = R thief::thief(usemodel = "ets") / MAPA::mapa(comb = "w.mean", hybrid = TRUE, type = "ets")
+    on msts(y, m) (tools/r_reference/temporal_reference.R; thief 0.3, MAPA 2.1.0) for 38 monthly and 29 quarterly
+    synthetic series: <= 1e-12 (the ETS port, incl. its small-sample branch and class-3 mean forecasts, equals R; the
+    thief reconciliation is a dense Cholesky where R uses a sparse LU)."""
+    d = G / "r_temporal"
+    train = [r[~np.isnan(r)] for r in _rows(d / f"{data}_train.csv.gz")]
+    R = np.vstack(_rows(d / f"{data}_{method}.csv.gz"))
+    f, flags, _ = C.forecast_batch(method, train, h, (float(m),))
+    assert not flags.any()
+    assert (np.abs(f - R) / np.abs(R)).max() < 1e-12
+
+
+def test_thief_fails_like_r_for_prime_periods():
+    """R's thief stops ("non-conformable arguments") when only the annual level exists (m prime, e.g. daily m = 7):
+    hts' LU drops the single aggregate row to a vector. Both engines raise the same, so the series falls back."""
+    from tsfstudio.engines import py_sf as S
+    y = 100 + np.sin(np.arange(70) * 2 * np.pi / 7) * 10
+    _, flags, msg = C.forecast_batch("thief", [y], 14, (7.0,))
+    assert flags.all() and "non-conformable" in msg
+    with pytest.raises(ValueError, match="non-conformable"):
+        S.forecast_thief(y, 14, (7.0,))
+
+
+def test_ets_class3_mean_forecasts_reproduce_r_daily():
+    """forecast.ets() returns class-3 mean forecasts for M?M models (forecast:::class3, with sigma2 terms and, for a
+    damped trend, l + b at step 1); with that, the initial states from R's decompose / lsfit / lm (dqrls) and R's
+    cpolyroot in the admissibility test, all 111 NN5 daily ETS forecasts equal R's to <= 1e-12 (the four
+    multiplicative-season series used to differ by up to 0.6%)."""
+    name, seas, h = "nn5_daily", (7.0,), 56
+    train = [r[~np.isnan(r)] for r in _load(G / name, "train")]
+    ref = _load(G / name, "forecasts_ets")
+    f, flags, _ = C.forecast_batch("ets", train, ref.shape[1], seas)
+    assert not flags.any()
+    assert (np.abs(f - ref) / np.abs(ref)).max() < 1e-12
 
 
 @pytest.mark.skipif(C.lightgbm_lib_path() is None, reason="lightgbm package (lib_lightgbm) not installed")
@@ -518,11 +569,12 @@ def test_scum_is_median_of_cpp_components():
 
 
 def test_scum_component_failures():
-    # short series: some components fail (ets needs > 6 observations, dotm > 3, auto_ces > 2); scum takes the median
-    # of those that succeed, and falls back (error) when fewer than two do
+    # short series: some components fail (dotm needs > 3 observations, auto_ces > 2); scum takes the median of those
+    # that succeed, and falls back (error) when fewer than two do. ets (R's small-sample HoltWintersZZ branch, = R even
+    # for n = 1) and arima always succeed here, so the fallback branch is not reached with these data.
     base = [10.0, 12, 11, 13, 12, 14]
     seen_fallback = seen_partial = False
-    for n in range(2, 7):
+    for n in range(1, 7):
         y = [np.array(base[:n])]
         s, flags, msg = C.forecast_batch("scum", y, 3, (1.0,))
         comps = []
@@ -537,7 +589,7 @@ def test_scum_component_failures():
             assert not flags[0], n
             np.testing.assert_array_equal(s[0], np.median(np.stack(comps), axis=0))
             seen_partial |= len(comps) < 4
-    assert seen_fallback and seen_partial
+    assert seen_partial and not seen_fallback
 
 
 INTERMITTENT = ["croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa"]

@@ -88,12 +88,52 @@ def note(msg: str) -> None:
     warnings.warn(AdapterNote(msg), stacklevel=2)
 
 
+def _zzhw_sse(x: np.ndarray, alpha: float, beta: float, trend: bool):
+    """forecast:::zzhw() without seasonality: (SSE, residuals, final level, final trend)."""
+    level, b = float(x[0]), (float(x[1] - x[0]) if trend else 0.0)
+    beta = beta if trend else 0.0
+    res = np.empty(len(x))
+    for i, xi in enumerate(x):
+        fit = level + b
+        res[i] = xi - fit
+        new_level = fit + alpha * (xi - fit)
+        b = beta * (new_level - level) + (1 - beta) * b
+        level = new_level
+    return float(np.sum(res ** 2)), res, level, b
+
+
+def ets_small(y: np.ndarray) -> dict:
+    """R ets()'s small-sample branch (n <= npars + 4): HoltWintersZZ SES and Holt fitted by L-BFGS-B on the SSE in
+    [0, 1] (scipy's L-BFGS-B here, R's own in the C++ engine), the one with the smaller sigma2 kept."""
+    from scipy.optimize import minimize
+    y = np.asarray(y, dtype=np.float64)
+    fits = []
+    for trend in (True, False):
+        if trend and len(y) < 2:
+            continue
+        x0 = [0.2, 0.02] if trend else [0.2]
+        fn = lambda p: _zzhw_sse(y, p[0], p[1] if trend else 0.0, trend)[0]   # noqa: E731
+        sol = minimize(fn, x0, method="L-BFGS-B", bounds=[(0.0, 1.0)] * len(x0))
+        a, b = float(sol.x[0]), (float(sol.x[1]) if trend else 0.0)
+        sse, res, lev, tr = _zzhw_sse(y, a, b, trend)
+        fits.append({"trend": trend, "alpha": a, "beta": b, "sigma2": float(np.mean(res ** 2)), "level": lev, "slope": tr,
+                     "init": (float(y[0]), float(y[1] - y[0]) if trend else 0.0)})
+    if len(fits) == 1:
+        return fits[0]
+    holt, ses = fits
+    return holt if holt["sigma2"] < ses["sigma2"] else ses
+
+
 def forecast_ets(y: np.ndarray, h: int, m: int) -> np.ndarray:
     from statsforecast.models import AutoETS
     sl = m if m <= 24 else 1
     if sl != m:
         note(f"ets: seasonality was not used because the period {m} > 24 (same rule as R ets()).")
-    return _mean(make_model(AutoETS, season_length=sl, model="ZZZ").forecast(y=y, h=h))
+    try:
+        return _mean(make_model(AutoETS, season_length=sl, model="ZZZ").forecast(y=y, h=h))
+    except NotImplementedError:                                # statsforecast: "tiny datasets"
+        f = ets_small(y)
+        return f["level"] + f["slope"] * np.arange(1, h + 1)
 
 
 def _arima(y: np.ndarray, h: int, season_length: int, n_for_approx: int, freq: int) -> np.ndarray:
@@ -362,6 +402,112 @@ def forecast_bagged_ets(y: np.ndarray, h: int, m: int, periods: Sequence[float],
     xs = bld_mbb_bootstrap(np.asarray(y, dtype=np.float64), freq, num, seed)
     F = np.vstack([np.asarray(forecast_ets(x, h, freq), dtype=np.float64).reshape(-1)[:h] for x in xs])
     return np.array([r_row_mean(F[:, j]) for j in range(h)])
+
+
+# ------------------------------------------------------------------------------------------------
+# Temporal aggregation (2026-11-23): THieF (thief::thief, usemodel = "ets", comb = "struc") and MAPA (MAPA::mapa,
+# comb = "w.mean", hybrid = TRUE, model = "ZZZ", type = "ets") with the R algorithms; the ETS fits are statsforecast
+# AutoETS here (the C++ engine uses its R port of ets(), including the small-sample branch), so results are close to,
+# not equal to, R's. The reconciliation and the component combination follow the R code.
+# ------------------------------------------------------------------------------------------------
+def _frequency(periods: Sequence[float]) -> int:
+    return max(1, int(np.floor(max([float(p) for p in periods] or [1.0]))))
+
+
+def forecast_thief(y: np.ndarray, h: int, periods: Sequence[float]) -> np.ndarray:
+    y = np.asarray(y, dtype=np.float64)
+    n, m = len(y), _frequency(periods)
+    if m <= 1:
+        raise ValueError("Seasonal period (m) must be greater than 1")
+    if n < 2 * m:
+        raise ValueError("I need at least 2 periods of data")
+    mout = [k for k in range(1, m + 1) if m % k == 0 and k <= n]
+    agg = [y] + [y[n % a: n % a + (n // a) * a].reshape(-1, a).sum(axis=1) for a in mout[1:]]
+    nc = -(-h // m)
+    fc = [np.asarray(forecast_ets(agg[i], (m // mout[i]) * nc, m // mout[i]), dtype=np.float64) for i in range(len(mout))]
+    # aggregate rows (top first) and their bottom blocks; W = diag(nsum)
+    rows = [(a, j) for a in reversed(mout[1:]) for j in range(m // a)]
+    if len(rows) == 1:                                         # R's hts LU fails with one aggregate row (m prime)
+        raise ValueError("non-conformable arguments (thief with a single aggregate level)")
+    S = np.zeros((len(rows), m))
+    for r, (a, j) in enumerate(rows):
+        S[r, j * a:(j + 1) * a] = 1.0
+    A = np.diag([float(a) for a, _ in rows]) + S @ S.T
+    out = []
+    for c in range(nc):
+        fb = fc[0][c * m:(c + 1) * m]
+        fa = np.array([fc[mout.index(a)][c * (m // a) + j] for a, j in rows])
+        z = np.linalg.solve(A, fa - S @ fb)
+        out.append(fb + S.T @ z)
+    return np.concatenate(out)[:h]
+
+
+def _ets_fit_states(yA: np.ndarray, m: int, model: str):
+    from statsforecast.models import AutoETS
+    try:
+        md = make_model(AutoETS, season_length=m if m <= 24 else 1, model=model).fit(y=yA).model_
+    except NotImplementedError:                                # tiny: R's HoltWintersZZ branch, refit as ETS
+        f = ets_small(yA)
+        level, slope = f["init"]
+        a = max(f["alpha"], 1e-10)
+        for xi in yA:                                          # ets(..., use.initial.values = TRUE): ETS recursions
+            fit = level + slope
+            e = xi - fit
+            level, slope = fit + a * e, (slope + f["beta"] * e if f["trend"] else 0.0)
+        return "A", ("A" if f["trend"] else "N"), "N", False, 1.0, np.array([level, slope] if f["trend"] else [level])
+    comp = str(md["components"])
+    par = np.asarray(md["par"], dtype=np.float64)
+    return comp[0], comp[1], comp[2], comp[3] == "D", float(par[3]) if comp[3] == "D" else 1.0, np.asarray(md["states"])[-1]
+
+
+def forecast_mapa(y: np.ndarray, h: int, periods: Sequence[float]) -> np.ndarray:
+    y = np.asarray(y, dtype=np.float64)
+    n, ppy = len(y), _frequency(periods)
+    max_al = 2 if ppy == 1 else ppy
+    levels = []
+    for AL in range(1, max_al + 1):
+        q0 = n // AL
+        ppyA = ppy // AL if ppy % AL == 0 else 1
+        q = 1 if q0 <= 2 else q0
+        if q < 4:
+            continue
+        yA = y[n - q0 * AL:].reshape(q0, AL).mean(axis=1)
+        model = "ZZN" if (ppyA == 2 and q <= 3 * ppyA) else "ZZZ"
+        levels.append((AL, ppyA, _ets_fit_states(yA, ppyA, model)))
+    if not levels:
+        raise ValueError("Sample is too short to estimate the requested model at any aggregation level.")
+    FC = np.zeros((len(levels), 4, h))
+    for a, (AL, ppyA, (E, T, S, damped, phi, st)) in enumerate(levels):
+        fhA = -(-h // AL)
+        b = 0 if T == "N" else 1
+        level = st[0]
+        trend = st[1] if b else 0.0
+        k = np.arange(1, fhA + 1)
+        if T == "A":
+            tk = np.cumsum((trend / phi) * phi ** k) if damped else trend * k
+        elif T == "N":
+            tk = np.zeros(fhA)
+        else:
+            raise ValueError("mapa: multiplicative trend is not supported")
+        steps = np.arange(h) // AL
+        Lv = np.full(h, level)
+        Tv = tk[steps]
+        if S == "N":
+            Sv = np.zeros(h)
+        else:
+            season = st[b + 1: b + 1 + ppyA][::-1]
+            Sv = season[steps % ppyA]
+            if S == "M":
+                Sv = (Sv - 1) * (Lv + Tv)
+        FC[a, 1], FC[a, 2], FC[a, 3] = Lv, Tv, Sv
+        FC[a, 0] = Lv + Tv + Sv
+    ALs = np.array([lv[0] for lv in levels])
+    perm = (ppy % ALs == 0) & (ALs < ppy)
+    comb = FC[:, 1].mean(axis=0) + FC[:, 2].mean(axis=0)
+    if perm.any():
+        w = 1.0 / ALs[perm]
+        comb = comb + (FC[perm, 3] * (w / w.sum())[:, None]).sum(axis=0)
+    return (FC[0, 0] + comb) / 2
 
 
 # ------------------------------------------------------------------------------------------------

@@ -50,6 +50,12 @@ REFS = {
                           "based on loess. Journal of Official Statistics, 6(1), 3–73."),
     "prokhorenkova2018": _ref("Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A. V., & Gulin, A. (2018). CatBoost: unbiased boosting with "
                               "categorical features. Advances in Neural Information Processing Systems 31.", "https://arxiv.org/abs/1706.09516"),
+    "athanasopoulos2017": _ref("Athanasopoulos, G., Hyndman, R. J., Kourentzes, N., & Petropoulos, F. (2017). Forecasting with temporal "
+                               "hierarchies. European Journal of Operational Research, 262(1), 60–74.",
+                               "https://doi.org/10.1016/j.ejor.2017.02.046"),
+    "kourentzes2014": _ref("Kourentzes, N., Petropoulos, F., & Trapero, J. R. (2014). Improving forecasting by estimating time series "
+                           "structural components across multiple frequencies. International Journal of Forecasting, 30(2), 291–302.",
+                           "https://doi.org/10.1016/j.ijforecast.2013.09.006"),
     "bergmeir2016": _ref("Bergmeir, C., Hyndman, R. J., & Benítez, J. M. (2016). Bagging exponential smoothing methods using STL "
                          "decomposition and Box–Cox transformation. International Journal of Forecasting, 32(2), 303–312.",
                          "https://doi.org/10.1016/j.ijforecast.2015.07.002"),
@@ -418,6 +424,27 @@ MODELS: dict[str, dict] = {
                      min=1, max=1000),
                    P("seed", "Random seed", "int", 0, "set.seed() value used before each series (C++ engine: 0 only).", min=0, advanced=True)],
         "refs": ["bergmeir2016", "hyndman2008"], "cost": "C++: NN5 weekly 111 series 4 s (R: 200 s). Python: minutes.",
+    },
+    "thief": {
+        "name": "THieF (temporal hierarchies, ETS)", "group": "yerel", "task": "local",
+        "summary": "Forecasts the series at every temporal aggregation level that divides the season (e.g. monthly, 2-monthly, quarterly, …, annual) and reconciles them.",
+        "how": "R thief::thief(y, usemodel = \"ets\", comb = \"struc\"): non-overlapping sums at the levels that divide the seasonal period m, ets() at each "
+               "level, then the forecasts are made coherent by structural-scaling weighted least squares; the reconciled bottom level is returned.",
+        "use": "Monthly, quarterly or weekly data where the annual picture is more stable than the fine detail; typically improves on plain ETS.",
+        "caution": "Needs a seasonal period m > 1 and at least two full periods of data; otherwise the series falls back. Levels with very short series use R's small-sample ETS branch.",
+        "engines": {PY: "The R algorithm (aggregation, reconciliation) with statsforecast AutoETS at each level; close to, not equal to, R."},
+        "params": [], "refs": ["athanasopoulos2017", "hyndman2008"], "cost": "A few ETS fits per series.",
+    },
+    "mapa": {
+        "name": "MAPA (multiple aggregation prediction)", "group": "yerel", "task": "local",
+        "summary": "ETS at temporal aggregation levels 1..m; the level, trend and seasonal components are combined across levels.",
+        "how": "R MAPA::mapa(y, comb = \"w.mean\", hybrid = TRUE, model = \"ZZZ\", type = \"ets\"): the series is averaged over 1..m periods, ets() is fitted at "
+               "each level, the final states are translated into level / trend / season forecasts, level and trend are averaged, the seasonal parts of "
+               "the levels that divide m are combined with 1/AL weights, and the result is averaged with the level-1 ETS forecast.",
+        "use": "Noisy series where the model chosen at the original frequency is unstable; strong on intermittent and monthly data.",
+        "caution": "About m ETS fits per series. Aggregation levels with fewer than four observations are skipped, as in R.",
+        "engines": {PY: "The R algorithm with statsforecast AutoETS fits (final states taken directly); close to, not equal to, R."},
+        "params": [], "refs": ["kourentzes2014", "hyndman2008"], "cost": "About m ETS fits per series.",
     },
     "auto_mfles": {
         "name": "Auto MFLES", "group": "yerel", "task": "local",
