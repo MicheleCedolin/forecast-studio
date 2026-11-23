@@ -121,6 +121,45 @@ Vec m_scum(const Vec& y, int h, int m, const Vec&) {
     return out;
 }
 
+// ETS + ARIMA + Theta combinations (Python engine: py_sf.forecast_comb_eat): the equal-weight mean, or the pointwise
+// median, of the C++ ets, arima (arima_max_season = 200 rule) and theta. A failing or non-finite component is left out
+// (the mean / median of the others); fewer than two -> error.
+Vec comb_eat(const Vec& y, int h, int m, bool median) {
+    std::vector<Vec> fcs;
+    std::string failed;
+    auto add = [&](const char* name, auto&& fn) {
+        try {
+            Vec f = fn();
+            bool ok = static_cast<int>(f.size()) >= h;
+            for (int k = 0; ok && k < h; ++k) ok = std::isfinite(f[k]);
+            if (ok) { f.resize(h); fcs.push_back(std::move(f)); return; }
+            failed += std::string(failed.empty() ? "" : "; ") + name + ": non-finite";
+        } catch (const std::exception& ex) {
+            failed += std::string(failed.empty() ? "" : "; ") + name + ": " + ex.what();
+        }
+    };
+    add("ets", [&] { return tsf::ets_auto(y, m, h).forecast; });
+    add("arima", [&] { return tsf::auto_arima_study(y, m <= 200 ? m : 1, h).forecast; });
+    add("theta", [&] { return tsf::theta_forecast(y, h, m); });
+    if (fcs.size() < 2) throw std::runtime_error("comb_eat: fewer than two components succeeded (" + failed + ")");
+    const size_t k = fcs.size();
+    Vec out(h), col(k);
+    for (int j = 0; j < h; ++j) {
+        for (size_t c = 0; c < k; ++c) col[c] = fcs[c][j];
+        if (median) {
+            std::sort(col.begin(), col.end());
+            out[j] = (k % 2) ? col[k / 2] : (col[k / 2 - 1] + col[k / 2]) / 2.0;
+        } else {
+            double s = 0.0;                             // numpy mean of 2-3 values: sequential sum / k
+            for (size_t c = 0; c < k; ++c) s += col[c];
+            out[j] = s / static_cast<double>(k);
+        }
+    }
+    return out;
+}
+Vec m_comb_eat(const Vec& y, int h, int m, const Vec&) { return comb_eat(y, h, m, false); }
+Vec m_comb_eat_med(const Vec& y, int h, int m, const Vec&) { return comb_eat(y, h, m, true); }
+
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
     {"naive", m_naive}, {"snaive", m_snaive}, {"drift", m_drift}, {"ses", m_ses}, {"theta", m_theta},
@@ -129,7 +168,7 @@ const Entry METHODS[] = {
     {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum}, {"auto_theta", m_atheta}, {"mstl", m_mstl}, {"auto_mfles", m_mfles}, {"tbats", m_tbats},
     {"holt_ets", m_holt_ets}, {"historic_average", m_hist}, {"window_average", m_wavg},
     {"seasonal_window_average", m_swavg}, {"seasonal_es", m_ses_seas}, {"zero_model", m_zero},
-    {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets}, {"thief", m_thief}, {"mapa", m_mapa},
+    {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets}, {"thief", m_thief}, {"mapa", m_mapa}, {"comb_eat", m_comb_eat}, {"comb_eat_median", m_comb_eat_med},
 };
 
 Fn find_method(const char* name) {

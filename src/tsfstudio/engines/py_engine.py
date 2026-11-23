@@ -45,12 +45,40 @@ SF_LOCAL = {"ets": "AutoETS", "arima": "AutoARIMA", "dhr_arima": "AutoARIMA",
             "scum": "DynamicOptimizedTheta",                   # 2026-11-22: ETS/CES/ARIMA/DOTM medyanı
             "stl_ets": "AutoETS", "stl_arima": "AutoARIMA",    # 2026-11-23: R stlf (R'ın STL ayarları)
             "bagged_ets": "AutoETS",                           # 2026-11-23: R baggedETS (R'ın bootstrap'ı)
-            "thief": "AutoETS", "mapa": "AutoETS"}             # 2026-11-23: zamansal birleştirme (thief, MAPA)
+            "thief": "AutoETS", "mapa": "AutoETS",             # 2026-11-23: zamansal birleştirme (thief, MAPA)
+            "comb_eat": "AutoARIMA", "comb_eat_median": "AutoARIMA"}   # 2026-11-23: ETS + ARIMA + Theta birleşimleri
 
 
 # ------------------------------------------------------------------------------------------------
 # Seri başına tahmin (modül düzeyinde: çok süreçli çalışmada seçilebilir olmalı)
 # ------------------------------------------------------------------------------------------------
+def forecast_comb_eat(y: np.ndarray, h: int, m: int, params: dict, median: bool) -> np.ndarray:
+    """Equal-weight mean (or pointwise median) of ETS, ARIMA and Theta, this engine's versions of each. A failing or
+    non-finite component is left out and noted; fewer than two -> error (the series falls back)."""
+    fcs, failed = [], []
+    for comp in ("ets", "arima", "theta"):
+        try:
+            if comp == "ets":
+                f = S.forecast_ets(y, h, m)
+            elif comp == "arima":
+                f = S.forecast_arima(y, h, m, int((params or {}).get("arima_max_season", S.ARIMA_MAX_SEASON_DEFAULT)))
+            else:
+                f = M.theta_forecast(y, h, m)
+            f = np.asarray(f, dtype=np.float64).reshape(-1)[:h]
+            if f.shape[0] == h and np.all(np.isfinite(f)):
+                fcs.append(f)
+            else:
+                failed.append(f"{comp}: non-finite")
+        except Exception as exc:  # noqa: BLE001
+            failed.append(f"{comp}: {type(exc).__name__}")
+    if len(fcs) < 2:
+        raise RuntimeError("comb_eat: fewer than two components succeeded (" + "; ".join(failed) + ")")
+    if failed:
+        S.note(f"comb_eat: {len(fcs)} components; failed: {', '.join(sorted(f.split(':')[0] for f in failed))}")
+    stack = np.vstack(fcs)
+    return np.median(stack, axis=0) if median else np.mean(stack, axis=0)
+
+
 def forecast_one(method: str, y: np.ndarray, h: int, seasonality: tuple[float, ...], params: dict) -> np.ndarray:
     m = M.r_frequency(seasonality)
     if method == "naive":
@@ -69,6 +97,8 @@ def forecast_one(method: str, y: np.ndarray, h: int, seasonality: tuple[float, .
         return M.comb_shd(y, h, m)
     if method == "scum":
         return S.forecast_scum(y, h, m, seasonality, params)
+    if method in ("comb_eat", "comb_eat_median"):
+        return forecast_comb_eat(y, h, m, params, median=method == "comb_eat_median")
     if method in ("stl_ets", "stl_arima"):
         return S.forecast_stl(method, y, h, seasonality)
     if method == "bagged_ets":

@@ -62,6 +62,8 @@ REFS = {
     "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
                    "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
                    "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
+    "makridakis2000": _ref("Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and implications. International "
+                           "Journal of Forecasting, 16(4), 451–476.", "https://doi.org/10.1016/S0169-2070(00)00057-1"),
     "challu2023": _ref("Challu, C., Olivares, K. G., Oreshkin, B. N., Garza Ramirez, F., Mergenthaler Canseco, M., & Dubrawski, A. "
                        "(2023). NHITS: Neural hierarchical interpolation for time series forecasting. Proceedings of the AAAI "
                        "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854"),
@@ -242,6 +244,27 @@ MODELS: dict[str, dict] = {
         "caution": "As slow as its slowest component (ARIMA); measure with a short trial first.",
         "engines": {PY: "Built from statsforecast AutoETS, AutoCES, AutoARIMA and DynamicOptimizedTheta."},
         "params": [], "refs": ["petropoulos2020"], "cost": "Slow (sum of the four components).",
+    },
+    "comb_eat": {
+        "name": "Combination: mean of ETS, ARIMA, Theta", "group": "yerel", "task": "local",
+        "summary": "Equal-weight average of the automatic ETS, ARIMA and Theta forecasts.",
+        "how": "ETS, ARIMA and Theta are fitted with this engine's settings and their forecasts are averaged at each horizon step. "
+               "If a component fails the mean of the other two is used (a note is recorded); with fewer than two the series falls back.",
+        "use": "The classic simple combination: it is often more accurate than each of its parts (Makridakis & Hibon 2000; "
+               "Hyndman's ETS-ARIMA-Theta average was a strong M4 benchmark). Good for testing whether combining changes rankings.",
+        "caution": "As slow as its slowest component (ARIMA). One badly wrong component pulls the mean; the median variant is more robust.",
+        "engines": {PY: "statsforecast AutoETS and AutoARIMA with the built-in Theta (R thetaf)."},
+        "params": [], "refs": ["makridakis2000", "petropoulos2020"], "cost": "Slow (sum of the three components).",
+    },
+    "comb_eat_median": {
+        "name": "Combination: median of ETS, ARIMA, Theta", "group": "yerel", "task": "local",
+        "summary": "Pointwise median of the automatic ETS, ARIMA and Theta forecasts.",
+        "how": "The same three components as the mean combination; at each horizon step the middle value is taken, so a single "
+               "badly wrong component has no effect. With one component failed it is the mean of the other two.",
+        "use": "A robust alternative to the mean combination (the idea behind SCUM, with three components).",
+        "caution": "As slow as its slowest component (ARIMA).",
+        "engines": {PY: "statsforecast AutoETS and AutoARIMA with the built-in Theta (R thetaf)."},
+        "params": [], "refs": ["petropoulos2020"], "cost": "Slow (sum of the three components).",
     },
     "tbats": {
         "name": "TBATS", "group": "yerel", "task": "local",
@@ -676,6 +699,8 @@ CPP_NOTES = {
     "stl_ets": _CPP_R, "stl_arima": _CPP_R,
     "bagged_ets": _CPP_R + " Runs n_boot = 100 and seed 0 (the defaults); other values need the Python engine.",
     "thief": _CPP_R, "mapa": _CPP_R,
+    "comb_eat": "Native C++: mean of the C++ ets and arima (both reproduce R, so the result differs slightly from the Python engine, which uses statsforecast) and theta.",
+    "comb_eat_median": "Native C++: median of the C++ ets, arima and theta (R-based ETS / ARIMA, so it differs slightly from the Python engine).",
     "scum": "Native C++: median of the C++ ets, auto_ces, arima and dotm (R-based ETS / ARIMA, so it differs slightly from the Python SCUM).",
     "mstl": _CPP_PY + " The trend forecaster is the C++ (R) ETS.",
     "pooled_regression": "Native C++ least squares (streamed QR); equals R glm to rounding.",
