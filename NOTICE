@@ -28,6 +28,12 @@ R package "MAPA" (GPL-2 or later)
   Copyright (C) Nikolaos Kourentzes and Fotios Petropoulos. Translated: mapaest(), mapacalc(), statetranslate(),
   mapacomb() with type = "ets" (cpp/src/temporal.cpp, src/tsfstudio/engines/py_sf.py).
 
+catch22 / R package "Rcatch22" v0.1.13 (GPL-3)
+  Copyright (C) Carl H. Lubba, Ben D. Fulcher, Trent Henderson and contributors.
+  https://github.com/chlubba/catch22, https://github.com/hendersontrent/Rcatch22
+  Included: the C feature code and its helpers, comments removed (cpp/src/catch22/), with a switch reproducing the
+  ranking study's Rcatch22 build (unit FFT twiddle factors).
+
 R "stats" package, part of R (GPL-2 or later)
   Copyright (C) The R Core Team. https://www.r-project.org
   Translated: arima() with ARIMA_Like / ARIMA_CSS / getQ0, optim()'s vmmin (BFGS) and nmmin (Nelder-Mead) and

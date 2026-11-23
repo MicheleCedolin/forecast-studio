@@ -35,6 +35,7 @@
 #include "temporal.hpp"
 #include "rstats.hpp"
 #include "simple_sf.hpp"
+#include "catch22/catch22.h"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -222,6 +223,45 @@ TSF_API int tsf_loess(const double* x, const double* y, int32_t n, double span, 
         return 1;
     }
 }
+
+// catch22 features (Rcatch22 v0.1.13 catch22_all, each on the z-scored series) of n_series series packed in
+// values[offsets[i] .. offsets[i+1]); out gets n_series rows of CATCH22_N. Series shorter than 10 points, constant
+// or holding non-finite values get NaN rows. study_fft = 1 reproduces the ranking study's stored values (its
+// Rcatch22 build's FFT had unit twiddle factors).
+TSF_API int tsf_catch22(const double* values, const int64_t* offsets, int32_t n_series, int32_t study_fft,
+                        int32_t n_threads, double* out) {
+    std::atomic<int32_t> next{0};
+    auto work = [&]() {
+        for (;;) {
+            const int32_t i = next.fetch_add(1);
+            if (i >= n_series) break;
+            const double* y = values + offsets[i];
+            const int n = static_cast<int>(offsets[i + 1] - offsets[i]);
+            double* row = out + static_cast<int64_t>(i) * CATCH22_N;
+            bool ok = n >= 10;
+            bool varies = false;
+            for (int k = 0; ok && k < n; ++k) {
+                if (!std::isfinite(y[k])) ok = false;
+                else if (y[k] != y[0]) varies = true;
+            }
+            if (ok && varies) catch22_all(y, n, row, study_fft ? 1 : 0);
+            else std::fill(row, row + CATCH22_N, std::nan(""));
+        }
+    };
+    int nt = n_threads > 0 ? n_threads : static_cast<int>(std::thread::hardware_concurrency());
+    nt = std::max(1, std::min(nt, std::max<int32_t>(1, n_series)));
+    if (nt == 1) {
+        work();
+    } else {
+        std::vector<std::thread> pool;
+        pool.reserve(nt);
+        for (int t = 0; t < nt; ++t) pool.emplace_back(work);
+        for (auto& th : pool) th.join();
+    }
+    return 0;
+}
+TSF_API int32_t tsf_catch22_count() { return CATCH22_N; }
+TSF_API const char* tsf_catch22_name(int32_t i) { return (i >= 0 && i < CATCH22_N) ? CATCH22_NAMES[i] : nullptr; }
 
 // Diagnostic hook: R's x ^ y as the C++ engine computes it.
 TSF_API double tsf_r_pow(double x, double y) { return tsf::rs::r_pow(x, y); }
