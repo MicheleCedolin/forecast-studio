@@ -269,11 +269,13 @@ function bindRail() {
   $("#view-features").addEventListener("click", () => setView("features"));
   $("#view-work").addEventListener("click", () => setView("work"));
   let armed = false;
-  $("#quit").addEventListener("click", async ev => {
+  const quit = async ev => {
     if (!armed) { armed = true; ev.target.textContent = "Sure? Quit"; setTimeout(() => { armed = false; ev.target.textContent = "Quit application"; }, 4000); return; }
     try { await api("shutdown", {}); } catch (_) { /* the connection drops while the server shuts down */ }
     document.body.replaceChildren(el("p", { class: "note", style: "margin:40px auto;max-width:520px", text: "Forecast Studio has been closed. You can close this tab." }));
-  });
+  };
+  $("#quit").addEventListener("click", quit);
+  const qf = $("#quit-foot"); if (qf) qf.addEventListener("click", quit);
   const secs = $$(".sec");
   const io = new IntersectionObserver(es => {
     for (const e of es) if (e.isIntersecting) { $$(".steps a").forEach(a => a.classList.toggle("here", a.dataset.step === e.target.id)); }
@@ -314,7 +316,7 @@ function renderVeri() {
     el("div", { class: "toolbar" },
       el("input", { type: "search", class: "search", placeholder: "Search: name or domain", "aria-label": "Search datasets", value: S.filter,
         oninput: ev => { S.filter = ev.target.value; renderDatasetList(); } }),
-      el("div", { class: "tabs", role: "tablist" }, tabs.map(([k, l]) => el("button", { type: "button", role: "tab", "aria-selected": String(S.tab === k),
+      el("div", { class: "tabs", role: "group", "aria-label": "Filter datasets" }, tabs.map(([k, l]) => el("button", { type: "button", "aria-pressed": String(S.tab === k),
         onclick: () => { S.tab = k; renderVeri(); } }, l))),
       miss ? el("span", { class: "hint", text: `${miss} files are not in the data folder.` }) : null),
     el("div", { id: "dlist" }),
@@ -426,7 +428,7 @@ function uploadBlock() {
     el("h3", { text: "Use your own data" }),
     el("p", { text: "Upload a .tsf file or an Excel (.xlsx) file that follows the template; Excel is converted to .tsf automatically and a validation report appears below." }),
     el("div", { class: "row-actions" },
-      el("button", { type: "button", class: "btn ghost small", onclick: () => input.click() }, "Choose file"),
+      el("button", { type: "button", id: "upbtn", class: "btn ghost small", onclick: () => input.click() }, "Choose file"),
       el("a", { href: `/api/template.xlsx?t=${encodeURIComponent(TOKEN)}`, download: "forecast_studio_template.xlsx" }, "Download the Excel template"),
       el("label", { class: "hint", style: "display:inline-flex;gap:6px;align-items:center" }, fill, "In Excel, fill missing dates with missing values")),
     input, info);
@@ -440,11 +442,23 @@ function uploadBlock() {
   return box;
 }
 async function doUpload(file, fill, info) {
-  info.replaceChildren(el("p", { class: "hint", text: `Uploading ${file.name}…` }));
+  // UI review M12: XMLHttpRequest reports upload progress (fetch does not); "Choose file" is disabled meanwhile.
+  const mb = file.size / 1e6;
+  const bar = el("progress", { max: 100, value: 0, "aria-label": "Upload progress", style: "width:220px;vertical-align:middle" });
+  const pct = el("span", { class: "hint", text: " 0%" });
+  info.replaceChildren(el("p", { class: "hint" }, `Uploading ${file.name} (${mb >= 1 ? nf1.format(mb) + " MB" : nf0.format(file.size / 1e3) + " kB"})… `, bar, pct));
+  const pickBtn = $("#upbtn"); if (pickBtn) pickBtn.disabled = true;
   try {
-    const r = await fetch(`/api/upload?name=${encodeURIComponent(file.name)}&fill_gaps=${fill ? 1 : 0}`, { method: "POST", headers: { "X-TSF-Token": TOKEN }, body: file });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || "Upload failed");
+    const j = await new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open("POST", `/api/upload?name=${encodeURIComponent(file.name)}&fill_gaps=${fill ? 1 : 0}`);
+      x.setRequestHeader("X-TSF-Token", TOKEN);
+      x.upload.onprogress = ev => { if (ev.lengthComputable) { const p = Math.round(ev.loaded / ev.total * 100); bar.value = p; pct.textContent = p < 100 ? ` ${p}%` : " checking the file…"; } };
+      x.onload = () => { let body = null; try { body = JSON.parse(x.responseText); } catch (_) { /* not JSON */ }
+        if (x.status >= 200 && x.status < 300 && body) resolve(body); else reject(new Error((body && body.error) || `Upload failed (HTTP ${x.status})`)); };
+      x.onerror = () => reject(new Error("Upload failed: the connection to the server was lost."));
+      x.send(file);
+    });
     const lines = [...(j.errors || []).map(e => "ERROR: " + e), ...(j.warnings || []).map(w => "WARNING: " + w)];
     if (!j.ok) { info.replaceChildren(el("p", { class: "note err", text: "The file was not uploaded." }), el("div", { class: "report bad", text: lines.join("\n") || "Unknown error." })); return; }
     info.replaceChildren(el("p", { class: "note soft", text: `Uploaded: ${j.id.replace(/^upload:/, "")}.` + (j.info && j.info.n_series ? ` ${j.info.n_series} series, ${frq(j.info.frequency)} frequency, horizon ${j.info.horizon}.` : "") }),
@@ -453,6 +467,7 @@ async function doUpload(file, fill, info) {
     renderVeri(); $("#upinfo").replaceWith(info.cloneNode(true));
     selectDataset(j.id);
   } catch (e) { info.replaceChildren(el("p", { class: "note err", text: e.message })); }
+  finally { const b = $("#upbtn"); if (b) b.disabled = false; }
 }
 
 // ================================================================================================ 2 MODEL
@@ -887,11 +902,13 @@ function renderChartBar() {
   $("#chartbar").replaceChildren(el("div", { class: "chartbar" },
     el("button", { type: "button", class: "btn ghost small", onclick: () => step(-1), "aria-label": "Previous series" }, "‹"), input,
     el("button", { type: "button", class: "btn ghost small", onclick: () => step(1), "aria-label": "Next series" }, "›"), datalist,
-    el("span", { class: "hint", text: "By:" }),
-    el("select", { "aria-label": "Measure", onchange: ev => { r.shortMetric = ev.target.value; } }, cols.map(c => el("option", { value: c, selected: c === r.shortMetric }, (S.models.metrics[c] || { name: c }).name))),
-    el("button", { type: "button", class: "btn ghost small", onclick: () => pick("max") }, "highest error"),
-    el("button", { type: "button", class: "btn ghost small", onclick: () => pick("med") }, "median"),
-    el("button", { type: "button", class: "btn ghost small", onclick: () => pick("min") }, "lowest error")),
+    el("span", { class: "hint", text: "Show the series with:" }),
+    // UI review M9: one select instead of three buttons (the toolbar wrapped to ~190 px on a phone)
+    el("select", { "aria-label": "Which series to show", onchange: ev => { if (ev.target.value) pick(ev.target.value); ev.target.value = ""; } },
+      el("option", { value: "" }, "choose…"), el("option", { value: "max" }, "highest error"), el("option", { value: "med" }, "median error"),
+      el("option", { value: "min" }, "lowest error")),
+    el("span", { class: "hint", text: "by" }),
+    el("select", { "aria-label": "Measure", onchange: ev => { r.shortMetric = ev.target.value; } }, cols.map(c => el("option", { value: c, selected: c === r.shortMetric }, (S.models.metrics[c] || { name: c }).name)))),
     el("div", { class: "legend-line" },
       el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "var(--pencil)", "stroke-width": 1.5 })), "history"),
       el("span", {}, svg("svg", { width: 26, height: 10 }, svg("line", { x1: 0, x2: 26, y1: 5, y2: 5, stroke: "var(--ink)", "stroke-width": 2 }), svg("circle", { cx: 13, cy: 5, r: 3, fill: "var(--ink)" })), "actual (test)"),
@@ -981,16 +998,20 @@ function renderHist() {
 function renderErrorTable() {
   const r = S.run, e = r && r.errors, host = $("#errtable"); if (!host || !e) return;
   const cols = e.columns;
-  const th = c => el("th", { class: "sortable", "aria-sort": r.sort === c ? (r.desc ? "descending" : "ascending") : null, tabindex: 0,
-    onclick: () => { if (r.sort === c) r.desc = !r.desc; else { r.sort = c; r.desc = true; } r.offset = 0; loadErrors(); },
-    onkeydown: ev => { if (ev.key === "Enter") ev.target.click(); } }, c === "series_name" ? "Series" : (S.models.metrics[c] || { name: c }).name, r.sort === c ? (r.desc ? " ↓" : " ↑") : "");
+  // UI review M7: a real button in each sortable header (Enter and Space work, one tab stop per column)
+  const th = c => el("th", { class: "sortable", "aria-sort": r.sort === c ? (r.desc ? "descending" : "ascending") : "none" },
+    el("button", { type: "button", class: "thbtn", onclick: () => { if (r.sort === c) r.desc = !r.desc; else { r.sort = c; r.desc = true; } r.offset = 0; loadErrors(); } },
+      c === "series_name" ? "Series" : (S.models.metrics[c] || { name: c }).name, r.sort === c ? (r.desc ? " ↓" : " ↑") : ""));
+  const open = name => { showSeries(name); $("#chartbar").scrollIntoView({ behavior: "smooth", block: "center" }); };
   const page = Math.floor(r.offset / 20) + 1, pages = Math.max(1, Math.ceil(e.total / 20));
   host.replaceChildren(
     el("div", { class: "chartbar" }, el("input", { type: "search", class: "search", style: "width:190px", placeholder: "Search series name", value: r.q || "", "aria-label": "Search series",
       onchange: ev => { r.q = ev.target.value; r.offset = 0; loadErrors(); } }), el("span", { class: "hint", text: `${fint(e.total)} series; click a header to sort` })),
     el("div", { class: "tablewrap" }, el("table", { class: "t" }, el("thead", {}, el("tr", {}, cols.map(th))),
-      el("tbody", {}, e.rows.map(row => el("tr", { class: "clickrow", style: "cursor:pointer", tabindex: 0, onclick: () => { showSeries(row.series_name); $("#chartbar").scrollIntoView({ behavior: "smooth", block: "center" }); },
-        onkeydown: ev => { if (ev.key === "Enter") ev.target.click(); } }, cols.map(c => el("td", { class: c === "series_name" ? "name" : "", text: c === "series_name" ? row[c] : fmtM(c, row[c]) }))))))),
+      el("tbody", {}, e.rows.map(row => el("tr", { class: "clickrow", style: "cursor:pointer", onclick: ev => { if (!ev.target.closest("button")) open(row.series_name); } },
+        cols.map(c => c === "series_name"
+          ? el("td", { class: "name" }, el("button", { type: "button", class: "linkish", title: "Open the series chart", onclick: () => open(row.series_name) }, row[c]))
+          : el("td", { text: fmtM(c, row[c]) }))))))),
     el("div", { class: "pager" }, el("button", { type: "button", class: "btn ghost small", disabled: r.offset <= 0, onclick: () => { r.offset = Math.max(0, r.offset - 20); loadErrors(); } }, "‹ Previous"),
       el("span", { text: `Page ${page} / ${pages}` }),
       el("button", { type: "button", class: "btn ghost small", disabled: page >= pages, onclick: () => { r.offset += 20; loadErrors(); } }, "Next ›"),

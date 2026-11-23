@@ -155,7 +155,7 @@ details.adv > summary { cursor: pointer; font-family: var(--sans); font-size: 14
 .toolbar .search { width: 230px; }
 .tabs { display: inline-flex; gap: 4px; font-family: var(--sans); font-size: 14.5px; }
 .tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 4px 8px; cursor: pointer; color: var(--ink-2); }
-.tabs button[aria-selected=true] { border-bottom-color: var(--ink); font-weight: 700; color: var(--ink); }
+.tabs button[aria-pressed=true] { border-bottom-color: var(--ink); font-weight: 700; color: var(--ink); }
 .list { border-top: 2px solid var(--ink); max-height: 330px; overflow-y: auto; background: var(--white); border-bottom: 1px solid var(--rule); }
 .list.tall { max-height: none; }
 .drow { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.3fr) 80px 56px 84px; gap: 12px; align-items: baseline; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--rule-soft); padding: 8px 12px; cursor: pointer; font-family: var(--sans); font-size: 14.5px; color: var(--ink); border-left: 4px solid transparent; }
@@ -246,7 +246,9 @@ table.t th:first-child, table.t td:first-child { text-align: left; }
 table.t td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; }
 table.t tr:hover td { background: var(--hover); }
 table.t tr:hover td.best { background: var(--hl); }
-table.t th.sortable { cursor: pointer; }
+table.t th.sortable { cursor: pointer; padding: 0; }
+table.t th.sortable .thbtn { all: unset; display: block; box-sizing: border-box; width: 100%; padding: 6px 10px; cursor: pointer; font: inherit; color: inherit; text-align: inherit; }
+table.t th.sortable .thbtn:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 table.t th.sortable:hover { background: var(--hover); }
 table.t td.unit { color: var(--pencil); font-size: 13.5px; text-align: left; white-space: nowrap; }
 table.t th[aria-sort] { background: var(--sel-bg); }
@@ -321,6 +323,12 @@ table.t td.name { font-family: var(--serif); font-size: 16.5px; }
   .runrow { grid-template-columns: 24px minmax(0, 1fr) 70px 70px; }
   /* Phone: keep checkbox, run name, MASE and the Open button (child 8 is the only way to load a past run). */
   .runrow > :nth-child(3), .runrow > :nth-child(4), .runrow > :nth-child(5), .runrow > :nth-child(7) { display: none; }
+  /* UI review M9: compact masthead, Quit at the end of the page */
+  .masthead { padding: 12px 0 8px; gap: 6px; }
+  .brand h1 { font-size: 25px; }
+  .brand p { display: none; }
+  .status { gap: 2px 12px; font-size: 12.5px; }
+  .rail .quit { display: none; }
 }
 
 /* Series features view */
@@ -338,3 +346,6 @@ table.t tr.grp th { text-align: left; font-weight: 700; padding-top: 10px; }
 .pca-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 .pca-legend .sw.hollow { border: 1.2px solid #898781; box-sizing: border-box; }
 .pca-legend .ramp { display: inline-block; width: 120px; height: 10px; border-radius: 2px; }
+
+.foot-quit { grid-column: 1 / -1; margin: 28px 0 0; padding-top: 12px; border-top: 1px solid var(--rule); }
+@media (min-width: 761px) { .foot-quit { display: none; } }
