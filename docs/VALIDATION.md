@@ -119,6 +119,13 @@ each difference was not analysed. The equalities hold for the fixed-parameter ca
 (which optimise the parameters). The C++ engine was used for all rows. Not compared: adida (no function in tsintermittent),
 lightgbm (CRAN has 4.7.0, the app uses 4.6.0), catboost (not on CRAN), auto_theta (no single R function).
 
+**Platform note (thief, mapa).** With the library built on Linux (GCC), 66 of the 67 `r_temporal` series equal the Windows R
+fixtures to ≤ 1e-12; one quarterly series (18 observations) differs by 1.4e-6 (thief) and 1.2e-6 (mapa). R itself shows the
+same: thief 0.3 / MAPA 2.1.0 run on Linux (R 4.3.3, forecast 8.21.1) differ from the Windows fixture (R 4.6.2, forecast 9.0.2)
+by 1.4e-6 / 1.2e-6 on that series, and the Linux C++ forecasts equal the Linux R forecasts there to 1e-13. The difference
+therefore comes from R's own platform or version dependence, not from the port; the two were not separated. Equality with R
+to rounding is a same-platform statement.
+
 ## 2. R motoru — kullanıcının R tahminlerine karşı (yapıldı: Windows, yerel R, haftalık küme)
 Ortam: R 4.6.2 (ucrt, kullanıcı klasörüne kurulu), `forecast` 9.0.2, `jsonlite` 2.0.0; `python -m tsfstudio golden --engine r`
 (NN5 haftalık, h=8, 111 seri, 0 yedek). Referans: kullanıcının kendi R çıktıları (muhtemelen daha eski bir `forecast` sürümü).

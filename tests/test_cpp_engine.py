@@ -354,13 +354,22 @@ def test_temporal_aggregation_reproduces_r(method, data, m, h):
     """C++ thief / mapa = R thief::thief(usemodel = "ets") / MAPA::mapa(comb = "w.mean", hybrid = TRUE, type = "ets")
     on msts(y, m) (tools/r_reference/temporal_reference.R; thief 0.3, MAPA 2.1.0) for 38 monthly and 29 quarterly
     synthetic series: <= 1e-12 (the ETS port, incl. its small-sample branch and class-3 mean forecasts, equals R; the
-    thief reconciliation is a dense Cholesky where R uses a sparse LU)."""
+    thief reconciliation is a dense Cholesky where R uses a sparse LU).
+
+    The fixtures were written by R on Windows. On another platform one short series (quarterly, 18 observations) may
+    differ by about 1e-6: R itself, run on Linux, differs from the Windows fixture by 1.4e-6 on that series, and the
+    Linux build of the library follows the Linux R to 1e-13 (docs/VALIDATION.md 1e)."""
+    import platform
     d = G / "r_temporal"
     train = [r[~np.isnan(r)] for r in _rows(d / f"{data}_train.csv.gz")]
     R = np.vstack(_rows(d / f"{data}_{method}.csv.gz"))
     f, flags, _ = C.forecast_batch(method, train, h, (float(m),))
     assert not flags.any()
-    assert (np.abs(f - R) / np.abs(R)).max() < 1e-12
+    rel = (np.abs(f - R) / np.abs(R)).max(axis=1)
+    if platform.system() == "Windows":
+        assert rel.max() < 1e-12
+    else:
+        assert (rel > 1e-12).sum() <= 1 and rel.max() < 1e-5
 
 
 def test_thief_fails_like_r_for_prime_periods():
