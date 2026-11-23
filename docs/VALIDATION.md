@@ -22,9 +22,10 @@ Otomatik test: `tests/test_golden_nn5.py` (`tests/golden/nn5_weekly/`, 412 KB). 
 | günlük | ses | 1,5×10⁻⁵ | 6/111 | +%0,18 | +%0,18 |
 | günlük | theta | 8×10⁻⁶ | 4/111 | −%0,32 | −%0,39 |
 
-Sapmanın nedeni: sapan **tüm** SES serilerinde Python'un en iyi α'sı alt sınırda (1×10⁻⁴), R'ınki ise daha yüksek SSE'de (haftalık
-6 seride %0,2–41 daha yüksek) durmuş; yani R'ın Nelder-Mead'i sınır optimumunu bulamıyor. Bu, `test_ses_deviations_occur_only_at_alpha_lower_bound`
-ile sınanır. Süre: 111 seri için her biri < 0,5 sn (R kaydınızda 7–11 sn).
+Sapmanın nedeni: sapan **tüm** SES serilerinde Python'un en iyi α'sı alt sınırda (1×10⁻⁴), R'ınki ise daha yüksek SSE'de durmuş
+(R'ın kendi koduyla yeniden ölçüm, 1e: haftalık 6 seride %0,07–1,5, günlük 6 seride %0,001–0,7 daha yüksek; bu belgenin önceki
+sürümündeki "%0,2–41" değeri yeniden üretilemedi). Yani R'ın Nelder-Mead'i bu serilerde optimuma yakınsamıyor. Bu,
+`test_ses_deviations_occur_only_at_alpha_lower_bound` ve `tests/test_r_reference_optimum.py` ile sınanır. Süre: 111 seri için her biri < 0,5 sn (R kaydınızda 7–11 sn).
 
 statsforecast tabanlı yöntemler geliştirme ortamında **çalıştırılamadı**; adaptör mantığı (R zinciri, frekans kuralları,
 Fourier regresörleri, yedek sayımı) sahte bir statsforecast modülüyle sınanır. Gerçek doğrulama kullanıcının makinesinde `golden` ile yapılır.
@@ -71,6 +72,52 @@ Reference: `tools/r_reference/m4_benchmarks.R`, which follows the official M4 be
 - After the fix, Python's in-sample MSE is lower than or equal to R's on every one of the 444 fits (111 series × 2 datasets ×
   Holt and damped Holt). It is up to 7.8% lower, because R's Nelder-Mead stops before the optimum. This is the same
   situation as SES in 1b. The remaining forecast differences are therefore R optimiser artefacts, not a different model.
+
+### 1e. Direct checks against R and CRAN packages (done 2026-11-23, Linux, R 4.3.3, forecast 8.21.1)
+Rule: a method that also exists in R is compared with R; a method without an R counterpart is not. R 4.3.3 / forecast 8.21.1
+reproduce the study's stored R forecasts for `ses` and `theta` and the forecast 9.0.2 `r_m4_comb` fixture to ≤ 1e-14, so the
+older version stands in for the study's. Data: NN5 weekly (h 8) and daily (h 56), 111 series each; the intermittent methods
+on 200 synthetic series (`tools/r_reference/make_intermittent_series.py`, seed 0, h 12), because NN5 is not intermittent.
+Scripts: `tools/r_reference/{basic,cran,ces,ses_optimum,holt_theta_optimum}_reference.R`. Tests: `tests/test_r_reference_optimum.py`.
+
+**Is the SES / Theta / Comb deviation from R an optimiser artefact (1b, 1d)? Yes.**
+
+| Check | weekly | daily |
+|---|---|---|
+| SES series that differ from R by > 1e-3 | 6 | 6 |
+| ... of which the SSE optimum is at alpha = 1e-4 | 6 | 6 |
+| ... R's SSE above the optimum | 0.07–1.5% | 0.001–0.7% |
+| ... R `ets()` with alpha fixed at the optimum: SSE above the optimum | 1e-4% | ≤ 1.5e-4% |
+| C++ SES forecast vs the exact optimum, worst | 7.5e-9 | 1.9e-8 |
+| Theta series that differ from R by > 1e-3 (all with the optimum at the bound) | 5 | 4 |
+| C++ Theta forecast vs the exact optimum, worst | 5.6e-9 | 6.5e-5 (1 series > 1e-6) |
+| Holt / damped Holt fits where R's SSE exceeds the multi-start optimum by > 0.1% | 71 / 83 | 26 / 19 |
+| ... largest excess (R is never below the optimum) | 8.5% / 7.6% | 1.9% / 0.6% |
+| C++ Comb S-H-D vs the multi-start optimum: median, worst, series > 1e-3 | 7e-9, 4.5e-3, 1 | 7e-8, 3.1e-3, 1 |
+
+Two qualifications. (i) "R cannot find the boundary optimum" is too strong: on 2 of the 12 deviating SES series R's alpha is at
+the bound as well and it is the initial level that has not converged, and on 36 other series with the optimum at the bound R
+converges. (ii) For Comb, one series per dataset differs from the multi-start reference by 0.3–0.5%; which of the two points
+is the better optimum was not determined.
+
+**Methods with an R counterpart**
+
+| Method | R call | Result (relative difference) |
+|---|---|---|
+| snaive, naive | `forecast::snaive`, `forecast::naive` | 0 |
+| drift | `forecast::rwf(drift = TRUE)` | ≤ 1.3e-14 |
+| croston_classic | `forecast::croston(alpha = 0.1)`; `tsintermittent::crost(w = c(0.1, 0.1), init = "naive", init.opt = FALSE)` | ≤ 5e-15 |
+| croston_sba | `tsintermittent::crost(type = "sba", ...)` (same settings) | ≤ 5e-15 |
+| tsb | `tsintermittent::tsb(w = c(0.1, 0.1), init = "naive", init.opt = FALSE)` | ≤ 4e-15 |
+| croston_optimized | `tsintermittent::crost(init = "naive", cost = "mse", init.opt = FALSE)` | not equivalent: median 8% |
+| imapa | `tsintermittent::imapa()` | not equivalent: median 16% |
+| dotm | `forecTheta::dotm()` 3.0.3 | not equivalent: median 1.5e-3 weekly, 2.3e-2 daily; SMAPE 12.01 vs 11.97, 21.86 vs 22.23 |
+| auto_ces | `smooth::auto.ces()` 4.5.2 | not equivalent: median 1.9e-4 weekly, 1.9e-2 daily; SMAPE 12.36 vs 12.45, 20.81 vs 21.87 |
+
+The four "not equivalent" methods are ports of statsforecast; the R packages are separate implementations and the source of
+each difference was not analysed. The equalities hold for the fixed-parameter calls shown, not for the R functions' defaults
+(which optimise the parameters). The C++ engine was used for all rows. Not compared: adida (no function in tsintermittent),
+lightgbm (CRAN has 4.7.0, the app uses 4.6.0), catboost (not on CRAN), auto_theta (no single R function).
 
 ## 2. R motoru — kullanıcının R tahminlerine karşı (yapıldı: Windows, yerel R, haftalık küme)
 Ortam: R 4.6.2 (ucrt, kullanıcı klasörüne kurulu), `forecast` 9.0.2, `jsonlite` 2.0.0; `python -m tsfstudio golden --engine r`

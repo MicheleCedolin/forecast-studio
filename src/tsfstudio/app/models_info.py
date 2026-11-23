@@ -665,9 +665,24 @@ def model_param_keys(model_id: str, engine: str | None = None) -> list[str]:
 CPP = "cpp"
 _CPP_R = "Native C++ port of the R code; forecasts equal R's to rounding (cpp/README.md)."
 _CPP_PY = "Native C++ port of the Python engine's statsforecast model; forecasts equal the Python engine's to rounding."
+_CPP_OPT = ("Native C++, the same model as R. Equal to R (median difference about 5e-6 on NN5) except on about 5% of series, where the "
+            "best alpha is at its lower bound and R's optimiser stops at a fit with a higher SSE; there the forecasts differ by "
+            "up to 17% and the C++ forecast is the SSE optimum (docs/VALIDATION.md 1e).")
+_NOT_R = " Runs the method's default settings. R has a counterpart ({}) but it is a different implementation and not equivalent: {} (docs/VALIDATION.md 1e)."
 CPP_NOTES = {
-    "naive": "Native C++; same rule as the Python engine.", "snaive": _CPP_R, "drift": "Native C++; same rule as the Python engine.",
-    "ses": _CPP_R, "theta": _CPP_R, "naive2": _CPP_R, "comb_shd": _CPP_R,
+    "naive": "Native C++; equals R forecast::naive exactly (docs/VALIDATION.md 1e).", "snaive": _CPP_R,
+    "drift": "Native C++; equals R forecast::rwf(drift = TRUE) to rounding (docs/VALIDATION.md 1e).",
+    "ses": _CPP_OPT, "theta": _CPP_OPT, "naive2": _CPP_R,
+    "comb_shd": "Native C++, the same model as the M4 benchmark code in R. Not equal to R series by series: R's Holt and damped Holt "
+                "fits stop short of the optimum on most series (its SSE is up to 8.5% higher on NN5), the C++ fits do not. "
+                "Mean SMAPE differs from R by 0.1-0.3% (docs/VALIDATION.md 1e).",
+    "croston_classic": _CPP_PY + " Also equals R forecast::croston(alpha = 0.1) and tsintermittent::crost(w = 0.1, init = \"naive\") to rounding.",
+    "croston_sba": _CPP_PY + " Also equals R tsintermittent::crost(type = \"sba\", w = 0.1, init = \"naive\") to rounding.",
+    "tsb": _CPP_PY + " Also equals R tsintermittent::tsb(w = c(0.1, 0.1), init = \"naive\") to rounding. Runs the default alphas.",
+    "croston_optimized": _CPP_PY + _NOT_R.format("tsintermittent::crost with optimised parameters", "median difference 8% on 200 synthetic series"),
+    "imapa": _CPP_PY + _NOT_R.format("tsintermittent::imapa", "median difference 16% on 200 synthetic series"),
+    "dotm": _CPP_PY + _NOT_R.format("forecTheta::dotm", "median difference 0.15% on NN5 weekly and 2.3% on NN5 daily"),
+    "auto_ces": _CPP_PY + _NOT_R.format("smooth::auto.ces", "median difference 0.02% on NN5 weekly and 1.9% on NN5 daily"),
     "ets": "Native C++ port of R forecast::ets (incl. its small-sample branch and class-3 mean forecasts); equals R to rounding.",
     "holt_winters": _CPP_R + " Additive errors only (the default).", "holt_ets": _CPP_R,
     "arima": "Native C++ port of R auto.arima with the study's call chain; equals R to rounding.",
