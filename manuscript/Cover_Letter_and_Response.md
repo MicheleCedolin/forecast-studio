@@ -23,7 +23,7 @@ I want to be open about its history. An earlier, co-authored study on a related 
 
 The main differences from the earlier submission are these.
 
-- **Scope.** The benchmark has 15 dataset-frequency tasks from the M1, M3, M4, Tourism, and NN5 competitions, with 10,537 series, and a separate five-task stress panel. The earlier study used NN5 Daily only.
+- **Scope.** The benchmark has 15 dataset-frequency tasks from the M1, M3, M4, Tourism, and NN5 competitions, with 10,537 series. The earlier study used NN5 Daily only.
 - **Question.** The paper no longer proposes a metric-based ranking procedure. It asks how reliable a ranking is once measure validity, incomplete model coverage, disagreement among admissible measures, and benchmark composition are made explicit.
 - **Method.** A validity screen decides which measures count as evidence for each task. A task-balanced Bradley-Terry model and a permutation-calibrated Skillings-Mack test handle the incomplete model-by-task matrix that the screen produces. Kendall's W and a cross-metric selection regret separate ranking disagreement from its consequence for model choice.
 - **Finding.** Models differ systematically, and five of the eleven lead under every specification, but their order is not determined. Choices about how measures are grouped, weighted, and thresholded change the leader and not the leading three. Two other choices change both: which tasks are included, and what is done when a measure is undefined for a model. Every model exclusion in the benchmark comes from one measure, most from at most three series, and the exclusions favor the models they remove (Section 5.4, Table 8).
@@ -46,7 +46,7 @@ Reviewer comments are summarized in italics. "Now" describes the present manuscr
 
 **R1.1** *The analysis rests on a single data set (NN5, 111 series, banking), yet the framework is presented as broadly applicable.*
 
-I agree. The principal benchmark now contains 15 tasks from five competitions and 10,537 series, covering yearly to hourly frequencies and several domains (Section 3.1, Table 1). Five non-competition data sets, including medical, traffic, and macroeconomic series, form a separate stress panel (Section 5.4). I also changed what is claimed. The paper states that a ranking is conditional on the benchmark, shows by leave-one-competition-out analysis how far the ranking moves when a source is removed (Table 7), and does not present the leading models as general winners.
+I agree. The principal benchmark now contains 15 tasks from five competitions and 10,537 series, covering yearly to hourly frequencies and several domains (Section 3.1, Table 1). I also changed what is claimed. The paper states that a ranking is conditional on the benchmark, shows by leave-one-competition-out analysis how far the ranking moves when a source is removed (Table 7), and does not present the leading models as general winners.
 
 **R1.2** *Data and code are said to be included but no link, repository, or supplementary material is provided; Appendix A is missing.*
 
@@ -84,7 +84,7 @@ Agreed. The claim is withdrawn, and the Introduction says so directly: "Computin
 
 **R2.3** *The contribution is framed too narrowly (why 11 metrics, why Mann-Whitney, why Dunn?). The real question is what to do when metrics give different messages.*
 
-I adopted this framing. The contribution is no longer tied to a count of measures or a named test. The components are chosen for stated reasons: measures are grouped into families so that related formulas do not vote repeatedly, the Skillings-Mack test is used because the comparison matrix is incomplete, and the Bradley-Terry model is used because coverage differs by task (Sections 4.1 to 4.3). Alternative weightings and taxonomies are reported as robustness checks (Table S11).
+I adopted this framing. The contribution is no longer tied to a count of measures or a named test. The components are chosen for stated reasons: measures are grouped into families so that related formulas do not vote repeatedly, the Skillings-Mack test is used because the comparison matrix is incomplete, and the Bradley-Terry model is used because coverage differs by task (Sections 4.1 to 4.3). Alternative weightings and taxonomies are reported as robustness checks (Table S10).
 
 **R2.4** *111 series is limited; a large and diverse set is needed, and time-series characteristics should be used to validate the framework.*
 
