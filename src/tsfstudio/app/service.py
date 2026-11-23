@@ -29,7 +29,7 @@ from ..engines.base import EngineCancelled, EngineError
 from ..engines.registry import get_engine
 from ..estimate import available_memory_bytes, preflight
 from ..metrics import ALL_METRICS, DEFAULT_METRICS
-from ..runner import MISSING_POLICIES, RunConfig, RunError, build_job, prepare, run
+from ..runner import MISSING_POLICIES, RunConfig, RunError, build_job, prepare, prepare_origins, run
 from ..seasonality import primary_period, seasonality_for
 from ..tsf.reader import TSFDataset, read_tsf, read_tsf_header
 from . import models_info as MI
@@ -337,8 +337,18 @@ class AppService:
         cfg = RunConfig(engine=engine, task=task, method=method, horizon=opt_int("horizon"), lag=opt_int("lag") if task == "global" else None,
                         integer_conversion={"auto": None, None: None, "on": True, "off": False}[ic], missing_policy=mp,
                         params=self._params(info, engine, payload.get("params") or {}), seed=opt_int("seed", 0) if payload.get("seed") not in (None, "") else 1,
-                        workers=workers, max_series=opt_int("max_series"), metrics=tuple(metrics), output_dir=self.runs_dir)
+                        workers=workers, max_series=opt_int("max_series"), metrics=tuple(metrics), output_dir=self.runs_dir,
+                        origins=opt_int("origins") or 1, origin_step=opt_int("origin_step"))
+        if cfg.origins > 50:
+            raise AppError("At most 50 forecast origins.")
         return cfg, entry, ds_id
+
+    @staticmethod
+    def _scale_for_origins(rep, origins: int) -> None:
+        """A rolling-origin run fits the model once per origin: scale the one-origin time estimate."""
+        if origins > 1 and rep.runtime is not None and rep.runtime.seconds:
+            rep.runtime.seconds *= origins
+            rep.runtime.message = f"{rep.runtime.message} Rolling origin: {origins} fits, about {origins} times as long."
 
     @staticmethod
     def _params(info: dict, engine: str, given: dict) -> dict:
@@ -391,7 +401,7 @@ class AppService:
         cfg, entry, ds_id = self.parse_config(payload)
         try:
             ds, _ = self._load(ds_id, cfg.max_series)
-            prep = prepare(ds, cfg, entry)
+            prep, _, step = prepare_origins(ds, cfg, entry)
             job = build_job(prep, cfg, entry)
         except RunError as exc:
             return {"ok": False, "error": str(exc)}
@@ -404,7 +414,9 @@ class AppService:
         if probe and self.current_job() is not None:
             probe = False
         rep = preflight(job, engine=eng, probe=probe)
+        self._scale_for_origins(rep, cfg.origins)
         return clean({"ok": True, "n_series_run": len(prep.train), "horizon": prep.horizon, "seasonality": list(prep.seasonality),
+                      "origins": cfg.origins, "origin_step": step if cfg.origins > 1 else None,
                       "integer_conversion": prep.integer_conversion, "lag": job.lag, "missing": prep.missing_info,
                       "excluded": len(prep.excluded), "warnings": list(prep.warnings) + list(rep.warnings),
                       "memory": None if rep.memory is None else asdict(rep.memory),
@@ -441,8 +453,9 @@ class AppService:
             progress("loading", 0, 1)
             ds, _ = self._load(ds_id, cfg.max_series)
             if not confirm_long:
-                prep = prepare(ds, cfg, entry)
+                prep, _, _ = prepare_origins(ds, cfg, entry)
                 pre = preflight(build_job(prep, cfg, entry), engine=get_engine(cfg.engine))
+                self._scale_for_origins(pre, cfg.origins)
                 if pre.long_running:
                     raise RunError("Long run: the estimated time exceeds 15 minutes. Read the time estimate, tick the confirmation box and start again.")
             res = run(ds, cfg, entry=entry, dataset_id=ds_id, engine=get_engine(cfg.engine), progress=progress, cancel=job.cancel)

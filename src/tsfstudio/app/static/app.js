@@ -107,7 +107,7 @@ const S = {
   tab: "all", filter: "",
   detail: null, detailErr: null,
   sel: { dataset: null, method: null, engine: "python" },
-  settings: { horizon: "", lag: "", integer: "auto", missing: "error", max_series: "", seed: "1", workers: "1", metrics: null },
+  settings: { horizon: "", lag: "", integer: "auto", missing: "error", max_series: "", seed: "1", workers: "1", metrics: null, origins: "1", origin_step: "" },
   params: {},
   est: null, estBusy: false, estSeq: 0, confirmLong: false,
   job: null, pollTimer: null,
@@ -211,6 +211,8 @@ const SETTING_NOTES = {
   seed: ["Seed", "Reproducibility for methods that involve randomness. Most classical methods are deterministic; the seed is still written to the manifest."],
   workers: ["Workers", "In the Python engine, series are run in this many parallel processes. The C++ engine uses this many threads (1 = all CPU cores). The R engine runs on a single core on Windows. With 8 GB of memory we suggest 1-2 for Python."],
   metrics: ["Measures", "The error measures to compute. Hover over a measure name to see its definition and what to watch out for."],
+  origins: ["Forecast origins (rolling origin)", "With more than one origin the model is fitted and evaluated several times: at the usual split, and again with the last step, 2 x step, ... observations removed. Each fit sees only the data before its origin. Per-series measures are the mean over the origins, which gives steadier rankings than a single split (Tashman, 2000). The run takes about as many times longer. Series shorter than horizon + 2 + (origins - 1) x step are left out."],
+  origin_step: ["Step between origins", "How many observations each earlier origin moves back. Empty: the horizon, so the test windows do not overlap."],
 };
 function settingNote(k, extra) {
   const [t, x] = SETTING_NOTES[k];
@@ -558,6 +560,10 @@ function renderAyarlar() {
         return el("div", {}, el("h3", { text: SETTING_NOTES.missing[0] }), el("p", { text: SETTING_NOTES.missing[1] }), pol ? runIn(pol.label + ".", pol.help) : null);
       })),
     el("div", { class: "sub" }, bindNote(el("div", { class: "field" }, el("div", { class: "lab", text: "Measures" }), metricsBox), settingNote("metrics"))),
+    el("details", { class: "adv", open: s.origins !== "1" && s.origins !== "" ? true : null }, el("summary", { text: "Rolling origin" }),
+      el("div", { class: "grid3 sub" },
+        field("Forecast origins", inp("origins", "number", "1", { min: 1 }), settingNote("origins"), s.origins !== "1" && s.origins !== ""),
+        field("Step between origins", inp("origin_step", "number", "horizon", { min: 1 }), settingNote("origin_step"), s.origin_step !== ""))),
     el("details", { class: "adv" }, el("summary", { text: "Seed and workers" }),
       el("div", { class: "grid3 sub" },
         field("Seed", inp("seed", "number", "1", { min: 0 }), settingNote("seed"), s.seed !== "1"),
@@ -603,7 +609,7 @@ function buildConfig() {
     params[p.key] = p.kind === "bool" ? v === "true" : v;
   }
   return { dataset: S.sel.dataset, engine: S.sel.engine, method: S.sel.method, horizon: s.horizon, lag: s.lag, integer_conversion: s.integer, missing_policy: s.missing,
-    max_series: s.max_series, seed: s.seed, workers: s.workers, metrics: [...s.metrics], params };
+    max_series: s.max_series, seed: s.seed, workers: s.workers, metrics: [...s.metrics], params, origins: s.origins, origin_step: s.origin_step };
 }
 // Load a past run's configuration into the workspace (UI review M4): dataset, model, engine, settings and parameters.
 async function loadSettings(m) {
@@ -617,6 +623,7 @@ async function loadSettings(m) {
   Object.assign(S.settings, {
     horizon: str(c.horizon), lag: str(c.lag), missing: c.missing_policy || "error", max_series: str(c.max_series),
     seed: str(c.seed == null ? 1 : c.seed), workers: str(c.workers == null ? 1 : c.workers),
+    origins: str(c.origins == null ? 1 : c.origins), origin_step: str(c.origin_step),
     integer: c.integer_conversion == null ? "auto" : (c.integer_conversion ? "on" : "off"),
   });
   if (Array.isArray(c.metrics)) S.settings.metrics = new Set(c.metrics.filter(k => S.models.metrics[k]));
@@ -663,7 +670,7 @@ function renderKosu() {
     const row = (k, v) => { dl.append(el("dt", { text: k }), el("dd", {}, v)); };
     const total = S.detail && S.detail.stats ? S.detail.stats.n_series : null;
     row("Series", `${fint(est.n_series_run)}` + (total && est.n_series_run < total ? ` (of ${fint(total)})` : "") + (est.excluded ? `, ${est.excluded} series excluded` : ""));
-    row("Horizon", fint(est.horizon)); row("Seasonality", est.seasonality.map(x => nf2.format(x)).join(", "));
+    row("Horizon", fint(est.horizon)); if (est.origins > 1) row("Rolling origin", `${est.origins} origins, ${fint(est.origin_step)} observations apart`); row("Seasonality", est.seasonality.map(x => nf2.format(x)).join(", "));
     row("Rounding", est.integer_conversion ? "on" : "off"); if (est.lag != null) row("Lag", fint(est.lag));
     if (est.runtime) row("Run time", est.runtime.message + (est.probed ? "" : ""));
     if (est.memory) row("Memory", est.memory.message);
@@ -810,13 +817,14 @@ function renderSonuc() {
       el("dl", { class: "kvlist" },
         kv("Method / engine", `${cfg.method} / ${ENGINE_NAME[cfg.engine] || cfg.engine}`), kv("Parameters", params),
         kv("Horizon", cfg.effective_horizon), kv("Seasonal periods", (cfg.effective_seasonality || []).map(p => +(+p).toFixed(4)).join(", ")),
-        kv("Lag", cfg.lag), kv("Seed", cfg.seed), kv("Workers", cfg.workers), kv("Missing values", cfg.missing_policy),
+        kv("Lag", cfg.lag), kv("Forecast origins", cfg.origins > 1 ? `${cfg.origins} (step ${m.split.origin_step})` : null), kv("Seed", cfg.seed), kv("Workers", cfg.workers), kv("Missing values", cfg.missing_policy),
         kv("Series limit", cfg.max_series || "all"), kv("Measures", (cfg.metrics || []).join(", ")),
         kv("Data file SHA-256", m.dataset && m.dataset.sha256), kv("Engine versions", versions),
         kv("Forecast Studio", sw.tsfstudio && `${sw.tsfstudio} (Python ${sw.python}, ${sw.platform || ""})`), kv("Created (UTC)", (m.created_utc || "").replace("T", " ").slice(0, 19)))),
     warns.map(w => el("p", { class: "note", text: w })),
     flagZero ? el("p", { class: "note err", text: `${fpct(dg.series_all_zero_forecast_share, 0)} of the series received only 0 forecasts. MAE, MASE and WAPE can make this look good; SMAPE approaches exactly 2.0.` + (m.config.effective_integer_conversion ? " Turn off rounding to integers and run again." : " Rounding is already off, so the forecasts themselves are zero (typical for a naive method on sparse series); do not rely on these measures alone.") }) : null,
     el("h3", { text: "Summary" }),
+    m.split && m.split.origins > 1 ? el("p", { class: "note soft", text: `Rolling origin: ${m.split.origins} forecast origins, ${m.split.origin_step} observations apart. Each series' measures are the mean over its origins; the chart and the forecast files show the latest origin, and the files ending in "by_origin" hold every origin.` }) : null,
     el("div", { class: "tablewrap" }, summaryTable(d.summary)),
     el("h3", { text: "Forecast diagnostics" }),
     el("dl", { class: "diag" },
