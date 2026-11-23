@@ -18,6 +18,7 @@ from tsfstudio.metrics import mase, smape
 
 pytestmark = pytest.mark.skipif(C.load_lib() is None, reason="native library tsfcore not built")
 G = Path(__file__).parent / "golden"
+GOLDEN_LOESS = G / "r_loess"
 CASES = [("nn5_weekly", (52.17857142857143,), 8), ("nn5_daily", (7.0,), 56)]
 
 
@@ -280,6 +281,59 @@ def test_bagged_bootstrap_python_equals_cpp_and_r_rng():
             msg = ctypes.create_string_buffer(256)
             assert lib.tsf_bld_mbb(y.ctypes.data_as(dp), len(y), fr, num, 7, out.ctypes.data_as(dp), msg, 256) == 0
             assert np.array_equal(out.reshape(num, -1), np.vstack(B.bld_mbb_bootstrap(y, fr, num, 7)))
+
+
+def _rows(path):
+    import gzip
+    with gzip.open(path, "rt") as f:
+        return [np.array([np.nan if v == "NA" else float(v) for v in line.strip().split(",")]) for line in f if line.strip()]
+
+
+def test_loess_equals_r_bit_for_bit():
+    """loess(y ~ seq_along(y), span = 6/n, degree = 1)$fitted (R 4.6.2, tools/r_reference/loess_reference.R) for 128
+    series of length 8..735 (random walks and integer counts): the C++ and Python ports (k-d tree, vertex fits with
+    LINPACK QR/SVD, Hermite interpolation) give R's values bit for bit."""
+    import ctypes
+    from tsfstudio.engines import r_loess as RL
+    lib = C.load_lib()
+    dp = ctypes.POINTER(ctypes.c_double)
+    lib.tsf_loess.restype = ctypes.c_int32
+    lib.tsf_loess.argtypes = [dp, dp, ctypes.c_int32, ctypes.c_double, dp]
+    X, R = _rows(GOLDEN_LOESS / "loess_in.csv.gz"), _rows(GOLDEN_LOESS / "r_loess_fitted.csv.gz")
+    for i, (r, ref) in enumerate(zip(X, R)):
+        y = np.ascontiguousarray(r[~np.isnan(r)])
+        n = len(y)
+        x = np.arange(1, n + 1, dtype=float)
+        out = np.zeros(n)
+        assert lib.tsf_loess(x.ctypes.data_as(dp), y.ctypes.data_as(dp), n, 6.0 / n, out.ctypes.data_as(dp)) == 0
+        assert np.array_equal(out, ref), f"C++ row {i} (n = {n})"
+        if i % 8 == 0:
+            assert np.array_equal(np.array(RL.loess_fit_1d(list(x), list(y), 6.0 / n)), ref), f"Python row {i}"
+
+
+def test_bagged_ets_non_seasonal_reproduces_r():
+    """Non-seasonal bagged_ets (R's loess path) on 41 synthetic yearly series (n 13..47, with zeros and integer
+    data): C++ = R baggedETS after set.seed(0) to <= 1e-10 (R 31 s, C++ 0.5 s); bootstrap series bit-identical to
+    R's in C++ and Python (needs the 64-bit x87 precision R runs with, see rstats.hpp)."""
+    import ctypes
+    from tsfstudio.engines import r_boot as B
+    train = [r[~np.isnan(r)] for r in _rows(GOLDEN_LOESS / "yearly_train.csv.gz")]
+    ref = np.vstack(_rows(GOLDEN_LOESS / "r_bagged_ets_yearly.csv.gz"))
+    f, flags, _ = C.forecast_batch("bagged_ets", train, ref.shape[1], (1.0,))
+    assert not flags.any()
+    assert (np.abs(f - ref) / np.abs(ref)).max() < 1e-10
+    boot = np.vstack(_rows(GOLDEN_LOESS / "r_bld_mbb_yearly2_seed0.csv.gz"))
+    lib = C.load_lib()
+    dp = ctypes.POINTER(ctypes.c_double)
+    lib.tsf_bld_mbb.restype = ctypes.c_int32
+    lib.tsf_bld_mbb.argtypes = [dp, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_uint32, dp, ctypes.c_char_p,
+                                ctypes.c_int32]
+    y = np.ascontiguousarray(train[1])
+    out = np.zeros(30 * len(y))
+    msg = ctypes.create_string_buffer(256)
+    assert lib.tsf_bld_mbb(y.ctypes.data_as(dp), len(y), 1, 30, 0, out.ctypes.data_as(dp), msg, 256) == 0
+    assert np.array_equal(out.reshape(30, -1), boot)
+    assert np.array_equal(np.vstack(B.bld_mbb_bootstrap(y, 1, 30, 0)), boot)
 
 
 @pytest.mark.skipif(C.lightgbm_lib_path() is None, reason="lightgbm package (lib_lightgbm) not installed")

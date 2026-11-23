@@ -13,6 +13,30 @@
 namespace tsf {
 namespace rs {
 
+// R sets the x87 FPU to 64-bit (extended) precision at start-up; a host process such as Python on Windows leaves it at
+// 53 bits, which makes every long double sum (mean, colMeans, var, rowMeans, ...) round like a double. This guard
+// switches the calling thread's x87 precision to 64 bits and restores it on exit. SSE double arithmetic is unaffected.
+class X87Extended {
+public:
+    X87Extended() {
+#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+        __asm__ volatile("fnstcw %0" : "=m"(old_));
+        unsigned short cw = static_cast<unsigned short>(old_ | 0x0300);   // precision control = 11 (64-bit)
+        __asm__ volatile("fldcw %0" : : "m"(cw));
+#endif
+    }
+    ~X87Extended() {
+#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+        __asm__ volatile("fldcw %0" : : "m"(old_));
+#endif
+    }
+    X87Extended(const X87Extended&) = delete;
+    X87Extended& operator=(const X87Extended&) = delete;
+
+private:
+    unsigned short old_ = 0;
+};
+
 class RRng {
 public:
     explicit RRng(uint32_t seed) { set_seed(seed); }

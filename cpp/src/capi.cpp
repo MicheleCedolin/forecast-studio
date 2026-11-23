@@ -31,6 +31,7 @@
 #include "lightgbm_bridge.hpp"
 #include "stlf.hpp"
 #include "bagged.hpp"
+#include "loess.hpp"
 #include "rstats.hpp"
 #include "simple_sf.hpp"
 
@@ -145,6 +146,7 @@ TSF_API const char* tsf_methods() { return "naive,snaive,drift,ses,theta,naive2,
 // sigma2}. Returns 0, or 1 on error (message in msg).
 TSF_API int tsf_auto_arima(const double* y, int32_t n, int32_t freq, int32_t h, double* fc, double* info, char* msg,
                            int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         const tsf::AutoArimaResult r = tsf::auto_arima_study(Vec(y, y + n), freq, h);
         std::copy(r.forecast.begin(), r.forecast.end(), fc);
@@ -162,6 +164,7 @@ TSF_API int tsf_auto_arima(const double* y, int32_t n, int32_t freq, int32_t h, 
 
 // Test hook: Q0 of an ARMA(p, q) by method 0 (Gardner, as R) or 1 (autocovariances); out gets r*r values.
 TSF_API int tsf_arima_q0(const double* phi, int32_t p, const double* theta, int32_t q, int32_t method, double* out) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         const Vec Q = tsf::arima_q0(Vec(phi, phi + p), Vec(theta, theta + q), method);
         std::copy(Q.begin(), Q.end(), out);
@@ -172,6 +175,7 @@ TSF_API int tsf_arima_q0(const double* phi, int32_t p, const double* theta, int3
 // Test hook for dhr_arima (K Fourier terms, one period): info as tsf_auto_arima. Returns 0, or 1 on error.
 TSF_API int tsf_dhr_arima(const double* y, int32_t n, int32_t freq, int32_t K, int32_t h, double* fc, double* info,
                           char* msg, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         const tsf::AutoArimaResult r = tsf::dhr_arima(Vec(y, y + n), freq, 1, K, h);
         std::copy(r.forecast.begin(), r.forecast.end(), fc);
@@ -192,6 +196,7 @@ TSF_API int tsf_dhr_arima(const double* y, int32_t n, int32_t freq, int32_t K, i
 // R's RNG (out: k values of unif_rand() after set.seed(seed), then k values of sample(1:m, 1)).
 TSF_API int tsf_bld_mbb(const double* y, int32_t n, int32_t freq, int32_t num, uint32_t seed, double* out, char* msg,
                         int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         const std::vector<Vec> xs = tsf::bld_mbb_bootstrap(Vec(y, y + n), freq, num, seed);
         for (int32_t i = 0; i < num; ++i) std::copy(xs[i].begin(), xs[i].end(), out + static_cast<int64_t>(i) * n);
@@ -203,7 +208,29 @@ TSF_API int tsf_bld_mbb(const double* y, int32_t n, int32_t freq, int32_t num, u
     }
 }
 
+// Diagnostic hook: loess(y ~ x, span, degree = 1) fitted values (R's interpolate surface, cell 0.2). Returns 0 / 1.
+TSF_API int tsf_loess(const double* x, const double* y, int32_t n, double span, double* out) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
+    try {
+        const Vec f = tsf::loess_fit_1d(Vec(x, x + n), Vec(y, y + n), span);
+        std::copy(f.begin(), f.end(), out);
+        return 0;
+    } catch (...) {
+        return 1;
+    }
+}
+
+// Diagnostic hook: R's x ^ y as the C++ engine computes it.
+TSF_API double tsf_r_pow(double x, double y) { return tsf::rs::r_pow(x, y); }
+
+// Diagnostic hook: forecast::BoxCox.lambda(x, "guerrero", lower, upper) for frequency freq.
+TSF_API double tsf_boxcox_lambda(const double* x, int32_t n, double lower, double upper, double freq) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
+    return tsf::rs::box_cox_lambda(Vec(x, x + n), lower, upper, freq);
+}
+
 TSF_API void tsf_r_rng(uint32_t seed, int32_t k, int32_t m, double* out) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     tsf::rs::RRng a(seed);
     for (int32_t i = 0; i < k; ++i) out[i] = a.unif_rand();
     tsf::rs::RRng b(seed);
@@ -214,6 +241,7 @@ TSF_API void tsf_r_rng(uint32_t seed, int32_t k, int32_t m, double* out) {
 // frequency, or 0 on error.
 TSF_API int tsf_stlf_parts(const double* y, int32_t n, const double* periods, int32_t n_periods, int32_t h, double* xsa,
                            double* seas_fc) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         const tsf::StlfParts r = tsf::r_mstl_parts(Vec(y, y + n), Vec(periods, periods + n_periods), h);
         std::copy(r.xsa.begin(), r.xsa.end(), xsa);
@@ -226,6 +254,7 @@ TSF_API int tsf_stlf_parts(const double* y, int32_t n, const double* periods, in
 
 TSF_API int tsf_mstl_parts(const double* y, int32_t n, const double* periods, int32_t n_periods, int32_t h, double* xsa,
                            double* seas_fc) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         const tsf::MstlParts r = tsf::mstl_parts(Vec(y, y + n), Vec(periods, periods + n_periods), h);
         std::copy(r.xsa.begin(), r.xsa.end(), xsa);
@@ -236,6 +265,7 @@ TSF_API int tsf_mstl_parts(const double* y, int32_t n, const double* periods, in
 
 // Test hook: sklearn Lasso(alpha, fit_intercept = False, tol = 1e-3, max_iter = 10000) on X (n x k, column-major).
 TSF_API void tsf_lasso(const double* X, int32_t n, int32_t k, const double* y, double alpha, double* coef) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     std::vector<Vec> cols(k);
     for (int j = 0; j < k; ++j) cols[j] = Vec(X + static_cast<size_t>(j) * n, X + static_cast<size_t>(j + 1) * n);
     const Vec w = tsf::sk_lasso(cols, Vec(y, y + n), alpha);
@@ -248,6 +278,7 @@ TSF_API void tsf_lasso(const double* X, int32_t n, int32_t k, const double* y, d
 TSF_API int tsf_pooled_regression(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
                                   int32_t max_obs, double* out, int32_t* aliased, int32_t* n_aliased, char* msg,
                                   int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         std::vector<Vec> series(n_series);
         for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
@@ -268,6 +299,7 @@ TSF_API int tsf_pooled_regression(const double* values, const int64_t* offsets, 
 TSF_API int tsf_catboost(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
                          int32_t max_obs, const char* exe, const char* model_lib, const char* workdir, int32_t threads,
                          double* out, char* msg, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         std::vector<Vec> series(n_series);
         for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
@@ -288,6 +320,7 @@ TSF_API int tsf_catboost(const double* values, const int64_t* offsets, int32_t n
 TSF_API int tsf_lightgbm(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
                          int32_t max_obs, const char* lib_path, const char* params, int32_t rounds, double* out, char* msg,
                          int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         std::vector<Vec> series(n_series);
         for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
@@ -306,6 +339,7 @@ TSF_API int tsf_lightgbm(const double* values, const int64_t* offsets, int32_t n
 // Diagnostic hook for auto.arima's differencing tests: out = {seas.heuristic, nsdiffs, ndiffs(after D), kpss stat
 // of the level series}.
 TSF_API void tsf_arima_tests(const double* y, int32_t n, int32_t freq, double* out) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     const Vec x(y, y + n);
     double s = std::numeric_limits<double>::quiet_NaN();
     try { s = tsf::seas_heuristic(x, freq); } catch (...) {}
@@ -319,6 +353,7 @@ TSF_API void tsf_arima_tests(const double* y, int32_t n, int32_t freq, double* o
 // (alpha, [beta], [gamma], [phi]); returns lik (Inf on failure).
 TSF_API double tsf_ets_debug(const double* y, int32_t n, int32_t m, int32_t e, int32_t t, int32_t s, int32_t d,
                              double* init, int32_t* n_init, double* par, int32_t* n_par) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         Vec iv, pv;
         const double lik = tsf::ets_debug(Vec(y, y + n), m, e, t, s, d != 0, iv, pv);
@@ -337,6 +372,7 @@ TSF_API double tsf_ets_debug(const double* y, int32_t n, int32_t m, int32_t e, i
 // (0 CSS, 1 CSS-ML, 2 ML)}; info = {loglik, aic, sigma2, var_ok, n_coef}; coef up to 16 values. Returns 0, or 1 on error.
 TSF_API int tsf_arima_fixed(const double* y, int32_t n, const int32_t* ord, const int32_t* flags, int32_t h, double* fc,
                             double* coef, double* info, char* msg, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         tsf::ArimaSpec s;
         s.p = ord[0]; s.d = ord[1]; s.q = ord[2]; s.P = ord[3]; s.D = ord[4]; s.Q = ord[5]; s.period = ord[6];
@@ -359,6 +395,7 @@ TSF_API int tsf_arima_fixed(const double* y, int32_t n, const int32_t* ord, cons
 // Test hook for ETS: fits one series; info = {aicc, lik, alpha, beta, gamma, phi}; model gets "ETS(x,y,z)".
 // Returns 0 on success, 1 if no model could be fitted (message in model).
 TSF_API int tsf_ets_fit(const double* y, int32_t n, int32_t m, int32_t h, double* fc, double* info, char* model, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     try {
         const tsf::EtsResult r = tsf::ets_auto(Vec(y, y + n), m, h);
         std::copy(r.forecast.begin(), r.forecast.end(), fc);
@@ -377,6 +414,7 @@ TSF_API int tsf_ets_fit(const double* y, int32_t n, int32_t m, int32_t h, double
 TSF_API int tsf_forecast_batch(const char* method, const double* values, const int64_t* offsets, int32_t n_series, int32_t h,
                                const int32_t* horizons, const double* periods, int32_t n_periods, int32_t n_threads,
                                double* out, int32_t* flags, char* msg, int32_t msg_len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     if (!method || !values || !offsets || !out || !flags || n_series < 0 || h < 1) return -2;
     const Fn fn = find_method(method);
     if (!fn) return -1;
@@ -388,6 +426,7 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
     std::atomic<int32_t> next{0};
 
     auto work = [&]() {
+        tsf::rs::X87Extended fpu_guard;          // per worker thread
         for (;;) {
             const int32_t i = next.fetch_add(1);
             if (i >= n_series) return;
@@ -438,5 +477,6 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
 
 // Test hook: in-sample SSE of the Holt fit (damped != 0 for damped Holt).
 TSF_API double tsf_holt_sse(const double* y, int32_t n, int32_t damped) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     return tsf::holt_best_sse(Vec(y, y + n), damped != 0);
 }

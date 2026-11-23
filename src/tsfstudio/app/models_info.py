@@ -410,7 +410,8 @@ MODELS: dict[str, dict] = {
                "bootstrap of the remainder (blocks of two seasons) gives n_boot − 1 new series; ets() is fitted to each and to the "
                "original, and the point forecasts are averaged. R's random number generator is reproduced, so a seed gives R's numbers.",
         "use": "When ETS is a good model but its selection is unstable; bagging usually improves accuracy (strong on M3 monthly).",
-        "caution": "About n_boot times the cost of ETS. Non-seasonal series (frequency 1, or fewer than two full periods) are not supported yet and fall back.",
+        "caution": "About n_boot times the cost of ETS. Non-seasonal series (frequency 1, or fewer than two full periods) use R's loess "
+                   "trend instead of STL, as R does.",
         "engines": {PY: "The bootstrap equals R's (and the C++ engine's); each copy is forecast with statsforecast AutoETS, so the result is close to, "
                         "not equal to, R. Slow: about 100 AutoETS fits per series."},
         "params": [P("n_boot", "Number of bootstrap series", "int", 100, "Including the original series (R's default 100). C++ engine: 100 only.",

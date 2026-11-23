@@ -7,6 +7,7 @@
 
 #include "autoarima.hpp"
 #include "ets.hpp"
+#include "loess.hpp"
 #include "rstats.hpp"
 
 namespace tsf {
@@ -73,9 +74,13 @@ std::vector<Vec> bld_mbb_bootstrap(const Vec& x, int freq_in, int num, uint32_t 
     Vec seasonal, trend, remainder;
     if (freq > 1) {
         stl_periodic(xbc, freq, seasonal, trend, remainder);
-    } else {
-        throw std::runtime_error("bagged_ets: non-seasonal series (frequency 1 or fewer than two periods) are not "
-                                 "supported yet (R uses loess here)");
+    } else {                                            // loess(x.bc ~ seq_along(x), span = 6 / n, degree = 1)
+        Vec t(n);
+        for (int i = 0; i < n; ++i) t[i] = i + 1.0;
+        trend = loess_fit_1d(t, xbc, 6.0 / n);
+        seasonal.assign(n, 0.0);
+        remainder.resize(n);
+        for (int i = 0; i < n; ++i) remainder[i] = xbc[i] - trend[i];
     }
     for (int i = 1; i < num; ++i) {
         const Vec r = mbb(remainder, block, rng);

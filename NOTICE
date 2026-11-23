@@ -22,7 +22,10 @@ R "stats" package, part of R (GPL-2 or later)
   Copyright (C) The R Core Team. https://www.r-project.org
   Translated: arima() with ARIMA_Like / ARIMA_CSS / getQ0, optim()'s vmmin (BFGS) and nmmin (Nelder-Mead) and
   optimhess (cpp/src/arima.cpp, cpp/src/ets.cpp), stl() / stl.c (cpp/src/autoarima.cpp, src/tsfstudio/engines/r_stl.py),
-  optimize() (Brent_fmin); and from R's base sources the Mersenne-Twister seeding, unif_rand() and R_unif_index()
+  optimize() (Brent_fmin), loess() for one predictor (loessc.c / loessf.f by W. S. Cleveland, E. Grosse and
+  M. J. Shyu, in cpp/src/loess.cpp and src/tsfstudio/engines/r_loess.py); LINPACK dqrdc / dqrsl / dsvdc (R's src/appl)
+  and the reference BLAS of R's src/extra/blas (ddot, daxpy, dscal, drot, dnrm2, drotg) in the same files;
+  and from R's base sources the Mersenne-Twister seeding, unif_rand() and R_unif_index()
   of src/main/RNG.c, mean() / colMeans() / var() summation (cpp/src/rstats.hpp, src/tsfstudio/engines/r_boot.py).
 
 R package "urca" (GPL-2 or later)

@@ -298,9 +298,11 @@ def bld_mbb_bootstrap(x, freq_in: int, num: int, seed: int) -> list[np.ndarray]:
     xbc = np.array([box_cox(float(v), lam) for v in x])
     if freq > 1:
         seasonal, trend, remainder = stl_periodic(xbc, freq)
-    else:
-        raise ValueError("bagged_ets: non-seasonal series (frequency 1 or fewer than two periods) are not supported "
-                         "yet (R uses loess here)")
+    else:                                                      # loess(x.bc ~ seq_along(x), span = 6 / n, degree = 1)
+        from .r_loess import loess_fit_1d
+        trend = np.array(loess_fit_1d([float(i + 1) for i in range(n)], list(xbc), 6.0 / n))
+        seasonal = np.zeros(n)
+        remainder = xbc - trend
     base = trend + seasonal
     for _ in range(1, num):
         r = _mbb(remainder, block, rng)
