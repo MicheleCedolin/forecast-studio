@@ -141,6 +141,39 @@ def _boxcox_lambda(x: np.ndarray, m: float) -> float:
         return float("nan")
 
 
+def pca(df, n_components: int = 3, max_missing: float = 0.5) -> dict:
+    """Principal components of the numeric feature columns of a feature table.
+
+    Columns with more than `max_missing` missing values or no variance are dropped; remaining missing values are
+    replaced by the column median; every column is standardised (mean 0, sd 1), so the PCA is on the correlation
+    matrix. Returns scores (n_series x k), explained variance ratios, loadings (features x k, unit-norm eigenvectors)
+    and the features used / dropped.
+    """
+    num = df.select_dtypes(include=[np.number]).astype(float)
+    X = num.to_numpy()
+    X[~np.isfinite(X)] = np.nan
+    miss = np.isnan(X).mean(axis=0) if len(X) else np.ones(X.shape[1])
+    keep = miss <= max_missing
+    with np.errstate(all="ignore"):
+        med = np.nanmedian(X, axis=0)
+    X = np.where(np.isnan(X), med, X)
+    sd = X.std(axis=0, ddof=1) if len(X) > 1 else np.zeros(X.shape[1])
+    keep &= np.isfinite(sd) & (sd > 1e-12 * np.maximum(1.0, np.abs(med)))
+    cols = [c for c, k in zip(num.columns, keep) if k]
+    dropped = [c for c, k in zip(num.columns, keep) if not k]
+    if len(cols) < 2 or len(X) < 3:
+        raise ValueError("too few usable features or series for a PCA")
+    Z = (X[:, keep] - X[:, keep].mean(axis=0)) / sd[keep]
+    U, s, Vt = np.linalg.svd(Z, full_matrices=False)
+    k = min(n_components, len(s))
+    # Sign convention: the largest-magnitude loading of each component is positive (stable across runs).
+    signs = np.sign(Vt[np.arange(k), np.abs(Vt[:k]).argmax(axis=1)])
+    signs[signs == 0] = 1
+    V = Vt[:k].T * signs
+    var = s ** 2
+    return {"scores": (Z @ V), "explained": var[:k] / var.sum(), "loadings": V, "features": cols, "dropped": dropped}
+
+
 FEATURE_SETS = ("basic", "catch22")
 
 

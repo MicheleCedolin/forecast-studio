@@ -312,3 +312,18 @@ def test_features_compute_store_and_download(app):
     assert st == 400
     st, j = app.call("features", {"dataset": "../etc", "sets": ["basic"]})
     assert st in (400, 404)
+
+
+def test_features_pca_endpoint(app):
+    from tsfstudio.engines import cpp_engine
+    if cpp_engine.load_lib() is None:
+        pytest.skip("native library not built")
+    st, job = app.call("features", {"dataset": "upload:demo", "sets": ["basic", "catch22"]})
+    assert _wait(app, job["id"])["status"] == "done"
+    st, j = app.call("features/pca?dataset=upload%3Ademo&sets=basic,catch22&color=feature%3Ademand_class")
+    assert st == 200 and j["status"] == "ready" and len(j["scores"]) == 30 and len(j["scores"][0]) == 3
+    assert j["color"]["kind"] == "cat" and len(j["color"]["values"]) == 30
+    st, j = app.call("features/pca?dataset=upload%3Ademo&sets=basic,catch22&color=feature%3Acv")
+    assert j["color"]["kind"] == "num"
+    st, j = app.call("features/pca?dataset=upload%3Ademo&sets=basic,catch22&color=best%3AMASE")
+    assert st == 400                                     # no runs on this dataset yet

@@ -184,6 +184,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(s.job(parts[1]))
             if parts == ["features"]:
                 return self._json(s.features(self._feat_query(qs)))
+            if parts == ["features", "pca"]:
+                return self._json(s.features_pca(self._feat_query(qs), q("color", "")))
             if parts == ["features", "file"]:
                 body, name = s.features_file(self._feat_query(qs))
                 return self._send(200, body, "text/csv; charset=utf-8",

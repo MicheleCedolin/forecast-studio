@@ -83,3 +83,17 @@ def test_compute_builds_one_table():
     df = compute([rng.normal(10, 1, 50), rng.normal(5, 2, 80)], m=4, names=["a", "b"])
     assert list(df.index) == ["a", "b"]
     assert list(df.columns) == list(BASIC_NAMES) + list(CATCH22_NAMES)
+
+
+def test_pca_standardises_and_drops_constant_columns():
+    import pandas as pd
+    from tsfstudio.features import pca
+    rng = np.random.default_rng(1)
+    z = rng.normal(size=200)
+    df = pd.DataFrame({"a": z, "b": 1000 * z + rng.normal(scale=1e-3, size=200), "c": rng.normal(size=200),
+                       "k": 5.0, "cls": "x"})
+    r = pca(df)
+    assert r["features"] == ["a", "b", "c"] and r["dropped"] == ["k"]
+    assert r["explained"][0] == pytest.approx(2 / 3, abs=0.05)          # a and b are one direction after scaling
+    assert abs(r["loadings"][0][0]) == pytest.approx(abs(r["loadings"][1][0]), abs=1e-3)
+    np.testing.assert_allclose(np.var(r["scores"], axis=0, ddof=1) / 3, r["explained"], rtol=1e-9)

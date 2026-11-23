@@ -1127,8 +1127,224 @@ function renderFeatureBody() {
     el("div", { class: "tablewrap tall" }, el("table", { class: "t" },
       el("thead", {}, el("tr", {}, el("th", { text: "Series" }), d.columns.map(c => el("th", { text: c })))),
       el("tbody", {}, d.rows.slice(0, nPrev).map((r, i) => el("tr", {}, el("td", { class: "name", text: d.index[i] }),
-        r.map(v => el("td", { text: typeof v === "number" ? fmt(v) : (v == null ? "—" : String(v)) }))))))));
+        r.map(v => el("td", { text: typeof v === "number" ? fmt(v) : (v == null ? "—" : String(v)) }))))))),
+    el("div", { id: "pca" }));
+  loadPca();
 }
+
+// ------------------------------------------------------------------------------------------------ PCA of the features
+// Palette: validated (dataviz validator, all-pairs, app surfaces) for at most three categorical slots in a scatter;
+// further levels fold into "Other". Sequential: one blue ramp, light-to-dark on light, receding-to-bright on dark.
+const PCA_CAT = { light: ["#2a78d6", "#eb6834", "#1baf7a"], dark: ["#3987e5", "#d95926", "#199e70"] };
+const PCA_SEQ = { light: ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"], dark: ["#1c5cab", "#2a78d6", "#5598e7", "#86b6ef", "#b7d3f6"] };
+const PCA_OTHER = "#898781";
+const CAT_ORDER = ["smooth", "intermittent", "erratic", "lumpy"];
+S.pca = { data: null, err: null, color: null, mode: "2d", ax: [0, 1], yaw: -0.6, pitch: 0.35, focus: null, arrows: false, pts: [], seq: 0 };
+const cssVar = k => getComputedStyle(document.body).getPropertyValue(k).trim();
+const isDark = () => { const c = cssVar("--white").replace("#", ""); if (c.length < 6) return false; return (parseInt(c.slice(0, 2), 16) + parseInt(c.slice(2, 4), 16) + parseInt(c.slice(4, 6), 16)) / 3 < 128; };
+async function loadPca() {
+  const host = $("#pca"); if (!host) return;
+  if (S.pca.color == null) S.pca.color = S.feat.sets.has("basic") ? "feature:demand_class" : "";
+  const seq = ++S.pca.seq;
+  try {
+    const d = await api(`features/pca?${featQuery()}&color=${encodeURIComponent(S.pca.color)}`);
+    if (seq !== S.pca.seq) return;
+    S.pca.data = d; S.pca.err = null;
+  } catch (e) {
+    if (seq !== S.pca.seq) return;
+    if (S.pca.color) { S.pca.color = ""; toast(e.message, true); return loadPca(); }
+    S.pca.data = null; S.pca.err = e.message;
+  }
+  renderPca();
+}
+function pcaColorOptions(d) {
+  const o = d.options, opts = [el("option", { value: "" }, "None")];
+  const cats = o.categorical.map(c => el("option", { value: "feature:" + c }, c));
+  opts.push(el("optgroup", { label: "Feature" }, cats, o.numeric.map(c => el("option", { value: "feature:" + c }, c))));
+  if (o.runs.length) {
+    opts.push(el("optgroup", { label: "Forecast error of a run" }, o.runs.flatMap(r => r.metrics.map(m =>
+      el("option", { value: `run:${r.run_id}:${m}` }, `${m}, ${r.method} (${ENGINE_NAME[r.engine] || r.engine}) ${(r.created || "").slice(0, 10)}`)))));
+    const models = new Set(o.runs.map(r => r.method + "|" + r.engine));
+    if (models.size >= 2) {
+      const ms = [...new Set(o.runs.flatMap(r => r.metrics))];
+      opts.push(el("optgroup", { label: "Most accurate model per series" }, ms.map(m => el("option", { value: "best:" + m }, `lowest ${m}`))));
+    }
+  }
+  for (const g of opts) for (const op of (g.tagName === "OPTGROUP" ? [...g.children] : [g])) op.selected = op.value === S.pca.color;
+  return opts;
+}
+// The colour of every point plus the legend, from the server's colour column.
+function pcaColors(d) {
+  const mode = isDark() ? "dark" : "light", c = d.color, n = d.names.length;
+  if (!c) return { col: new Array(n).fill(cssVar("--ink") || "#12294b"), legend: null };
+  if (c.kind === "cat") {
+    const counts = {}; c.values.forEach(v => { if (v != null) counts[v] = (counts[v] || 0) + 1; });
+    const order = c.models || CAT_ORDER;
+    const levels = Object.keys(counts).sort((a, b) => { const ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib) || a.localeCompare(b); });
+    const slot = {}; levels.slice(0, 3).forEach((l, i) => { slot[l] = PCA_CAT[mode][i]; });
+    const other = levels.slice(3);
+    const col = c.values.map(v => (v == null ? null : slot[v] || PCA_OTHER));
+    const items = levels.slice(0, 3).map(l => ({ key: l, label: l, color: slot[l], n: counts[l] }));
+    if (other.length) items.push({ key: "__other", label: "Other: " + other.join(", "), color: PCA_OTHER, n: other.reduce((s, l) => s + counts[l], 0), members: other });
+    return { col, legend: { kind: "cat", title: c.label, items, missing: c.values.filter(v => v == null).length } };
+  }
+  const v = c.values, idx = v.map((x, i) => [x, i]).filter(([x]) => x != null && Number.isFinite(x)).sort((a, b) => a[0] - b[0]);
+  const stops = PCA_SEQ[mode], rgb = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+  const ramp = t => { const p = t * (stops.length - 1), k = Math.min(stops.length - 2, Math.floor(p)), f = p - k, a = rgb(stops[k]), b = rgb(stops[k + 1]); return `rgb(${a.map((x, j) => Math.round(x + (b[j] - x) * f)).join(",")})`; };
+  const col = new Array(n).fill(null);
+  idx.forEach(([, i], r) => { col[i] = ramp(idx.length > 1 ? r / (idx.length - 1) : 0.5); });
+  const q = p => (idx.length ? idx[Math.min(idx.length - 1, Math.round(p * (idx.length - 1)))][0] : null);
+  return { col, legend: { kind: "num", title: c.label, stops, lo: q(0), mid: q(0.5), hi: q(1), missing: n - idx.length } };
+}
+function renderPca() {
+  const host = $("#pca"); if (!host) return;
+  const d = S.pca.data;
+  const head = el("h3", { text: "Principal components" });
+  if (S.pca.err) { host.replaceChildren(head, el("p", { class: "note err", text: S.pca.err })); return; }
+  if (!d || d.status !== "ready") { host.replaceChildren(head, el("p", { class: "empty", text: "Reading…" })); return; }
+  const pcs = d.explained.map((e, i) => `PC${i + 1}`);
+  const axSel = k => el("select", { "aria-label": k ? "Vertical axis" : "Horizontal axis", onchange: ev => { S.pca.ax[k] = +ev.target.value; drawPca(); } },
+    pcs.map((p, i) => el("option", { value: i, selected: S.pca.ax[k] === i }, p)));
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "View" }, [["2d", "2D"], ["3d", "3D"]].map(([k, l]) =>
+    el("button", { type: "button", "aria-pressed": String(S.pca.mode === k), onclick: () => { S.pca.mode = k; renderPca(); } }, l)));
+  const colorSel = el("select", { "aria-label": "Colour by", onchange: ev => { S.pca.color = ev.target.value; S.pca.focus = null; loadPca(); } }, pcaColorOptions(d));
+  const ctl = el("div", { class: "chartbar" }, seg,
+    S.pca.mode === "2d" ? [el("span", { class: "hint", text: "x" }), axSel(0), el("span", { class: "hint", text: "y" }), axSel(1),
+      el("label", { class: "chk" }, el("input", { type: "checkbox", checked: S.pca.arrows, onchange: ev => { S.pca.arrows = ev.target.checked; drawPca(); } }), " Loadings")] :
+      el("span", { class: "hint", text: "Drag, or use the arrow keys, to turn the cloud." }),
+    el("span", { class: "hint", text: "Colour" }), colorSel);
+  const canvas = el("canvas", { class: "pca-canvas", tabindex: 0, role: "img",
+    "aria-label": `Scatter of the series on the principal components, ${d.names.length} points` });
+  const tip = el("div", { class: "pca-tip", hidden: true });
+  const wrap = el("div", { class: "pca-wrap" }, canvas, tip);
+  bindPcaCanvas(canvas, tip);
+  const top = (j, k = 6) => d.features.map((f, i) => [f, d.loadings[i][j]]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, k);
+  host.replaceChildren(head,
+    el("p", { class: "hint", text: `Standardised features (correlation PCA), ${d.features.length} features used. Explained variance: ${d.explained.map((e, i) => `PC${i + 1} ${fpct(e, 1)}`).join(", ")}.` + (d.dropped.length ? ` Left out (constant or mostly missing): ${d.dropped.join(", ")}.` : "") }),
+    ctl, wrap, el("div", { id: "pca-legend", class: "pca-legend" }),
+    d.color && d.color.matched != null && d.color.matched < d.names.length ? el("p", { class: "note soft", text: `${d.names.length - d.color.matched} series have no value in that run (it covered fewer series or names differ); they are drawn hollow.` }) : null,
+    el("h3", { text: "Strongest loadings" }),
+    el("div", { class: "tablewrap" }, el("table", { class: "t" },
+      el("thead", {}, el("tr", {}, pcs.map(p => el("th", { colspan: 2, text: p })))),
+      el("tbody", {}, [0, 1, 2, 3, 4, 5].map(r => el("tr", {}, pcs.map((p, j) => { const t = top(j)[r]; return t ? [el("td", { class: "name", text: t[0] }), el("td", { text: nf2fix.format(t[1]) })] : [el("td"), el("td")]; })))))),
+    el("p", {}, el("button", { type: "button", class: "btn ghost small", onclick: downloadScores }, "Download scores (CSV)")));
+  S.pca.colors = pcaColors(d);
+  renderPcaLegend();
+  drawPca();
+}
+function renderPcaLegend() {
+  const host = $("#pca-legend"), lg = S.pca.colors && S.pca.colors.legend; if (!host) return;
+  if (!lg) { host.replaceChildren(); return; }
+  const miss = lg.missing ? el("span", { class: "hint" }, el("i", { class: "sw hollow" }), ` no value ${fint(lg.missing)}`) : null;
+  if (lg.kind === "cat") {
+    host.replaceChildren(el("span", { class: "hint", text: lg.title + ":" }), lg.items.map(it => el("button", { type: "button", class: "lg", "aria-pressed": String(S.pca.focus === it.key),
+      title: "Show this group on top, dim the rest", onclick: () => { S.pca.focus = S.pca.focus === it.key ? null : it.key; renderPcaLegend(); drawPca(); } },
+      el("i", { class: "sw", style: `background:${it.color}` }), `${it.label} ${fint(it.n)}`)), miss);
+  } else {
+    host.replaceChildren(el("span", { class: "hint", text: lg.title + ":" }), el("span", { class: "hint", text: fmt(lg.lo) }),
+      el("i", { class: "ramp", style: `background:linear-gradient(90deg,${lg.stops.join(",")})` }), el("span", { class: "hint", text: fmt(lg.hi) }),
+      el("span", { class: "hint", text: `(colour by rank; median ${fmt(lg.mid)})` }), miss);
+  }
+}
+function downloadScores() {
+  const d = S.pca.data; if (!d) return;
+  const q = s => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  const lines = ["series," + d.explained.map((e, i) => "PC" + (i + 1)).join(",") + (d.color ? "," + q(d.color.label) : "")];
+  d.names.forEach((nm, i) => lines.push([q(nm), ...d.scores[i], ...(d.color ? [d.color.values[i] == null ? "" : q(String(d.color.values[i]))] : [])].join(",")));
+  const a = el("a", { href: URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })), download: `${S.sel.dataset.replace(/^upload:/, "")}_pca_scores.csv` });
+  document.body.append(a); a.click(); a.remove();
+}
+function bindPcaCanvas(cv, tip) {
+  let drag = null;
+  cv.addEventListener("pointerdown", ev => { if (S.pca.mode !== "3d") return; drag = [ev.clientX, ev.clientY]; cv.setPointerCapture(ev.pointerId); });
+  cv.addEventListener("pointerup", () => { drag = null; });
+  cv.addEventListener("pointermove", ev => {
+    if (drag) {
+      S.pca.yaw += (ev.clientX - drag[0]) * 0.01; S.pca.pitch = Math.max(-1.5, Math.min(1.5, S.pca.pitch + (ev.clientY - drag[1]) * 0.01));
+      drag = [ev.clientX, ev.clientY]; tip.hidden = true; drawPca(); return;
+    }
+    const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+    let best = null, bd = 81;
+    for (const p of S.pca.pts) { const dd = (p.x - x) ** 2 + (p.y - y) ** 2; if (dd < bd) { bd = dd; best = p; } }
+    if (!best) { tip.hidden = true; return; }
+    const d = S.pca.data, i = best.i, c = d.color;
+    tip.replaceChildren(el("b", { text: d.names[i] }), el("div", { text: d.scores[i].map((s, j) => `PC${j + 1} ${nf2fix.format(s)}`).join("  ") }),
+      c ? el("div", { text: `${c.label}: ${c.values[i] == null ? "no value" : typeof c.values[i] === "number" ? fmt(c.values[i]) : c.values[i]}` }) : null);
+    tip.hidden = false;
+    tip.style.left = Math.min(x + 12, r.width - 200) + "px"; tip.style.top = (y + 12) + "px";
+  });
+  cv.addEventListener("pointerleave", () => { tip.hidden = true; });
+  cv.addEventListener("keydown", ev => {
+    if (S.pca.mode !== "3d") return;
+    const k = { ArrowLeft: [-0.1, 0], ArrowRight: [0.1, 0], ArrowUp: [0, -0.1], ArrowDown: [0, 0.1] }[ev.key];
+    if (!k) return;
+    ev.preventDefault(); S.pca.yaw += k[0]; S.pca.pitch = Math.max(-1.5, Math.min(1.5, S.pca.pitch + k[1])); drawPca();
+  });
+}
+function drawPca() {
+  const cv = $(".pca-canvas"), d = S.pca.data; if (!cv || !d || !S.pca.colors) return;
+  const W = cv.parentElement.clientWidth, H = Math.round(Math.min(520, Math.max(300, W * 0.62))), dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const ink = cssVar("--ink"), muted = cssVar("--pencil"), grid = cssVar("--rule-soft") || cssVar("--rule"), axis = cssVar("--rule"), surf = cssVar("--white");
+  g.font = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+  const { col, legend } = S.pca.colors;
+  const focusOf = i => { if (!S.pca.focus || !legend || legend.kind !== "cat") return true; const v = d.color.values[i]; const it = legend.items.find(t => t.key === S.pca.focus); return it.members ? it.members.includes(v) : v === S.pca.focus; };
+  let pts = [];
+  if (S.pca.mode === "2d") {
+    const [a, b] = S.pca.ax, L = 52, R = 16, T = 14, B = 40;
+    const xs = d.scores.map(s => s[a]), ys = d.scores.map(s => s[b]);
+    const pad = (lo, hi) => { const r = (hi - lo) || 1; return [lo - r * 0.04, hi + r * 0.04]; };
+    const [x0, x1] = pad(Math.min(...xs), Math.max(...xs)), [y0, y1] = pad(Math.min(...ys), Math.max(...ys));
+    const X = v => L + (v - x0) / (x1 - x0) * (W - L - R), Y = v => H - B - (v - y0) / (y1 - y0) * (H - T - B);
+    g.strokeStyle = grid; g.lineWidth = 1; g.fillStyle = muted; g.textAlign = "right"; g.textBaseline = "middle";
+    for (const t of niceTicks(y0, y1, 5)) { if (t < y0 || t > y1) continue; g.beginPath(); g.moveTo(L, Y(t) + 0.5); g.lineTo(W - R, Y(t) + 0.5); g.stroke(); g.fillText(nfSig.format(t), L - 6, Y(t)); }
+    g.textAlign = "center"; g.textBaseline = "top";
+    for (const t of niceTicks(x0, x1, 6)) { if (t < x0 || t > x1) continue; g.beginPath(); g.moveTo(X(t) + 0.5, T); g.lineTo(X(t) + 0.5, H - B); g.stroke(); g.fillText(nfSig.format(t), X(t), H - B + 6); }
+    g.strokeStyle = axis; g.beginPath(); g.moveTo(L, H - B + 0.5); g.lineTo(W - R, H - B + 0.5); g.stroke();
+    g.fillStyle = muted; g.fillText(`PC${a + 1} (${fpct(d.explained[a], 1)})`, (L + W - R) / 2, H - 16);
+    g.save(); g.translate(14, (T + H - B) / 2); g.rotate(-Math.PI / 2); g.textBaseline = "middle"; g.fillText(`PC${b + 1} (${fpct(d.explained[b], 1)})`, 0, 0); g.restore();
+    pts = d.scores.map((s, i) => ({ i, x: X(s[a]), y: Y(s[b]), z: 0 }));
+    drawPoints(g, pts, col, focusOf, surf, muted);
+    if (S.pca.arrows) {
+      const cx = X(0), cy = Y(0), ext = 0.8 * Math.min(Math.max(Math.abs(x0), Math.abs(x1)) * (W - L - R) / (x1 - x0), Math.max(Math.abs(y0), Math.abs(y1)) * (H - T - B) / (y1 - y0));
+      const ld = d.features.map((f, i) => [f, d.loadings[i][a], d.loadings[i][b]]).sort((p, q) => Math.hypot(q[1], q[2]) - Math.hypot(p[1], p[2])).slice(0, 6);
+      const m = Math.max(...ld.map(t => Math.hypot(t[1], t[2])), 1e-9);
+      g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 1.5; g.textBaseline = "middle";
+      for (const [f, u, v] of ld) {
+        const ex = cx + u / m * ext, ey = cy - v / m * ext;
+        g.beginPath(); g.moveTo(cx, cy); g.lineTo(ex, ey); g.stroke();
+        g.textAlign = u >= 0 ? "left" : "right"; g.fillText(f, ex + (u >= 0 ? 4 : -4), ey);
+      }
+    }
+  } else {
+    const cy = Math.cos(S.pca.yaw), sy = Math.sin(S.pca.yaw), cp = Math.cos(S.pca.pitch), sp = Math.sin(S.pca.pitch);
+    const rot = ([x, y, z]) => { const x1 = x * cy + z * sy, z1 = -x * sy + z * cy; return [x1, y * cp - z1 * sp, y * sp + z1 * cp]; };
+    const ext = Math.max(...d.scores.flatMap(s => s.slice(0, 3).map(Math.abs)), 1e-9);
+    const sc = Math.min(W, H) * 0.42 / ext, ox = W / 2, oy = H / 2;
+    const P = v => { const r = rot(v); return [ox + r[0] * sc, oy - r[1] * sc, r[2]]; };
+    g.lineWidth = 1; g.textAlign = "center"; g.textBaseline = "middle";
+    for (let j = 0; j < 3; j++) {
+      const e = [0, 0, 0]; e[j] = ext; const [ax2, ay2] = P(e), n = [0, 0, 0]; n[j] = -ext; const [bx, by] = P(n);
+      g.strokeStyle = axis; g.beginPath(); g.moveTo(bx, by); g.lineTo(ax2, ay2); g.stroke();
+      g.fillStyle = muted; g.fillText(`PC${j + 1} (${fpct(d.explained[j], 1)})`, ax2 + (ax2 - ox) * 0.06, ay2 + (ay2 - oy) * 0.06);
+    }
+    pts = d.scores.map((s, i) => { const [x, y, z] = P([s[0], s[1], s[2] || 0]); return { i, x, y, z }; }).sort((p, q) => p.z - q.z);
+    drawPoints(g, pts, col, focusOf, surf, muted);
+  }
+  S.pca.pts = pts;
+}
+function drawPoints(g, pts, col, focusOf, surf, muted) {
+  const pass = on => { for (const p of pts) {
+    if (focusOf(p.i) !== on) continue;
+    g.globalAlpha = on ? 1 : 0.15; g.beginPath(); g.arc(p.x, p.y, 4, 0, 2 * Math.PI);
+    const c = col[p.i];
+    if (c) { g.fillStyle = c; g.fill(); g.lineWidth = 1; g.strokeStyle = surf; g.stroke(); }
+    else { g.lineWidth = 1.2; g.strokeStyle = muted; g.stroke(); }
+  } };
+  pass(false); pass(true); g.globalAlpha = 1;
+}
+window.addEventListener("resize", debounce(() => { if (S.view === "features") drawPca(); }, 250));
 
 init();
 })();

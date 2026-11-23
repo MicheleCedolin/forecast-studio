@@ -583,6 +583,85 @@ class AppService:
                       "rows": [[None if (isinstance(x, float) and not math.isfinite(x)) else x for x in r]
                                for r in rows.itertuples(index=False, name=None)]})
 
+    def _run_errors_frame(self, run_id: str) -> pd.DataFrame:
+        d = self._run_dir(run_id)
+        p = d / "errors_per_series.csv"
+        er = pd.read_csv(p) if p.is_file() else pd.read_excel(d / "metrics.xlsx", sheet_name="Errors_Per_Series")
+        er["series_name"] = er["series_name"].astype(str)
+        return er.drop_duplicates("series_name").set_index("series_name")
+
+    def _pca_color(self, df: pd.DataFrame, ds_id: str, color: str, runs: list[dict]) -> dict | None:
+        names = df.index.astype(str)
+        if not color:
+            return None
+        kind, _, rest = color.partition(":")
+        if kind == "feature":
+            if rest not in df.columns:
+                raise AppError(f"Unknown feature: {rest}")
+            col = df[rest]
+            if col.dtype == object:
+                return {"kind": "cat", "label": rest, "values": [None if pd.isna(v) else str(v) for v in col]}
+            return {"kind": "num", "label": rest, "values": col.to_numpy(float).tolist()}
+        if kind == "run":
+            run_id, _, metric = rest.rpartition(":")
+            if run_id not in {r["run_id"] for r in runs}:
+                raise AppError("That run is not on this dataset.", 404)
+            er = self._run_errors_frame(run_id)
+            if metric not in er.columns:
+                raise AppError(f"Unknown measure: {metric}")
+            v = er[metric].reindex(names).to_numpy(float)
+            r = next(x for x in runs if x["run_id"] == run_id)
+            return {"kind": "num", "label": f"{metric} of {r['method']} ({r['engine']})", "values": v.tolist(),
+                    "matched": int(np.isfinite(v).sum())}
+        if kind == "best":
+            metric = rest
+            seen, cols, labels = set(), [], []
+            for r in runs:                                    # newest first: one run per method and engine
+                key = (r["method"], r["engine"])
+                if key in seen:
+                    continue
+                try:
+                    er = self._run_errors_frame(r["run_id"])
+                except (AppError, OSError, ValueError, KeyError):
+                    continue
+                if metric not in er.columns:
+                    continue
+                seen.add(key)
+                cols.append(er[metric].reindex(names).to_numpy(float))
+                labels.append(f"{r['method']} ({r['engine']})")
+            if len(cols) < 2:
+                raise AppError("Colouring by the best model needs at least two runs with this measure on this dataset.")
+            M = np.column_stack(cols)
+            if metric in ("ME", "PBias"):
+                M = np.abs(M)
+            ok = np.isfinite(M).any(axis=1)
+            best = np.where(ok, np.nanargmin(np.where(np.isfinite(M), M, np.inf), axis=1), -1)
+            return {"kind": "cat", "label": f"lowest {metric} among {len(labels)} models",
+                    "values": [labels[b] if b >= 0 else None for b in best], "models": labels}
+        raise AppError(f"Unknown colouring: {color}")
+
+    def features_pca(self, payload: dict, color: str = "") -> dict:
+        from .. import features as F
+        df, _ = self._feat_frame(payload)
+        if df is None:
+            return {"status": "none"}
+        ds_id = payload["dataset"]
+        try:
+            res = F.pca(df)
+        except ValueError as exc:
+            raise AppError(f"PCA not possible: {exc}") from None
+        runs = [r for r in self.runs()["runs"] if r.get("dataset") == ds_id]
+        cat_cols = [c for c in df.columns if df[c].dtype == object]
+        return clean({
+            "status": "ready", "names": [str(i) for i in df.index], "scores": res["scores"].round(6).tolist(),
+            "explained": res["explained"].tolist(), "features": res["features"], "dropped": res["dropped"],
+            "loadings": res["loadings"].tolist(),
+            "options": {"categorical": cat_cols, "numeric": res["features"],
+                        "runs": [{"run_id": r["run_id"], "method": r["method"], "engine": r["engine"],
+                                  "created": r.get("created"), "metrics": list((r.get("summary") or {}).keys())}
+                                 for r in runs]},
+            "color": self._pca_color(df, ds_id, color, runs)})
+
     def features_file(self, payload: dict) -> tuple[bytes, str]:
         df, p = self._feat_frame(payload)
         if df is None:
