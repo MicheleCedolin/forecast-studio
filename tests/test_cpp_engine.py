@@ -127,6 +127,43 @@ def test_dhr_arima_reproduces_r():
     assert np.median(rel) < 1e-9 and rel.max() < 1e-5, f"median {np.median(rel):.2e}, worst {rel.max():.2e}"
 
 
+def test_r_svd_and_fourier_bit_identical_to_r():
+    """stats::arima rotates two or more regressors by svd(xreg)$v. Fourier columns of one harmonic have equal singular
+    values, so the basis inside that subspace is whatever LAPACK's dgesdd returns, and it depends on every bit of the
+    input: the port of R's LAPACK 3.12.1 path (lapack_svd.cpp) and the correctly rounded Fourier terms must equal R
+    exactly (tools/r_reference/svd_reference.R)."""
+    lib = C.load_lib()
+    dp = C.ctypes.POINTER(C.ctypes.c_double)
+    lib.tsf_r_svd.argtypes = [dp, C.ctypes.c_int32, C.ctypes.c_int32, C.ctypes.c_int32, dp, dp]
+    lib.tsf_fourier.argtypes = [C.ctypes.c_double, C.ctypes.c_int32, C.ctypes.c_int32, C.ctypes.c_int32, dp]
+    d = G / "r_svd"
+    for i in range(7):
+        X, V, S = _load(d, f"x{i}"), _load(d, f"v{i}"), _load(d, f"d{i}").ravel()
+        n, k = X.shape
+        xc = np.ascontiguousarray(X.T.reshape(-1))
+        v, s = np.zeros(k * k), np.zeros(k)
+        assert lib.tsf_r_svd(xc.ctypes.data_as(dp), n, k, 1, v.ctypes.data_as(dp), s.ctypes.data_as(dp)) == 0
+        np.testing.assert_array_equal(v.reshape(k, k, order="F"), V, err_msg=f"v{i}")
+        np.testing.assert_array_equal(s, S, err_msg=f"d{i}")
+    for i, (period, K, n, first) in enumerate([(52.0, 3, 105, 0), (7.0, 3, 735, 0)]):   # x0 and x3 are fourier(y, K)
+        X = _load(d, f"x{[0, 3][i]}")
+        out = np.zeros(n * 2 * K)
+        assert lib.tsf_fourier(period, K, first, n, out.ctypes.data_as(dp)) == 2 * K
+        np.testing.assert_array_equal(out.reshape(2 * K, n).T, X)
+
+
+def test_dhr_arima_k3_reproduces_r():
+    """dhr_arima with K = 3 Fourier pairs against R's auto.arima(y, xreg = fourier(y, 3), seasonal = FALSE) on 20 NN5
+    weekly series: same model and forecasts to ~1e-6 (before the exact SVD and Fourier terms, 7 of 111 series differed
+    by more than 0.1%)."""
+    train = [r[~np.isnan(r)] for r in _load(G / "nn5_weekly", "train")][:20]
+    ref = _load(G / "nn5_weekly", "r_dhr_k3")
+    f, flags, _ = C.forecast_batch("dhr_arima?fourier_k=3", train, 8, (52.17857142857143,))
+    assert not flags.any()
+    np.testing.assert_allclose(f, ref, rtol=1e-5)
+    assert np.median(np.abs(f - ref) / np.abs(ref)) < 1e-8
+
+
 def test_dhr_arima_r_failure_modes():
     rng = np.random.default_rng(5)
     train = [100 + np.cumsum(rng.normal(size=120)) for _ in range(3)]

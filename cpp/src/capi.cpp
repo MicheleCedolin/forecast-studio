@@ -38,6 +38,7 @@
 #include "simple_sf.hpp"
 #include "catch22/catch22.h"
 #include "fracdiff.hpp"
+#include "lapack_svd.hpp"
 #include "supsmu.hpp"
 
 #if defined(_WIN32)
@@ -303,6 +304,55 @@ TSF_API int tsf_arima_q0(const double* phi, int32_t p, const double* theta, int3
         std::copy(Q.begin(), Q.end(), out);
         return 0;
     } catch (...) { return 1; }
+}
+
+// Test hook: tsf_arima_fixed with user regressors (xreg: n x k column-major); coef gets up to 32 values.
+TSF_API int tsf_arima_xreg(const double* y, int32_t n, const int32_t* ord, const int32_t* flags, const double* xreg,
+                           int32_t k, double* coef, double* info, char* msg, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
+    try {
+        tsf::ArimaSpec s;
+        s.p = ord[0]; s.d = ord[1]; s.q = ord[2]; s.P = ord[3]; s.D = ord[4]; s.Q = ord[5]; s.period = ord[6];
+        s.include_mean = flags[0] != 0; s.drift = flags[1] != 0;
+        s.method = flags[2] == 0 ? tsf::ArimaMethod::CSS : (flags[2] == 1 ? tsf::ArimaMethod::CSS_ML : tsf::ArimaMethod::ML);
+        for (int j = 0; j < k; ++j) s.xreg.emplace_back(xreg + static_cast<int64_t>(j) * n, xreg + static_cast<int64_t>(j + 1) * n);
+        const tsf::ArimaFit f = tsf::arima_fit(Vec(y, y + n), s);
+        const size_t nc = std::min<size_t>(f.coef.size(), 32);
+        std::copy(f.coef.begin(), f.coef.begin() + nc, coef);
+        info[0] = f.loglik; info[1] = f.aic; info[2] = f.sigma2; info[3] = f.convergence; info[4] = static_cast<double>(nc);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
+// Test hook: forecast::fourier terms (period, K) for times t0 + 1 .. t0 + len; out: len x ncol column-major (ncol <= 2K
+// returned).
+TSF_API int tsf_fourier(double period, int32_t K, int32_t t0, int32_t len, double* out) {
+    try {
+        const std::vector<Vec> X = tsf::fourier_terms(period, K, t0, len);
+        for (size_t j = 0; j < X.size(); ++j) std::copy(X[j].begin(), X[j].end(), out + j * len);
+        return static_cast<int>(X.size());
+    } catch (...) { return -1; }
+}
+
+// Test hook: R's svd(X)$v and $d (lapack_svd.cpp). X is n x k column-major; v gets k x k column-major (as R's matrix).
+// new_dnrm2: which reference dnrm2 the port uses (1 = LAPACK >= 3.10, R's). Returns 0, or 1 outside the ported paths.
+TSF_API int tsf_r_svd(const double* X, int32_t n, int32_t k, int32_t new_dnrm2, double* v, double* d) {
+    std::vector<Vec> cols(k);
+    for (int j = 0; j < k; ++j) cols[j].assign(X + static_cast<int64_t>(j) * n, X + static_cast<int64_t>(j + 1) * n);
+    tsf::r_svd_set_new_dnrm2(new_dnrm2 != 0);
+    std::vector<Vec> V;
+    Vec dv;
+    const bool ok = tsf::r_svd_v(cols, V, &dv);
+    tsf::r_svd_set_new_dnrm2(true);
+    if (!ok) return 1;
+    for (int j = 0; j < k; ++j)
+        for (int i = 0; i < k; ++i) v[i + j * k] = V[i][j];
+    std::copy(dv.begin(), dv.end(), d);
+    return 0;
 }
 
 // Test hook for dhr_arima (K Fourier terms, one period): info as tsf_auto_arima. Returns 0, or 1 on error.

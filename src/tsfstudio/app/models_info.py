@@ -734,10 +734,8 @@ CPP_NOTES = {
     "ets": "Native C++ port of R forecast::ets (incl. its small-sample branch and class-3 mean forecasts); equals R to rounding.",
     "holt_winters": _CPP_R + " error_type M runs R ets(model = \"MAM\").", "holt_ets": _CPP_R + " error_type M runs R ets(model = \"MAN\").",
     "arima": "Native C++ port of R auto.arima with the study's call chain; equals R to rounding.",
-    "dhr_arima": _CPP_R + " K = 1 (the study's setting) equals R. With K > 1, R rotates the 2K Fourier regressors by an "
-                 "SVD whose basis is not unique (sin and cos columns of nearly equal size), so the C++ fit can take a slightly "
-                 "different optimiser path: on NN5 weekly with K = 2 or 3, 7–9 of 111 series differ from R by more than 0.1%. "
-                 "K per period (several periods) needs the R engine.",
+    "dhr_arima": _CPP_R + " Any K (NN5 weekly, 111 series, K = 1, 2, 3, 5: all within 1e-6 of R): the Fourier terms and "
+                 "R's SVD rotation of them are reproduced bit for bit. K per period (several periods) needs the R engine.",
     "tbats": "Native C++ port of R forecast::tbats; equals the study's R forecasts to rounding.",
     "stl_ets": _CPP_R, "stl_arima": _CPP_R,
     "bagged_ets": _CPP_R + " Any n_boot and seed (R's random number generator is reproduced).",
