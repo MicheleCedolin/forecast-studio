@@ -79,6 +79,68 @@ def _ptr(a: np.ndarray, ctype):
     return a.ctypes.data_as(ctypes.POINTER(ctype))
 
 
+def _int_in(lo: int, hi: int | None = None):
+    def check(key, v):
+        if isinstance(v, bool) or float(v) != int(float(v)):
+            raise EngineError(f"{key} must be a whole number; given: {v!r}")
+        v = int(float(v))
+        if v < lo or (hi is not None and v > hi):
+            raise EngineError(f"{key} must be in [{lo}, {hi if hi is not None else '∞'}]; given: {v}")
+        return str(v)
+    return check
+
+
+def _alpha(key, v):
+    v = float(v)
+    if not 0.0 < v <= 1.0:
+        raise EngineError(f"{key} must be in (0, 1]; given: {v}")
+    return repr(v)
+
+
+def _choice(*allowed, upper=False):
+    def check(key, v):
+        s = str(v).upper() if upper else str(v)
+        if s not in allowed:
+            raise EngineError(f"{key} must be one of {', '.join(allowed)}; given: {v!r}")
+        return s
+    return check
+
+
+# Settings each C++ method accepts (same keys, meanings and defaults as the Python engine's; cpp/src/capi.cpp PMETHODS).
+CPP_METHOD_PARAMS = {
+    "holt_winters": {"error_type": _choice("A", "M", upper=True), "max_season": _int_in(2, 100000)},
+    "holt_ets": {"error_type": _choice("A", "M", upper=True)},
+    "dhr_arima": {"fourier_k": _int_in(1, 1000)},
+    "tsb": {"alpha_d": _alpha, "alpha_p": _alpha},
+    "dotm": {"decomposition_type": _choice("multiplicative", "additive")},
+    "auto_theta": {"decomposition_type": _choice("multiplicative", "additive")},
+    "auto_ces": {"model": _choice("Z", "N", "S", "P", "F", upper=True), "max_season": _int_in(2, 100000)},
+    "auto_mfles": {"n_windows": _int_in(1, 1000), "metric": _choice("smape", "mape", "mse", "mae")},
+    "window_average": {"window_size": _int_in(1)},
+    "seasonal_window_average": {"window_size": _int_in(1)},
+    "bagged_ets": {"n_boot": _int_in(1, 100000), "seed": _int_in(0, 2**31 - 1)},
+    "scum": {"arima_max_season": _int_in(2, 100000)},
+}
+
+
+def method_with_params(method: str, params: dict | None) -> str:
+    """The method name for tsf_forecast_batch: "name?key=value&..." when the job sets any of the method's settings
+    (validated here), else the plain name (the method's defaults)."""
+    checks = CPP_METHOD_PARAMS.get(method)
+    if not checks or not params:
+        return method
+    parts = []
+    for key, check in checks.items():
+        v = params.get(key)
+        if v is None or v == "":
+            continue
+        try:
+            parts.append(f"{key}={check(key, v)}")
+        except (TypeError, ValueError) as exc:
+            raise EngineError(f"{method}: invalid {key} = {v!r} ({exc})") from exc
+    return f"{method}?{'&'.join(parts)}" if parts else method
+
+
 def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, horizons=None, threads: int = 0):
     """(forecasts n x h, fallback flags n, first fallback message). Raises EngineError if the library is missing."""
     lib = load_lib()
@@ -98,7 +160,8 @@ def forecast_batch(method: str, train: list[np.ndarray], h: int, seasonality, ho
                                 None if hz is None else _ptr(hz, ctypes.c_int32), _ptr(periods, ctypes.c_double),
                                 len(periods), int(threads), _ptr(out, ctypes.c_double), _ptr(flags, ctypes.c_int32), msg, 512)
     if rc == -1:
-        raise EngineError(f"The C++ engine does not know the method '{method}'.")
+        raise EngineError(f"The C++ engine does not know the method '{method}'"
+                          + (" or does not take settings for it." if "?" in method else "."))
     if rc != 0:
         raise EngineError(f"The C++ engine rejected the job (code {rc}).")
     return out, flags, msg.value.decode("utf-8", "replace")
@@ -316,42 +379,15 @@ class CppEngine(Engine):
                                 versions=self.versions(), notes=notes)
         if job.task != "local" or job.method not in self.LOCAL_METHODS:
             raise EngineError(f"The C++ engine does not support '{job.task}/{job.method}'. Available: {self.LOCAL_METHODS}")
-        if job.method == "dhr_arima":
-            k = (job.params or {}).get("fourier_k", 1)
-            if int(k) != 1 or (job.params or {}).get("fourier_k_per_period"):
-                raise EngineError("The C++ dhr_arima uses K = 1 Fourier terms (the study's setting); "
-                                  f"fourier_k = {k} / fourier_k_per_period need the R or Python engine.")
-        if job.method == "bagged_ets" and (int((job.params or {}).get("n_boot") or 100) != 100
-                                           or int((job.params or {}).get("seed") or 0) != 0):
-            raise EngineError("The C++ bagged_ets uses n_boot = 100 and seed = 0 (the defaults); other values need the Python engine.")
-        if job.method == "holt_winters" and str((job.params or {}).get("error_type", "A")).upper() != "A":
-            raise EngineError("The C++ holt_winters has additive errors (error_type = 'A'); 'M' needs the Python engine.")
-        if job.method in ("dotm", "auto_theta") and str((job.params or {}).get("decomposition_type", "multiplicative")) != "multiplicative":
-            raise EngineError("The C++ dotm / auto_theta use decomposition_type = 'multiplicative' (additive automatically for data <= 0); "
-                              "other settings need the Python engine.")
-        if job.method == "auto_ces" and (str((job.params or {}).get("model", "Z")) != "Z"
-                                         or int((job.params or {}).get("max_season", 24)) != 24):
-            raise EngineError("The C++ auto_ces uses model = 'Z' and max_season = 24 (the defaults); other settings need the Python engine.")
-        if job.method == "scum" and int((job.params or {}).get("arima_max_season", 200)) != 200:
-            raise EngineError("The C++ scum uses arima_max_season = 200 (the default); other values need the Python engine.")
-        if job.method == "auto_mfles" and (int((job.params or {}).get("n_windows", 2)) != 2
-                                           or str((job.params or {}).get("metric", "smape")) != "smape"):
-            raise EngineError("The C++ auto_mfles uses n_windows = 2 and metric = 'smape' (the defaults); other settings need the Python engine.")
-        fixed = {"holt_ets": {"error_type": "A"}, "window_average": {"window_size": 4}, "seasonal_window_average": {"window_size": 2}}
-        for key, val in fixed.get(job.method, {}).items():
-            got = (job.params or {}).get(key, val)
-            if str(got).upper() != str(val).upper():
-                raise EngineError(f"The C++ {job.method} uses {key} = {val} (the default); other values need the Python engine.")
-        if job.method == "tsb":
-            ad, ap = (float((job.params or {}).get(k, 0.1)) for k in ("alpha_d", "alpha_p"))
-            if ad != 0.1 or ap != 0.1:
-                raise EngineError("The C++ tsb uses alpha_d = alpha_p = 0.1 (the defaults); other values need the Python engine.")
+        if job.method == "dhr_arima" and (job.params or {}).get("fourier_k_per_period"):
+            raise EngineError("fourier_k_per_period (K for each of several periods) needs the R engine.")
+        spec = method_with_params(job.method, job.params)
         t0 = time.time()
         n = len(job.train)
         if progress:
             progress("forecasting", 0, n)
         threads = int(job.workers) if job.workers and int(job.workers) > 1 else 0      # 0 = all CPU cores
-        f, flags, msg = forecast_batch(job.method, list(job.train), job.horizon, job.seasonality, job.horizons, threads)
+        f, flags, msg = forecast_batch(spec, list(job.train), job.horizon, job.seasonality, job.horizons, threads)
         if job.integer_conversion:
             f = np.round(f)
         fallbacks = [{"index": int(i), "message": msg or f"{job.method}: fallback"} for i in np.flatnonzero(flags)]

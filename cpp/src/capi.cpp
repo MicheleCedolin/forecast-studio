@@ -5,6 +5,7 @@
 //   horizons       : per-series horizon (<= h) or NULL; out is n_series x h, row-major, NaN beyond a series' horizon
 //   flags          : per series, 0 = model forecast, 1 = fallback (seasonal naive, or naive) after an error or non-finite output
 //   msg            : first fallback reason (truncated to msg_len - 1)
+//   method         : a name, or "name?key=value&key=value" for the methods that take settings (PMETHODS below)
 //   returns 0 on success, -1 unknown method, -2 bad arguments.
 #include <algorithm>
 #include <atomic>
@@ -91,7 +92,7 @@ Vec m_mapa(const Vec& y, int h, int, const Vec& per) { return tsf::mapa_ets(y, p
 // forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
 // ets and arima reproduce R (the Python engine uses statsforecast's), auto_ces and dotm reproduce statsforecast.
 // ARIMA uses the Python engine's arima_max_season = 200 rule (non-seasonal above it).
-Vec m_scum(const Vec& y, int h, int m, const Vec&) {
+Vec scum(const Vec& y, int h, int m, int arima_max_season) {
     std::vector<Vec> fcs;
     std::string failed;
     auto add = [&](const char* name, auto&& fn) {
@@ -107,7 +108,7 @@ Vec m_scum(const Vec& y, int h, int m, const Vec&) {
     };
     add("ets", [&] { return tsf::ets_auto(y, m, h).forecast; });
     add("auto_ces", [&] { return tsf::ces_forecast(y, m, h); });
-    add("arima", [&] { return tsf::auto_arima_study(y, m <= 200 ? m : 1, h).forecast; });
+    add("arima", [&] { return tsf::auto_arima_study(y, m <= arima_max_season ? m : 1, h).forecast; });
     add("dotm", [&] { return tsf::dotm_forecast(y, m, h, true); });
     if (fcs.size() < 2) throw std::runtime_error("scum: fewer than two components succeeded (" + failed + ")");
     Vec out(h);
@@ -120,6 +121,7 @@ Vec m_scum(const Vec& y, int h, int m, const Vec&) {
     }
     return out;
 }
+Vec m_scum(const Vec& y, int h, int m, const Vec&) { return scum(y, h, m, 200); }
 
 // ETS + ARIMA + Theta combinations (Python engine: py_sf.forecast_comb_eat): the equal-weight mean, or the pointwise
 // median, of the C++ ets, arima (arima_max_season = 200 rule) and theta. A failing or non-finite component is left out
@@ -174,6 +176,92 @@ const Entry METHODS[] = {
 Fn find_method(const char* name) {
     for (const auto& e : METHODS)
         if (std::strcmp(e.name, name) == 0) return e.fn;
+    return nullptr;
+}
+
+// Method settings, passed as "method?key=value&key=value" (values are validated by the Python engine first; a key
+// that is not given takes the default of the Python engine).
+struct Params {
+    std::vector<std::pair<std::string, std::string>> kv;
+    const std::string* find(const char* key) const {
+        for (const auto& p : kv) if (p.first == key) return &p.second;
+        return nullptr;
+    }
+    std::string str(const char* key, const char* def) const { const auto* v = find(key); return v ? *v : std::string(def); }
+    int i(const char* key, int def) const { const auto* v = find(key); return v ? std::stoi(*v) : def; }
+    double d(const char* key, double def) const { const auto* v = find(key); return v ? std::stod(*v) : def; }
+};
+
+Params parse_params(const std::string& q) {
+    Params p;
+    size_t a = 0;
+    while (a < q.size()) {
+        size_t b = q.find('&', a);
+        if (b == std::string::npos) b = q.size();
+        const std::string item = q.substr(a, b - a);
+        const size_t eq = item.find('=');
+        if (eq != std::string::npos) p.kv.emplace_back(item.substr(0, eq), item.substr(eq + 1));
+        a = b + 1;
+    }
+    return p;
+}
+
+bool is_mult(const Params& p, const char* key) {
+    const std::string e = p.str(key, "A");
+    if (e == "A" || e == "a") return false;
+    if (e == "M" || e == "m") return true;
+    throw std::invalid_argument(std::string(key) + " must be 'A' or 'M'");
+}
+
+bool is_multiplicative_decomposition(const Params& p) {
+    const std::string d = p.str("decomposition_type", "multiplicative");
+    if (d == "multiplicative") return true;
+    if (d == "additive") return false;
+    throw std::invalid_argument("decomposition_type must be 'multiplicative' or 'additive'");
+}
+
+using PFn = Vec (*)(const Vec&, int, int, const Vec&, const Params&);
+Vec p_hw(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    return tsf::ets_holt_winters(y, m, h, is_mult(p, "error_type"), p.i("max_season", 24)).forecast;
+}
+Vec p_holt_ets(const Vec& y, int h, int, const Vec&, const Params& p) { return tsf::ets_holt(y, h, is_mult(p, "error_type")).forecast; }
+Vec p_dhr(const Vec& y, int h, int m, const Vec& per, const Params& p) {
+    return tsf::dhr_arima(y, m, static_cast<int>(per.size()), p.i("fourier_k", 1), h).forecast;
+}
+Vec p_tsb(const Vec& y, int h, int, const Vec&, const Params& p) { return tsf::tsb(y, h, p.d("alpha_d", 0.1), p.d("alpha_p", 0.1)); }
+Vec p_dotm(const Vec& y, int h, int m, const Vec&, const Params& p) { return tsf::dotm_forecast(y, m, h, is_multiplicative_decomposition(p)); }
+Vec p_atheta(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    return tsf::auto_theta_forecast(y, m, h, is_multiplicative_decomposition(p));
+}
+Vec p_ces(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    const std::string mod = p.str("model", "Z");
+    if (mod.size() != 1) throw std::invalid_argument("auto_ces: model must be Z, N, S, P or F");
+    return tsf::ces_forecast(y, m, h, mod[0], p.i("max_season", 24));
+}
+Vec p_mfles(const Vec& y, int h, int, const Vec& per, const Params& p) {
+    return tsf::mfles_forecast(y, per, h, p.i("n_windows", 2), p.str("metric", "smape"));
+}
+Vec p_wavg(const Vec& y, int h, int, const Vec&, const Params& p) { return tsf::window_average(y, h, p.i("window_size", 4)); }
+Vec p_swavg(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    return tsf::seasonal_window_average(y, h, m, p.i("window_size", 2));
+}
+Vec p_bagged(const Vec& y, int h, int, const Vec& per, const Params& p) {
+    return tsf::bagged_ets(y, per, h, p.i("n_boot", 100), static_cast<uint32_t>(p.i("seed", 0)));
+}
+Vec p_scum(const Vec& y, int h, int m, const Vec& per, const Params& p);
+
+struct PEntry { const char* name; PFn fn; };
+const PEntry PMETHODS[] = {
+    {"holt_winters", p_hw}, {"holt_ets", p_holt_ets}, {"dhr_arima", p_dhr}, {"tsb", p_tsb}, {"dotm", p_dotm},
+    {"auto_theta", p_atheta}, {"auto_ces", p_ces}, {"auto_mfles", p_mfles}, {"window_average", p_wavg},
+    {"seasonal_window_average", p_swavg}, {"bagged_ets", p_bagged}, {"scum", p_scum},
+};
+
+Vec p_scum(const Vec& y, int h, int m, const Vec&, const Params& p) { return scum(y, h, m, p.i("arima_max_season", 200)); }
+
+PFn find_pmethod(const std::string& name) {
+    for (const auto& e : PMETHODS)
+        if (name == e.name) return e.fn;
     return nullptr;
 }
 
@@ -599,8 +687,20 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
                                double* out, int32_t* flags, char* msg, int32_t msg_len) {
     tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     if (!method || !values || !offsets || !out || !flags || n_series < 0 || h < 1) return -2;
-    const Fn fn = find_method(method);
-    if (!fn) return -1;
+    const std::string full(method);
+    const size_t qpos = full.find('?');
+    const std::string name = full.substr(0, qpos);
+    Params params;
+    PFn pfn = nullptr;
+    Fn fn = nullptr;
+    if (qpos != std::string::npos) {                 // settings given: only the methods that take them
+        pfn = find_pmethod(name);
+        if (!pfn) return -1;
+        try { params = parse_params(full.substr(qpos + 1)); } catch (...) { return -2; }
+    } else {
+        fn = find_method(name.c_str());
+        if (!fn) return -1;
+    }
     const int m = tsf::r_frequency(periods, n_periods);
     const Vec pervec = (periods && n_periods > 0) ? Vec(periods, periods + n_periods) : Vec{};
     if (msg && msg_len > 0) msg[0] = '\0';
@@ -623,14 +723,14 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
             std::string why;
             Vec f;
             try {
-                f = fn(y, hi, m, pervec);
+                f = pfn ? pfn(y, hi, m, pervec, params) : fn(y, hi, m, pervec);
                 if (static_cast<int>(f.size()) < hi) throw std::runtime_error("the model produced an incomplete horizon");
                 for (int k = 0; k < hi; ++k)
                     if (!std::isfinite(f[k])) throw std::runtime_error("the model produced a non-finite value");
             } catch (const std::exception& ex) {
-                why = std::string(method) + ": " + ex.what();
+                why = name + ": " + ex.what();
             } catch (...) {
-                why = std::string(method) + ": unknown error";
+                why = name + ": unknown error";
             }
             if (!why.empty()) {
                 flags[i] = 1;

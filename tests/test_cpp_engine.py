@@ -136,9 +136,8 @@ def test_dhr_arima_r_failure_modes():
     # period 1: 2K > period, fourier() stops
     _, flags, msg = C.forecast_batch("dhr_arima", train, 3, (1.0,))
     assert flags.all() and "K must" in msg
-    with pytest.raises(Exception, match="K = 1"):
-        C.CppEngine().run(EngineJob(task="local", method="dhr_arima", train=train, horizon=3, seasonality=(7.0,),
-                                    params={"fourier_k": 2}))
+    _, flags, msg = C.forecast_batch("dhr_arima?fourier_k=4", train, 3, (7.0,))      # 2K > period 7
+    assert flags.all() and "K must" in msg
 
 
 def test_tbats_reproduces_r_tbats(case):
@@ -251,9 +250,24 @@ def test_bagged_ets_reproduces_r_bagged_ets():
     fd, flags, _ = C.forecast_batch("bagged_ets", [tr[i] for i in idx], refd.shape[1], (7.0,))
     assert not flags.any()
     np.testing.assert_allclose(fd, refd[idx], rtol=1e-12)
-    with pytest.raises(Exception, match="n_boot = 100"):
-        C.CppEngine().run(EngineJob(task="local", method="bagged_ets", train=train[:2], horizon=3, seasonality=(52.0,),
-                                    params={"n_boot": 20}))
+
+
+def test_non_default_settings_reproduce_r():
+    """Stored R output (tools/r_reference/settings_reference.R): set.seed(5); baggedETS(y, bootstrapped_series =
+    bld.mbb.bootstrap(y, 20)) on msts(y, 52.18); ets(y, "MAN") (Holt, error_type M) on the weekly series; ets(y, "MAM")
+    (Holt-Winters, error_type M) on the last 200 days of the positive daily series."""
+    wk = [r[~np.isnan(r)] for r in _load(G / "nn5_weekly", "train")][:10]
+    f, flags, _ = C.forecast_batch("bagged_ets?n_boot=20&seed=5", wk, 8, (52.17857142857143,))
+    assert not flags.any()
+    np.testing.assert_allclose(f, _load(G / "nn5_weekly", "r_bagged_ets_n20_s5"), rtol=1e-10)
+    f, flags, _ = C.forecast_batch("holt_ets?error_type=M", wk, 8, (52.17857142857143,))
+    assert not flags.any()
+    np.testing.assert_allclose(f, _load(G / "nn5_weekly", "r_ets_man"), rtol=1e-10)
+    dy = [r[~np.isnan(r)][-200:] for r in _load(G / "nn5_daily", "train")]
+    dy = [y for y in dy if y.min() > 0][:6]
+    f, flags, _ = C.forecast_batch("holt_winters?error_type=M", dy, 8, (7.0,))
+    assert not flags.any()
+    np.testing.assert_allclose(f, _load(G / "nn5_daily", "r_ets_mam"), rtol=1e-10)
 
 
 def test_bagged_bootstrap_python_equals_cpp_and_r_rng():
@@ -640,10 +654,75 @@ def test_intermittent_methods_match_python_bit_for_bit(method):
         np.testing.assert_array_equal(f[i], ref, err_msg=f"{method} #{i}")
 
 
-def test_tsb_refuses_non_default_alphas():
-    with pytest.raises(Exception, match="alpha_d"):
-        C.CppEngine().run(EngineJob(task="local", method="tsb", train=[np.array([0., 1, 0, 2])], horizon=2,
-                                    seasonality=(1.0,), params={"alpha_d": 0.2}))
+def _both(method, train, h, seas, params):
+    from tsfstudio.engines.py_engine import PythonEngine
+    job = EngineJob(task="local", method=method, train=train, horizon=h, seasonality=seas, params=params)
+    return C.CppEngine().run(job).forecasts, PythonEngine().run(job).forecasts
+
+
+# Settings whose C++ code is a port of the Python engine's statsforecast model: same forecasts to rounding.
+SETTINGS_EQUAL_TO_PYTHON = [
+    ("tsb", {"alpha_d": 0.3, "alpha_p": 0.2}), ("window_average", {"window_size": 7}),
+    ("seasonal_window_average", {"window_size": 3}), ("dotm", {"decomposition_type": "additive"}),
+    ("auto_theta", {"decomposition_type": "additive"}), ("auto_ces", {"model": "N"}), ("auto_ces", {"model": "F"}),
+    ("auto_ces", {"model": "P"}), ("auto_ces", {"model": "S", "max_season": 60}), ("auto_mfles", {"n_windows": 3, "metric": "mae"}),
+    ("auto_mfles", {"metric": "mse"}), ("auto_mfles", {"metric": "mape"}),
+]
+
+
+@pytest.mark.parametrize("method,params", SETTINGS_EQUAL_TO_PYTHON, ids=[f"{m}-{'-'.join(map(str, p.values()))}"
+                                                                         for m, p in SETTINGS_EQUAL_TO_PYTHON])
+def test_settings_match_python_engine(method, params):
+    rng = np.random.default_rng(5)
+    t = np.arange(120)
+    if method == "tsb":
+        train = [np.where(rng.uniform(size=90) < 0.6, 0.0, np.round(rng.gamma(2.0, 5.0, 90))) for _ in range(12)]
+    else:
+        train = [100 + 0.2 * t[:n] + 15 * np.sin(2 * np.pi * t[:n] / 7 + k) + rng.normal(scale=3, size=n)
+                 for k, n in enumerate(rng.integers(40, 120, 12))]
+    seas = (7.0,) if method != "auto_ces" or params.get("max_season") != 60 else (30.0,)
+    a, b = _both(method, train, 10, seas, params)
+    np.testing.assert_allclose(a, b, rtol=1e-8, atol=1e-10)
+    if params.get("metric") != "mape":                  # on these series MAPE picks the same configuration as sMAPE
+        da, _ = _both(method, train, 10, seas, {})
+        assert not np.allclose(a, da), "the setting had no effect"
+
+
+def test_settings_that_follow_r():
+    """error_type M is R ets(model = "MAM" / "MAN"); bagged_ets with any n_boot / seed and dhr_arima with any K run in
+    C++ (their R agreement is checked against stored R output in the other tests and in cpp/README.md)."""
+    rng = np.random.default_rng(8)
+    t = np.arange(100)
+    train = [50 + 10 * np.sin(2 * np.pi * t / 7 + k) + 0.1 * t + rng.normal(scale=1, size=100) for k in range(6)]
+    eng = C.CppEngine()
+    run = lambda m, p: eng.run(EngineJob(task="local", method=m, train=train, horizon=7, seasonality=(7.0,), params=p))
+    for m, p in [("holt_winters", {"error_type": "M"}), ("holt_ets", {"error_type": "M"}), ("dhr_arima", {"fourier_k": 2}),
+                 ("bagged_ets", {"n_boot": 10, "seed": 3}), ("scum", {"arima_max_season": 5})]:
+        r, d = run(m, p), run(m, {})
+        assert not r.fallbacks and np.isfinite(r.forecasts).all(), (m, p)
+        assert not np.allclose(r.forecasts, d.forecasts), (m, p)
+    bad = [np.r_[0.0, train[0][1:]]]                    # multiplicative error needs positive data: series falls back
+    r = eng.run(EngineJob(task="local", method="holt_winters", train=bad, horizon=7, seasonality=(7.0,), params={"error_type": "M"}))
+    assert len(r.fallbacks) == 1
+
+
+def test_setting_validation_and_method_string():
+    assert C.method_with_params("tsb", {}) == "tsb"
+    assert C.method_with_params("tsb", {"alpha_d": 0.2, "lag": 5}) == "tsb?alpha_d=0.2"
+    assert C.method_with_params("holt_winters", {"error_type": "m", "max_season": 30.0}) == "holt_winters?error_type=M&max_season=30"
+    assert C.method_with_params("ets", {"error_type": "M"}) == "ets"          # no settings in C++: plain name
+    for m, p in [("tsb", {"alpha_d": 0}), ("tsb", {"alpha_p": 1.5}), ("auto_ces", {"model": "Q"}), ("window_average", {"window_size": 0}),
+                 ("auto_mfles", {"metric": "rmse"}), ("dotm", {"decomposition_type": "x"}), ("dhr_arima", {"fourier_k": 1.5})]:
+        with pytest.raises(C.EngineError):
+            C.method_with_params(m, p)
+    with pytest.raises(C.EngineError, match="R engine"):
+        C.CppEngine().run(EngineJob(task="local", method="dhr_arima", train=[np.arange(30.0)], horizon=2, seasonality=(7.0,),
+                                    params={"fourier_k_per_period": True}))
+    from tsfstudio.app import models_info as MI
+    for mid, keys in MI.CPP_PARAMS.items():                 # every setting shown for C++ is one the engine accepts
+        if mid in C.CPP_METHOD_PARAMS:
+            shown = {p["key"] for p in MI.MODELS[mid]["params"] if "cpp" in p["engines"]}
+            assert shown <= set(C.CPP_METHOD_PARAMS[mid]), (mid, shown)
 
 
 def test_arima_q0_methods_agree():

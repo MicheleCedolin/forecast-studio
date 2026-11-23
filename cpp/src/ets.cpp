@@ -643,7 +643,7 @@ EtsResult ets_auto(const Vec& y, int m, int h) {
     return ets_select(y, m, h, -1, -1, -1);
 }
 
-EtsResult ets_holt(const Vec& y, int h) { return ets_select(y, 1, h, ADD, ADD, NONE); }
+EtsResult ets_holt(const Vec& y, int h, bool mult_error) { return ets_select(y, 1, h, mult_error ? MULT : ADD, ADD, NONE); }
 
 EtsResult ets_zz(const Vec& y, int m, int h, bool no_season) {
     if (m > 24 || m < 1) m = 1;                                // seasontype "Z" -> "N" for m > 24
@@ -661,11 +661,12 @@ Vec ets_refit_final(const Vec& y, const EtsResult& fit) {
     return fin;
 }
 
-EtsResult ets_holt_winters(const Vec& y, int m, int h) {
+EtsResult ets_holt_winters(const Vec& y, int m, int h, bool mult_error, int max_season) {
     const int n = static_cast<int>(y.size());
-    if (m > 24 || n < 2 * m) m = 1;                            // the Python engine's usable_season(n, m, 24)
+    if (m > max_season || n < 2 * m) m = 1;                    // the Python engine's usable_season(n, m, max_season)
     if (m <= 1) throw std::runtime_error("Nonseasonal data");  // ets(model = "AAA") on m = 1, as statsforecast / R
-    return ets_select(y, m, h, ADD, ADD, ADD);
+    const int e = mult_error ? MULT : ADD;                     // statsforecast HoltWinters: model = error + "A" + error
+    return ets_select(y, m, h, e, ADD, e);
 }
 
 }  // namespace tsf

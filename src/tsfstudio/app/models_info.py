@@ -249,7 +249,10 @@ MODELS: dict[str, dict] = {
         "use": "A simple combination that ranked among the best statistical benchmarks in M4; useful to test whether combinations change rankings.",
         "caution": "As slow as its slowest component (ARIMA); measure with a short trial first.",
         "engines": {PY: "Built from statsforecast AutoETS, AutoCES, AutoARIMA and DynamicOptimizedTheta."},
-        "params": [], "refs": ["petropoulos2020"], "cost": "Slow (sum of the four components).",
+        "params": [P("arima_max_season", "Largest seasonal period (ARIMA)", "int", 200,
+                     "If the period exceeds this value the ARIMA component is non-seasonal.", min=2, max=2000, engines=(PY,),
+                     advanced=True)],
+        "refs": ["petropoulos2020"], "cost": "Slow (sum of the four components).",
     },
     "comb_eat": {
         "name": "Combination: mean of ETS, ARIMA, Theta", "group": "yerel", "task": "local",
@@ -454,9 +457,9 @@ MODELS: dict[str, dict] = {
                    "trend instead of STL, as R does.",
         "engines": {PY: "The bootstrap equals R's (and the C++ engine's); each copy is forecast with statsforecast AutoETS, so the result is close to, "
                         "not equal to, R. Slow: about 100 AutoETS fits per series."},
-        "params": [P("n_boot", "Number of bootstrap series", "int", 100, "Including the original series (R's default 100). C++ engine: 100 only.",
+        "params": [P("n_boot", "Number of bootstrap series", "int", 100, "Including the original series (R's default 100).",
                      min=1, max=1000),
-                   P("seed", "Random seed", "int", 0, "set.seed() value used before each series (C++ engine: 0 only).", min=0, advanced=True)],
+                   P("seed", "Random seed", "int", 0, "set.seed() value used before each series.", min=0, advanced=True)],
         "refs": ["bergmeir2016", "hyndman2008"], "cost": "C++: NN5 weekly 111 series 4 s (R: 200 s). Python: minutes.",
     },
     "thief": {
@@ -729,12 +732,15 @@ CPP_NOTES = {
     "naive": "Native C++; same rule as the Python engine.", "snaive": _CPP_R, "drift": "Native C++; same rule as the Python engine.",
     "ses": _CPP_R, "theta": _CPP_R, "naive2": _CPP_R, "comb_shd": _CPP_R,
     "ets": "Native C++ port of R forecast::ets (incl. its small-sample branch and class-3 mean forecasts); equals R to rounding.",
-    "holt_winters": _CPP_R + " Additive errors only (the default).", "holt_ets": _CPP_R,
+    "holt_winters": _CPP_R + " error_type M runs R ets(model = \"MAM\").", "holt_ets": _CPP_R + " error_type M runs R ets(model = \"MAN\").",
     "arima": "Native C++ port of R auto.arima with the study's call chain; equals R to rounding.",
-    "dhr_arima": _CPP_R + " K = 1 Fourier terms (the study's setting).",
+    "dhr_arima": _CPP_R + " K = 1 (the study's setting) equals R. With K > 1, R rotates the 2K Fourier regressors by an "
+                 "SVD whose basis is not unique (sin and cos columns of nearly equal size), so the C++ fit can take a slightly "
+                 "different optimiser path: on NN5 weekly with K = 2 or 3, 7–9 of 111 series differ from R by more than 0.1%. "
+                 "K per period (several periods) needs the R engine.",
     "tbats": "Native C++ port of R forecast::tbats; equals the study's R forecasts to rounding.",
     "stl_ets": _CPP_R, "stl_arima": _CPP_R,
-    "bagged_ets": _CPP_R + " Runs n_boot = 100 and seed 0 (the defaults); other values need the Python engine.",
+    "bagged_ets": _CPP_R + " Any n_boot and seed (R's random number generator is reproduced).",
     "thief": _CPP_R, "mapa": _CPP_R,
     "comb_eat": "Native C++: mean of the C++ ets and arima (both reproduce R, so the result differs slightly from the Python engine, which uses statsforecast) and theta.",
     "comb_eat_median": "Native C++: median of the C++ ets, arima and theta (R-based ETS / ARIMA, so it differs slightly from the Python engine).",
@@ -746,7 +752,10 @@ CPP_NOTES = {
     "lightgbm_feat": "C++ builds the same features and drives LightGBM's C library; the same forecasts bit for bit.",
     "lightgbm_direct": "C++ builds the same features and trains one booster per step through LightGBM's C library; the same forecasts as Python.",
 }
-CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None, "lightgbm_direct": None}  # None: all
+CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None, "lightgbm_direct": None,
+              "holt_winters": None, "holt_ets": None, "dhr_arima": {"fourier_k"}, "tsb": None, "dotm": None, "auto_theta": None,
+              "auto_ces": None, "auto_mfles": None, "window_average": None, "seasonal_window_average": None, "bagged_ets": None,
+              "scum": None}  # None: all (each key must be in cpp_engine.CPP_METHOD_PARAMS; checked by a test)
 
 
 def _wire_cpp() -> None:
