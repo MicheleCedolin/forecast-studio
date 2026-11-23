@@ -12,6 +12,8 @@ This repository contains **Phase A** (core), **Phase B** (R engine, runner, Dock
 | B | R engine (corrected driver, fallback counter), runner + manifest, memory/time estimate, Dockerfile/compose, Windows scripts, golden tests | **Coded**; real R and Docker verification is on the user's machine (`doctor`, `golden-test`) |
 | C | Python engine: built-in ses/theta/naive/snaive/pooled regression (verified against R) + statsforecast (ets/arima/dhr_arima; TBATS disabled; C3: intermittent demand Croston/SBA/TSB/ADIDA/IMAPA and AutoTheta/AutoCES/Holt-Winters/MSTL/AutoMFLES) + CatBoost | **Coded**; statsforecast/catboost verification is on the user's machine (`golden`) |
 | C4 | M3/M4 benchmarks drift, Naive2, Comb S-H-D (numpy), DOTM and SCUM (statsforecast); optional measures RMSSE, MSE, MAPE, MAAPE, MedAE, RMSLE, ME, PBias; `ranking.py` + `rank` command (Friedman, Nemenyi CD, AvgRelMAE, OWA, bootstrap rank stability) | **Coded and unit-tested** (2026-11-22); see docs/RESEARCH_MODELS_METRICS.md for what to add next |
+| C5 | `reliability.py` + `reliability` command: ranking reliability across tasks with incomplete model coverage (common-support ranks, family-balanced scores, task-balanced Bradley-Terry with task bootstrap, permutation Skillings-Mack, Kendall's W, cross-metric selection regret, leave-one-family-out) | **Coded and tested** (2026-11-22); reproduces the manuscript's Bradley-Terry ordering and Skillings-Mack statistic (`tests/test_reliability.py`). Command line only; the P/S/X evidence screen is not ported |
+| C6 | `instability.py` + `instability` command: metric disagreement and selection regret per series (measures that are equivalent inside a series count once), the aggregation effect (task-level concordance of such measures), six built-in series features, within-task feature association pooled over tasks | **Coded and tested** (2026-11-22); produces the per-series values of manuscript Section 5.5 (`tests/test_instability.py`). Built-in features approximate R's tsfeatures (acf1, CV, level identical; entropy and trend approximate); R tables can be passed with `--features`. Command line only |
 | D | Deep models: the research report recommends `neuralforecast` (N-HiTS, N-BEATS) and one foundation model (Chronos-Bolt / Chronos-2) over GluonTS | – |
 | E | WRMSSE (M5), data features (tsfeatures/catch22/lambda), rolling origin | – |
 | F | Local interface (in the browser; standard library only): data/model selection, margin-note explanations, editable parameters, pre-run check, progress/cancel, result charts, history and comparison, Excel upload | **Coded** (docs/APP.md) |
@@ -86,6 +88,31 @@ The long format is `series_name | date | value | [constant attributes]`, the wid
 Errors are reported with the Excel cell address (`Veri_Uzun!C7`): first cell errors, and once those are fixed, structural errors (duplicate dates,
 gaps, irregular frequency). Monthly/quarterly/yearly dates are moved to the 1st day of the period. Non-ASCII characters are converted to ASCII.
 (The data sheet names `Veri_Uzun` = long data and `Veri_Genis` = wide data are kept for compatibility with files made earlier.)
+
+## Ranking reliability across tasks
+
+```powershell
+# one run folder per task and model; a model may be missing on some tasks
+.\scripts\windows\tsfs.ps1 reliability --run nn5_weekly:ets=runs\... --run nn5_weekly:theta=runs\... --run m3_monthly:ets=runs\... --out reliability_out
+# or from a table of mean losses with the columns task, metric, model, loss
+.\scripts\windows\tsfs.ps1 reliability --losses losses.csv
+```
+Prints the task-balanced Bradley-Terry ordering with each model's coverage, P(first) and P(top k); the Skillings-Mack test;
+Kendall's W and selection regret per task; and the ordering after dropping each metric family. `rank` is the within-task
+counterpart (blocks = series). The manuscript draft is in `manuscript/Manuscript_v2.md`.
+
+## Where do the measures disagree?
+
+```powershell
+# at least three models per task; the data file is taken from the run manifest
+.\scripts\windows\tsfs.ps1 instability --run nn5_weekly:ets=runs\... --run nn5_weekly:theta=runs\... --run nn5_weekly:ses=runs\... --out instability_out
+# with features computed elsewhere (first column = series name), e.g. R tsfeatures
+.\scripts\windows\tsfs.ps1 instability --run ... --features nn5_weekly=my_features.csv
+```
+For each task it prints how much the measures disagree inside single series, whether measures that are equivalent
+inside a series (MAE, MASE, WAPE; or RMSE, MSE, RMSSE) still rank the models differently after averaging over series,
+and how series features relate to the disagreement. With five or more tasks the correlations are pooled with tasks as
+the units. The analysis behind manuscript Section 5.5 is documented in `manuscript/analysis/README.md`.
 
 ## Structure
 

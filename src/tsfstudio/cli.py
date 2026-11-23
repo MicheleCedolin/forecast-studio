@@ -11,6 +11,8 @@
   doctor       environment check: Python, R, packages, memory, data; a quick live test of every method of every engine
   golden       compares an engine's forecasts with your own R outputs (NN5): forecast difference + effect on SMAPE/MASE
   rank         ranks models from several runs; Friedman, Nemenyi CD and bootstrap ranking stability
+  reliability  ranking reliability across tasks: Bradley-Terry, Skillings-Mack, Kendall's W, selection regret
+  instability  metric disagreement per series, the aggregation effect, and their relation to series features
   app          starts the local web interface (opens in the browser; no extra installation needed)
 """
 from __future__ import annotations
@@ -334,6 +336,170 @@ def _cmd_rank(a) -> int:
     return 0
 
 
+def _cmd_reliability(a) -> int:
+    """Task-level ranking reliability: Bradley-Terry ordering, Skillings-Mack test, Kendall's W and selection regret."""
+    import pandas as pd
+
+    from . import reliability as RL
+
+    if a.losses:
+        losses = pd.read_csv(a.losses)
+    elif a.run:
+        runs = {}
+        for it in a.run:
+            key, sep, path = it.partition("=")
+            task, sep2, model = key.partition(":")
+            if not sep or not sep2 or not task or not model:
+                print(f"--run must look like task:model=run_dir (got '{it}')")
+                return 2
+            runs[(task, model)] = path
+        losses = RL.losses_from_runs(runs, a.metrics)
+    else:
+        print("Give either --losses file.csv or several --run task:model=run_dir entries.")
+        return 2
+    if a.metrics:
+        losses = losses[losses["metric"].isin(a.metrics)]
+    ranks = RL.common_support_ranks(losses)
+    scores = RL.family_balanced_scores(ranks)
+    fmt = lambda x: f"{x:.3f}"  # noqa: E731
+    print(f"Tasks: {scores.shape[0]} | models: {scores.shape[1]} | metrics: {ranks['metric'].nunique()} "
+          f"| common support per task: {int(ranks.groupby('task')['n_models'].first().min())}"
+          f"-{int(ranks.groupby('task')['n_models'].first().max())} models")
+    bt = RL.bootstrap_bradley_terry(scores, n_boot=a.boot, top_k=a.top_k, seed=a.seed)
+    k = bt.attrs["top_k"]
+    print(f"\nTask-balanced Bradley-Terry ordering ({a.boot} task resamples; coverage = tasks on which the model is observed):")
+    print(bt.rename(columns={"lo": "lo 2.5%", "hi": "hi 97.5%", "p_first": "P(first)", "p_top_k": f"P(top {k})"}).to_string(float_format=fmt))
+    if scores.shape[0] < 10:
+        print(f"Note: only {scores.shape[0]} tasks. Read the frequencies as sensitivity to benchmark composition, not as probabilities.")
+    sm = None
+    if scores.shape[1] >= 3:
+        sm = RL.skillings_mack(scores, n_perm=a.perm, seed=a.seed + 1)
+        print(f"\nSkillings-Mack statistic = {sm.statistic:.4f}, permutation p = {sm.p_value:.3g} "
+              f"({sm.exceedances} of {sm.n_perm} permutations at least as large; {sm.n_tasks} tasks, {sm.n_models} models)")
+    ag = RL.agreement_by_task(ranks)
+    print("\nMetric agreement per task (Kendall's W: 1 = metrics agree) and cross-metric selection regret (0 = no cost):")
+    print(ag.to_string(float_format=fmt))
+    loo = RL.leave_one_family_out(ranks, top_k=k)
+    if len(loo):
+        print("\nLeave one metric family out:")
+        print(loo.to_string(float_format=fmt))
+    if a.out:
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        losses.to_csv(out / "losses.csv", index=False)
+        scores.to_csv(out / "family_balanced_scores.csv")
+        bt.to_csv(out / "bradley_terry.csv")
+        ag.to_csv(out / "agreement_by_task.csv")
+        loo.to_csv(out / "leave_one_family_out.csv")
+        if sm is not None:
+            pd.Series(vars(sm)).to_csv(out / "skillings_mack.csv", header=["value"])
+        print("Written:", out)
+    return 0
+
+
+def _cmd_instability(a) -> int:
+    """Series-level metric disagreement, the aggregation effect, and their relation to series features."""
+    import json
+
+    import pandas as pd
+
+    from . import instability as IN
+    from .seasonality import primary_period, seasonality_for
+    from .tsf import read_tsf
+
+    runs: dict[str, dict[str, str]] = {}
+    for it in a.run or []:
+        key, sep, path = it.partition("=")
+        task, sep2, model = key.partition(":")
+        if not sep or not sep2 or not task or not model:
+            print(f"--run must look like task:model=run_dir (got '{it}')")
+            return 2
+        runs.setdefault(task, {})[model] = path
+    if not runs:
+        print("Give several --run task:model=run_dir entries (at least three models per task).")
+        return 2
+
+    def pairs(items, flag):
+        out = {}
+        for it in items or []:
+            k, sep, v = it.partition("=")
+            if not sep:
+                raise SystemExit(f"{flag} must look like task=path (got '{it}')")
+            out[k] = v
+        return out
+
+    data_files, feature_files = pairs(a.data, "--data"), pairs(a.features, "--features")
+    fmt = lambda x: f"{x:.3f}"  # noqa: E731
+    out_dir = Path(a.out) if a.out else None
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    corr_parts = []
+    for task, models in runs.items():
+        print(f"\n=== {task} ({len(models)} models) ===")
+        losses = IN.losses_from_runs(models, a.metrics)
+        try:
+            inst = IN.series_instability(losses)
+        except ValueError as e:
+            print("Skipped:", e)
+            continue
+        print(f"Judges (measures that are not equivalent inside a series): {', '.join(inst.attrs['judges'])}")
+        print(f"Series: {len(inst)} used, {inst.attrs['n_dropped']} dropped (a loss was missing)")
+        print(f"Inside series: median disagreement (1 - W) = {inst['disagreement'].median():.3f}, "
+              f"90th percentile = {inst['disagreement'].quantile(0.9):.3f}; "
+              f"share of series where switching measure costs nothing = {(inst['regret'].fillna(0) < 1e-12).mean():.3f}")
+        agg = IN.aggregation_effect(losses)
+        print("\nTask-level concordance (W below 1 inside an 'equivalent' group is produced by averaging over series alone):")
+        print(agg[["n_measures", "kendall_w"]].to_string(float_format=fmt))
+        feats = None
+        if task in feature_files:
+            feats = pd.read_csv(feature_files[task], index_col=0)
+            feats = feats.select_dtypes("number")
+        else:
+            src, horizon = data_files.get(task), 0
+            try:
+                man = json.loads((Path(next(iter(models.values()))) / "manifest.json").read_text(encoding="utf-8"))
+                src = src or man.get("dataset", {}).get("source")
+                horizon = int(man.get("split", {}).get("horizon") or 0)
+            except (OSError, ValueError):
+                pass
+            if src and Path(src).exists():
+                ds = read_tsf(src)
+                names = ds.attrs["series_name"] if "series_name" in ds.attrs.columns else [f"T{i + 1}" for i in range(len(ds.values))]
+                period = primary_period(seasonality_for(ds.header.frequency))
+                feats = IN.feature_table(ds.values, list(names), period=period, drop_last=horizon)
+                print(f"\nFeatures computed from {Path(src).name} (training part: last {horizon} points removed; period {period}).")
+            else:
+                print("\nNo series data found for this task (pass --data task=file.tsf or --features task=table.csv); features skipped.")
+        if feats is not None:
+            corr = IN.association(inst, feats, min_n=a.min_series)
+            if len(corr):
+                corr.insert(0, "task", task)
+                corr_parts.append(corr)
+                wide = corr.pivot(index="feature", columns="outcome", values="rho").reindex(feats.columns).dropna(how="all")
+                print(f"Spearman correlation with series features ({int(corr['n'].max())} series; descriptive for a single task):")
+                print(wide.to_string(float_format=fmt))
+            else:
+                print(f"Fewer than {a.min_series} series with features and outcomes; correlations skipped.")
+        if out_dir:
+            inst.join(feats, how="left").to_csv(out_dir / f"{task}_series.csv") if feats is not None else inst.to_csv(out_dir / f"{task}_series.csv")
+            agg.to_csv(out_dir / f"{task}_aggregation_effect.csv")
+    if corr_parts:
+        allc = pd.concat(corr_parts, ignore_index=True)
+        if allc["task"].nunique() >= 5:
+            pooled = IN.pool_over_tasks(allc)
+            print(f"\n=== Pooled over {allc['task'].nunique()} tasks (tasks are the units; brackets = 95% interval across tasks) ===")
+            print(pooled.to_string(index=False, float_format=fmt))
+            if out_dir:
+                pooled.to_csv(out_dir / "pooled_correlations.csv", index=False)
+        else:
+            print(f"\nNote: {allc['task'].nunique()} task(s). Correlations are descriptive; pooling across tasks needs at least five.")
+        if out_dir:
+            allc.to_csv(out_dir / "within_task_correlations.csv", index=False)
+    if out_dir:
+        print("Written:", out_dir)
+    return 0
+
+
 def _safe_streams() -> None:
     """On Windows, when output is redirected to a pipe (| Tee-Object) or a file, Python uses the default encoding (cp1252) and
     CRASHES with UnicodeEncodeError on characters such as ı, ş, ğ, İ. To avoid a crash, characters that cannot be written become '?'."""
@@ -390,6 +556,27 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--seed", type=int, default=1)
     sp.add_argument("--csv", default=None)
     sp.set_defaults(fn=_cmd_rank)
+    sp = sub.add_parser("reliability", help="ranking reliability across tasks with incomplete model coverage "
+                                            "(Bradley-Terry, Skillings-Mack, Kendall's W, selection regret)")
+    sp.add_argument("--run", action="append", help="task:model=run_dir (repeat); run_dir holds metrics.xlsx")
+    sp.add_argument("--losses", default=None, help="instead of --run: CSV with the columns task, metric, model, loss")
+    sp.add_argument("--metrics", nargs="*", default=None, help="only these metrics (default: every loss measure found)")
+    sp.add_argument("--boot", type=int, default=5000, help="task-bootstrap resamples")
+    sp.add_argument("--perm", type=int, default=20000, help="Skillings-Mack permutations")
+    sp.add_argument("--top-k", type=int, default=3)
+    sp.add_argument("--seed", type=int, default=1)
+    sp.add_argument("--out", default=None, help="folder for the CSV outputs")
+    sp.set_defaults(fn=_cmd_reliability)
+    sp = sub.add_parser("instability", help="where measures disagree: inside series (and for which kind of series) "
+                                            "or through averaging over series")
+    sp.add_argument("--run", action="append", help="task:model=run_dir (repeat; at least three models per task)")
+    sp.add_argument("--data", action="append", help="task=file.tsf (default: the data file recorded in the run manifest)")
+    sp.add_argument("--features", action="append", help="task=table.csv with one row per series (first column = series name), "
+                                                        "e.g. tsfeatures or catch22 output; replaces the built-in features")
+    sp.add_argument("--metrics", nargs="*", default=None, help="only these metrics (default: every loss measure found)")
+    sp.add_argument("--min-series", type=int, default=30, help="smallest number of series for a correlation")
+    sp.add_argument("--out", default=None, help="folder for the CSV outputs")
+    sp.set_defaults(fn=_cmd_instability)
     sp = sub.add_parser("engines", help="engine status")
     sp.set_defaults(fn=_cmd_engines)
     sp = sub.add_parser("doctor", help="environment check + quick live R test")
