@@ -831,6 +831,7 @@ function renderSonuc() {
     el("h3", { text: "Summary" }),
     m.split && m.split.origins > 1 ? el("p", { class: "note soft", text: `Rolling origin: ${m.split.origins} forecast origins, ${m.split.origin_step} observations apart. Each series' measures are the mean over its origins; the chart and the forecast files show the latest origin, and the files ending in "by_origin" hold every origin.` }) : null,
     el("div", { class: "tablewrap" }, summaryTable(d.summary)),
+    m.wrmsse ? el("p", { class: m.wrmsse.complete ? "note soft" : "note" }, el("b", { text: `WRMSSE ${nf3fix.format(m.wrmsse.value)}` }), ` (M5 measure over the 12 levels of the product and store hierarchy; weights: ${m.wrmsse.weights}` + (m.wrmsse.weights.startsWith("unit") ? ", not the official dollar weights: place M5's sell_prices.csv and calendar.csv in the data folder's m5 subfolder for those" : "") + "). " + (m.wrmsse.complete ? "Per-level values are in wrmsse.csv." : "Only part of the dataset was run, so the hierarchy is incomplete and the value is not comparable with M5 results.")) : null,
     el("h3", { text: "Forecast diagnostics" }),
     el("dl", { class: "diag" },
       diagItem("Share of zero forecasts", fpct(dg.zero_forecast_share, 1), flagZero, () => diagNote("zero_f")),

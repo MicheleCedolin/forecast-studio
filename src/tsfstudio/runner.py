@@ -301,6 +301,31 @@ def _write_origin_outputs(run_dir: Path, origin_rows: list) -> dict:
     return out
 
 
+def _wrmsse_for(dataset: TSFDataset, prep: Prepared, forecasts: np.ndarray) -> dict | None:
+    """WRMSSE of the latest origin for data with the M5 hierarchy attributes (tsfstudio.wrmsse); None otherwise.
+    Dollar weights when M5's sell_prices.csv and calendar.csv are in $TSFSTUDIO_M5_DIR or <data folder>/m5."""
+    from . import wrmsse as W
+    attrs = dataset.attrs
+    if attrs is None or not W.has_hierarchy(attrs) or "series_name" not in attrs.columns:
+        return None
+    a = attrs.assign(series_name=attrs["series_name"].astype(str)).drop_duplicates("series_name").set_index("series_name")
+    try:
+        sub = a.loc[[str(n) for n in prep.names]].reset_index()
+    except KeyError:
+        return None
+    m5_dir = os.environ.get("TSFSTUDIO_M5_DIR") or (Path(dataset.source).parent.parent / "m5" if dataset.source else None)
+    prices = W.dollar_weights_source(m5_dir)
+    last = None
+    if prices is not None and "start_timestamp" in sub.columns:
+        last = (pd.Timestamp(sub["start_timestamp"].iloc[0]) + pd.Timedelta(days=len(prep.train[0]) - 1)).strftime("%Y-%m-%d")
+    try:
+        out = W.wrmsse(prep.train, prep.test, forecasts, sub, prices, last)
+    except Exception:  # noqa: BLE001 - the measure is an extra; a failure must not lose the run
+        return None
+    out["complete"] = len(prep.names) == dataset.n_series
+    return out
+
+
 def run(dataset: TSFDataset, cfg: RunConfig, *, entry: DatasetEntry | None = None, dataset_id: str | None = None,
         engine: Engine | None = None, progress: ProgressFn | None = None,
         cancel: threading.Event | None = None) -> RunResult:
@@ -443,6 +468,12 @@ def run(dataset: TSFDataset, cfg: RunConfig, *, entry: DatasetEntry | None = Non
     manifest["outputs"] = _write_outputs(run_dir, prep, res.forecasts, res.fallbacks, per_series, summary, run_info, cfg.write_xlsx)
     if n_orig > 1:
         manifest["outputs"].update(_write_origin_outputs(run_dir, origin_rows))
+    wr = _wrmsse_for(dataset, prep, res.forecasts)
+    if wr is not None:
+        pd.DataFrame(wr["levels"]).to_csv(run_dir / "wrmsse.csv", index=False)
+        manifest["outputs"]["wrmsse_csv"] = "wrmsse.csv"
+        manifest["wrmsse"] = {"value": wr["WRMSSE"], "weights": wr["weights"], "n_series": len(prep.names),
+                              "complete": wr["complete"]}
     if latest_bounds is not None:
         probs, bnds = latest_bounds
         cols = [f"h{k}" for k in range(1, prep.horizon + 1)]
