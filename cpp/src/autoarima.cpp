@@ -56,7 +56,9 @@ void stlest(const double* y, int n, int len, int ideg, double xs, double& ys, in
         const double r = std::fabs(j - xs);
         if (r <= h9) {
             if (r <= h1) w[j - 1] = 1.0;
-            else { const double u = r / h; const double v = 1.0 - u * u * u; w[j - 1] = v * v * v; }
+            else {                                      // R_pow_di(1 - R_pow_di(r / h, 3), 3): x * (x * x)
+                const double u = r / h; const double v = 1.0 - u * (u * u); w[j - 1] = v * (v * v);
+            }
             if (userw) w[j - 1] *= rw[j - 1];
             a += w[j - 1];
         }
@@ -68,7 +70,7 @@ void stlest(const double* y, int n, int len, int ideg, double xs, double& ys, in
         a = 0.0;
         for (int j = nleft; j <= nright; ++j) a += w[j - 1] * j;
         double b = xs - a, c = 0.0;
-        for (int j = nleft; j <= nright; ++j) c += w[j - 1] * (j - a) * (j - a);
+        for (int j = nleft; j <= nright; ++j) { const double d = j - a; c += w[j - 1] * (d * d); }   // stl.c
         if (std::sqrt(c) > 0.001 * range) {
             b /= c;
             for (int j = nleft; j <= nright; ++j) w[j - 1] *= (b * (j - a) + 1.0);
@@ -135,7 +137,7 @@ void stlma(const double* x, int n, int len, double* ave) {
         int k = len, m = 0;
         for (int j = 2; j <= newn; ++j) {
             ++k; ++m;
-            v = v - x[m - 1] + x[k - 1];
+            v += x[k - 1] - x[m - 1];                   // stl.c: v += x[k] - x[m]
             ave[j - 1] = v / flen;
         }
     }
@@ -167,9 +169,10 @@ void stlss(const double* y, int n, int np, int ns, int isdeg, int nsjump, bool u
 
 }  // namespace
 
-StlOut stl(const Vec& x, int period, int s_window) {
+StlOut stl(const Vec& x, double period, int s_window) {
     const int n = static_cast<int>(x.size());
     if (period < 2 || n <= 2 * period) throw std::runtime_error("series is not periodic or has less than two periods");
+    const int np = static_cast<int>(period);            // .Fortran(C_stl, ..., as.integer(period), ...)
     auto nextodd = [](double v) { int r = static_cast<int>(std::nearbyint(v)); return (r % 2 == 0) ? r + 1 : r; };
     auto win_check = [&](double k) { return std::max(3, nextodd(k)); };
     const int t_window = win_check(std::ceil(1.5 * period / (1.0 - 1.5 / s_window)));
@@ -178,7 +181,7 @@ StlOut stl(const Vec& x, int period, int s_window) {
     const int nsjump = std::max(1, static_cast<int>(std::ceil(s_win / 10.0)));
     const int ntjump = std::max(1, static_cast<int>(std::ceil(t_window / 10.0)));
     const int nljump = std::max(1, static_cast<int>(std::ceil(l_window / 10.0)));
-    return stl_core(x, period, s_win, t_window, l_window, isdeg, itdeg, ildeg, nsjump, ntjump, nljump, 2);
+    return stl_core(x, np, s_win, t_window, l_window, isdeg, itdeg, ildeg, nsjump, ntjump, nljump, 2);
 }
 
 StlOut stl_core(const Vec& x, int period, int s_win, int t_window, int l_window, int isdeg, int itdeg, int ildeg,

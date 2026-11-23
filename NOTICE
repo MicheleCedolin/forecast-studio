@@ -15,12 +15,15 @@ R package "forecast" (GPL-3)
   Copyright (C) Rob J Hyndman and contributors. https://github.com/robjhyndman/forecast
   Translated: ets() and its likelihood / initialisation (cpp/src/ets.cpp), auto.arima(), ndiffs(), nsdiffs(),
   seas.heuristic(), myarima() and the forecasting chain (cpp/src/autoarima.cpp), tbats() / bats() and their Rcpp
-  helpers (cpp/src/tbats.cpp).
+  helpers (cpp/src/tbats.cpp), stlf() / mstl() / forecast.stl() (cpp/src/stlf.cpp, src/tsfstudio/engines/py_sf.py),
+  baggedETS() / bld.mbb.bootstrap() / MBB() / BoxCox.lambda() (cpp/src/bagged.cpp, src/tsfstudio/engines/r_boot.py).
 
 R "stats" package, part of R (GPL-2 or later)
   Copyright (C) The R Core Team. https://www.r-project.org
   Translated: arima() with ARIMA_Like / ARIMA_CSS / getQ0, optim()'s vmmin (BFGS) and nmmin (Nelder-Mead) and
-  optimhess (cpp/src/arima.cpp, cpp/src/ets.cpp), stl() / stl.f (cpp/src/autoarima.cpp).
+  optimhess (cpp/src/arima.cpp, cpp/src/ets.cpp), stl() / stl.c (cpp/src/autoarima.cpp, src/tsfstudio/engines/r_stl.py),
+  optimize() (Brent_fmin); and from R's base sources the Mersenne-Twister seeding, unif_rand() and R_unif_index()
+  of src/main/RNG.c, mean() / colMeans() / var() summation (cpp/src/rstats.hpp, src/tsfstudio/engines/r_boot.py).
 
 R package "urca" (GPL-2 or later)
   Copyright (C) Bernhard Pfaff. Translated: ur.kpss() test statistic (cpp/src/autoarima.cpp).

@@ -192,6 +192,87 @@ def test_catboost_bit_identical_to_python():
                                     params={"catboost": {"depth": 4}}))
 
 
+@pytest.mark.parametrize("method", ["stl_ets", "stl_arima"])
+def test_stl_models_reproduce_r_stlf(case, method):
+    """C++ stl_ets / stl_arima = R forecast(mstl(msts(y, periods)), method = "ets" / "arima") (forecast 9.0.2,
+    tools/r_reference/stlf_reference.R). stl_ets: all 222 series <= 1e-9. stl_arima: 221 of 222 series <= 1e-6; one
+    daily series (108), whose auto.arima estimate is ill-conditioned, differs by 0.26%."""
+    name, seas, h, train, _ = case
+    ref = _load(G / name, f"r_stlf_{method.split('_')[1]}")
+    f, flags, _ = C.forecast_batch(method, train, h, seas)
+    assert not flags.any()
+    rel = (np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)).max(axis=1)
+    tol = 1e-10 if method == "stl_ets" else 1e-6
+    assert (rel > tol).sum() <= (0 if method == "stl_ets" else 1) and rel.max() < 5e-3, f"{name}: worst {rel.max():.2e}"
+
+
+def test_stl_decomposition_python_equals_cpp():
+    """The Python engine's R stl / mstl port (r_stl.py) and the C++ one give the same decomposition bit for bit, for
+    one and several periods (periods >= n/2 dropped as in R); R errors are raised in both."""
+    import ctypes
+    from tsfstudio.engines import py_sf as S
+    lib = C.load_lib()
+    dp = ctypes.POINTER(ctypes.c_double)
+    lib.tsf_stlf_parts.restype = ctypes.c_int32
+    lib.tsf_stlf_parts.argtypes = [dp, ctypes.c_int32, dp, ctypes.c_int32, ctypes.c_int32, dp, dp]
+    train = [r[~np.isnan(r)] for r in _load(G / "nn5_daily", "train")][:12]
+    for per in [(7.0,), (7.0, 30.4375), (7.0, 30.4375, 365.25)]:
+        for y in train:
+            y = np.ascontiguousarray(y)
+            pp = np.asarray(per)
+            xa, sa = np.zeros(len(y)), np.zeros(20)
+            fr = lib.tsf_stlf_parts(y.ctypes.data_as(dp), len(y), pp.ctypes.data_as(dp), len(pp), 20,
+                                    xa.ctypes.data_as(dp), sa.ctypes.data_as(dp))
+            xp, sp, frp = S.r_mstl_parts(y, 20, per)
+            assert fr == frp and np.array_equal(xa, xp) and np.array_equal(sa, sp)
+    _, flags, msg = C.forecast_batch("stl_ets", [np.arange(14.0)], 3, (7.0,))     # n <= 2 * period
+    assert flags.all() and "less than two periods" in msg
+    _, flags, msg = C.forecast_batch("stl_arima", [np.arange(30.0)], 3, (1.0,))   # not seasonal
+    assert flags.all() and "not a seasonal" in msg
+    with pytest.raises(ValueError, match="less than two periods"):
+        S.r_mstl_parts(np.arange(14.0), 3, (7.0,))
+
+
+def test_bagged_ets_reproduces_r_bagged_ets():
+    """C++ bagged_ets = R forecast(baggedETS(msts(y, 52.18)), 8)$mean after set.seed(0) (forecast 9.0.2,
+    tools/r_reference/bagged_reference.R): R's Mersenne-Twister and sample() are reproduced, so all 111 NN5 weekly
+    series agree to <= 1e-10 (median ~3e-15)."""
+    train = [r[~np.isnan(r)] for r in _load(G / "nn5_weekly", "train")]
+    ref = _load(G / "nn5_weekly", "r_bagged_ets")
+    f, flags, _ = C.forecast_batch("bagged_ets", train, ref.shape[1], (52.17857142857143,))
+    assert not flags.any()
+    rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
+    assert rel.max() < 1e-10 and np.median(rel) < 1e-13, f"worst {rel.max():.2e}"
+    with pytest.raises(Exception, match="n_boot = 100"):
+        C.CppEngine().run(EngineJob(task="local", method="bagged_ets", train=train[:2], horizon=3, seasonality=(52.0,),
+                                    params={"n_boot": 20}))
+
+
+def test_bagged_bootstrap_python_equals_cpp_and_r_rng():
+    """The Python engine's bootstrap (r_boot.py) and the C++ one are identical bit for bit, and so are their R RNG
+    draws (both were checked against R 4.6.2's set.seed / sample and bld.mbb.bootstrap output during development)."""
+    import ctypes
+    from tsfstudio.engines import r_boot as B
+    lib = C.load_lib()
+    dp = ctypes.POINTER(ctypes.c_double)
+    lib.tsf_r_rng.argtypes = [ctypes.c_uint32, ctypes.c_int32, ctypes.c_int32, dp]
+    o = np.zeros(20)
+    lib.tsf_r_rng(0, 10, 100, o.ctypes.data_as(dp))
+    g = B.RRng(0)
+    py = [g.sample1(100) for _ in range(10)]
+    assert list(o[10:].astype(int)) == py
+    lib.tsf_bld_mbb.restype = ctypes.c_int32
+    lib.tsf_bld_mbb.argtypes = [dp, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_uint32, dp, ctypes.c_char_p,
+                                ctypes.c_int32]
+    for ds, fr, num in [("nn5_daily", 7, 30), ("nn5_weekly", 52, 10)]:
+        for y in [r[~np.isnan(r)] for r in _load(G / ds, "train")][:3]:
+            y = np.ascontiguousarray(y)
+            out = np.zeros(num * len(y))
+            msg = ctypes.create_string_buffer(256)
+            assert lib.tsf_bld_mbb(y.ctypes.data_as(dp), len(y), fr, num, 7, out.ctypes.data_as(dp), msg, 256) == 0
+            assert np.array_equal(out.reshape(num, -1), np.vstack(B.bld_mbb_bootstrap(y, fr, num, 7)))
+
+
 @pytest.mark.skipif(C.lightgbm_lib_path() is None, reason="lightgbm package (lib_lightgbm) not installed")
 @pytest.mark.parametrize("dataset,lag,h", [("nn5_weekly", 12, 8), ("nn5_daily", 21, 56)])
 def test_lightgbm_bit_identical_to_python(dataset, lag, h):

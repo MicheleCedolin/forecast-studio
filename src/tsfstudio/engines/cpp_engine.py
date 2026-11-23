@@ -217,7 +217,8 @@ class CppEngine(Engine):
     name = "cpp"
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
                      "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "auto_theta", "mstl", "auto_mfles", "tbats",
-                     "holt_ets", "historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model")
+                     "holt_ets", "historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model",
+                     "stl_ets", "stl_arima", "bagged_ets")
     GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm")
 
     def methods(self) -> dict[str, tuple[str, ...]]:
@@ -274,6 +275,9 @@ class CppEngine(Engine):
             if int(k) != 1 or (job.params or {}).get("fourier_k_per_period"):
                 raise EngineError("The C++ dhr_arima uses K = 1 Fourier terms (the study's setting); "
                                   f"fourier_k = {k} / fourier_k_per_period need the R or Python engine.")
+        if job.method == "bagged_ets" and (int((job.params or {}).get("n_boot") or 100) != 100
+                                           or int((job.params or {}).get("seed") or 0) != 0):
+            raise EngineError("The C++ bagged_ets uses n_boot = 100 and seed = 0 (the defaults); other values need the Python engine.")
         if job.method == "holt_winters" and str((job.params or {}).get("error_type", "A")).upper() != "A":
             raise EngineError("The C++ holt_winters has additive errors (error_type = 'A'); 'M' needs the Python engine.")
         if job.method in ("dotm", "auto_theta") and str((job.params or {}).get("decomposition_type", "multiplicative")) != "multiplicative":

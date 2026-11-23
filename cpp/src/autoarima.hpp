@@ -15,9 +15,10 @@ bool is_constant(const Vec& x);
 double kpss_stat(const Vec& y);
 int ndiffs(Vec x, int max_d = 2);
 
-// stats::stl(x, s.window = 11) with R's defaults (s.degree 0, t/l windows and jumps, robust = FALSE).
+// stats::stl(x, s.window) with R's defaults (s.degree 0, t/l windows and jumps, robust = FALSE); period =
+// frequency(x), which may be fractional (msts components): the windows use it as is, the Fortran gets as.integer(period).
 struct StlOut { Vec seasonal, trend; };
-StlOut stl(const Vec& x, int period, int s_window);
+StlOut stl(const Vec& x, double period, int s_window);
 
 // The stl.f procedure with explicit windows, degrees, jumps and inner iterations (statsmodels' STL uses other defaults).
 StlOut stl_core(const Vec& x, int period, int s_window, int t_window, int l_window, int s_deg, int t_deg, int l_deg,

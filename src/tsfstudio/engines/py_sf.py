@@ -288,6 +288,83 @@ def forecast_spec(method: str, y: np.ndarray, h: int, m: int, periods: Sequence[
 
 
 # ------------------------------------------------------------------------------------------------
+# STL forecasts (2026-11-23): R forecast::stlf(y) = forecast(mstl(y), method = "ets") and method = "arima".
+# The decomposition follows R's mstl() / stl() exactly (r_stl.py, a port of R's stl.f: statsmodels' STL refuses R's
+# low-pass window for odd periods). The seasonally adjusted series is forecast by statsforecast AutoETS(model = "ZZN")
+# or AutoARIMA (non-seasonal); the C++ engine uses its R ports of ets / auto.arima. Differs from `mstl` (statsforecast
+# MSTL, statsmodels' STL defaults) in the decomposition settings.
+# ------------------------------------------------------------------------------------------------
+def _r_stl(x: np.ndarray, period: float, s_window: int) -> tuple[np.ndarray, np.ndarray]:
+    from .r_stl import stl
+    return stl(x, period, s_window)
+
+
+def r_mstl_parts(y: np.ndarray, h: int, periods: Sequence[float]) -> tuple[np.ndarray, np.ndarray, int]:
+    """R mstl() on msts(y, periods) as the R engine builds it: (seasonally adjusted series, seasonal forecast,
+    frequency)."""
+    y = np.asarray(y, dtype=np.float64)
+    n = len(y)
+    per_in = [float(p) for p in periods] if len(periods) else [1.0]
+    freq = max(1, int(np.floor(max(per_in))))
+    if freq <= 1:
+        raise ValueError("y is not a seasonal ts object")
+    if len(per_in) == 1:
+        per, iterate = [float(freq)], 1                        # msts() with one period is a plain ts
+    else:
+        per = sorted(p for p in per_in if p < n / 2)           # mstl drops periods >= n / 2
+        if not per:
+            raise ValueError("mstl: no seasonal period shorter than half the series")
+        if per[0] <= 1:
+            raise ValueError("mstl: a seasonal period <= 1 is not supported")
+        iterate = 2
+    seas = [np.zeros(n) for _ in per]
+    deseas = y.copy()
+    trend = None
+    for _ in range(iterate):
+        for i, p in enumerate(per):
+            deseas = deseas + seas[i]
+            seas[i], trend = _r_stl(deseas, p, 7 + 4 * (i + 1))
+            deseas = deseas - seas[i]
+    xsa = trend + (deseas - trend)
+    fc = np.zeros(h)
+    for i, p in enumerate(per):
+        mp = int(p)
+        fc = fc + seas[i][n - mp + (np.arange(h) % mp)]
+    return xsa, fc, freq
+
+
+def forecast_stl(method: str, y: np.ndarray, h: int, periods: Sequence[float]) -> np.ndarray:
+    from statsforecast.models import AutoETS
+    xsa, seas_fc, freq = r_mstl_parts(y, h, periods)
+    if method == "stl_ets":
+        f = _mean(make_model(AutoETS, season_length=1, model="ZZN").forecast(y=xsa, h=h))
+    else:
+        f = _arima(xsa, h, 1, len(xsa), freq)
+    return f + seas_fc
+
+
+# ------------------------------------------------------------------------------------------------
+# Bagged ETS (Bergmeir, Hyndman & Benítez 2016; 2026-11-23): R forecast::baggedETS after set.seed(seed). The bootstrap
+# (r_boot.py: R's RNG, Guerrero Box-Cox, periodic STL, moving blocks) equals R's and the C++ engine's; each of the
+# `n_boot` series is forecast with statsforecast AutoETS (as `ets` here), and the forecasts are averaged.
+# ------------------------------------------------------------------------------------------------
+BAGGED_DEFAULTS = {"n_boot": 100, "seed": 0}
+
+
+def forecast_bagged_ets(y: np.ndarray, h: int, m: int, periods: Sequence[float], params: dict | None) -> np.ndarray:
+    from .r_boot import bld_mbb_bootstrap, r_row_mean
+    P = dict(BAGGED_DEFAULTS)
+    P.update({k: v for k, v in (params or {}).items() if k in BAGGED_DEFAULTS and v is not None})
+    num, seed = int(P["n_boot"]), int(P["seed"])
+    if num < 1:
+        raise ValueError("n_boot must be >= 1")
+    freq = max(1, int(np.floor(max([float(p) for p in periods] or [1.0]))))
+    xs = bld_mbb_bootstrap(np.asarray(y, dtype=np.float64), freq, num, seed)
+    F = np.vstack([np.asarray(forecast_ets(x, h, freq), dtype=np.float64).reshape(-1)[:h] for x in xs])
+    return np.array([r_row_mean(F[:, j]) for j in range(h)])
+
+
+# ------------------------------------------------------------------------------------------------
 # SCUM (Petropoulos & Svetunkov, 2020, IJF 36(1)): ETS, CES, ARIMA ve DOTM tahminlerinin nokta nokta MEDYANI.
 # M4'te en iyi istatistiksel kıyaslardan biri. Bileşenlerden biri hata verirse kalanların medyanı alınır ve bildirilir;
 # ikiden az bileşen kalırsa hata (seri yedeğe düşer). Bileşenler bu motordaki ayarlarıyla çağrılır.

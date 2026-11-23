@@ -29,6 +29,9 @@
 #include "global.hpp"
 #include "catboost_bridge.hpp"
 #include "lightgbm_bridge.hpp"
+#include "stlf.hpp"
+#include "bagged.hpp"
+#include "rstats.hpp"
 #include "simple_sf.hpp"
 
 #if defined(_WIN32)
@@ -73,6 +76,9 @@ Vec m_wavg(const Vec& y, int h, int, const Vec&) { return tsf::window_average(y,
 Vec m_swavg(const Vec& y, int h, int m, const Vec&) { return tsf::seasonal_window_average(y, h, m, 2); }
 Vec m_ses_seas(const Vec& y, int h, int m, const Vec&) { return tsf::seasonal_es_optimized(y, h, m); }
 Vec m_zero(const Vec&, int h, int, const Vec&) { return tsf::zero_model(h); }
+Vec m_stlf_ets(const Vec& y, int h, int, const Vec& per) { return tsf::stlf_ets(y, per, h); }
+Vec m_stlf_arima(const Vec& y, int h, int, const Vec& per) { return tsf::stlf_arima(y, per, h); }
+Vec m_bagged_ets(const Vec& y, int h, int, const Vec& per) { return tsf::bagged_ets(y, per, h, 100, 0); }
 
 // SCUM (Petropoulos & Svetunkov 2020): pointwise median of ets, auto_ces, arima and dotm, as the Python engine's
 // forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
@@ -116,6 +122,7 @@ const Entry METHODS[] = {
     {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum}, {"auto_theta", m_atheta}, {"mstl", m_mstl}, {"auto_mfles", m_mfles}, {"tbats", m_tbats},
     {"holt_ets", m_holt_ets}, {"historic_average", m_hist}, {"window_average", m_wavg},
     {"seasonal_window_average", m_swavg}, {"seasonal_es", m_ses_seas}, {"zero_model", m_zero},
+    {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets},
 };
 
 Fn find_method(const char* name) {
@@ -181,6 +188,42 @@ TSF_API int tsf_dhr_arima(const double* y, int32_t n, int32_t freq, int32_t K, i
 }
 
 // Test hook: the MSTL decomposition (xsa: n values) and the summed seasonal naive forecast (h values).
+// Diagnostic hooks for bagged_ets: bld.mbb.bootstrap (out: num x n, row 0 = y; returns 0, 1 on error with msg) and
+// R's RNG (out: k values of unif_rand() after set.seed(seed), then k values of sample(1:m, 1)).
+TSF_API int tsf_bld_mbb(const double* y, int32_t n, int32_t freq, int32_t num, uint32_t seed, double* out, char* msg,
+                        int32_t len) {
+    try {
+        const std::vector<Vec> xs = tsf::bld_mbb_bootstrap(Vec(y, y + n), freq, num, seed);
+        for (int32_t i = 0; i < num; ++i) std::copy(xs[i].begin(), xs[i].end(), out + static_cast<int64_t>(i) * n);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
+TSF_API void tsf_r_rng(uint32_t seed, int32_t k, int32_t m, double* out) {
+    tsf::rs::RRng a(seed);
+    for (int32_t i = 0; i < k; ++i) out[i] = a.unif_rand();
+    tsf::rs::RRng b(seed);
+    for (int32_t i = 0; i < k; ++i) out[k + i] = b.sample1(m);
+}
+
+// Diagnostic hook: R mstl() as stl_ets / stl_arima use it (seasonally adjusted series, seasonal forecast). Returns the
+// frequency, or 0 on error.
+TSF_API int tsf_stlf_parts(const double* y, int32_t n, const double* periods, int32_t n_periods, int32_t h, double* xsa,
+                           double* seas_fc) {
+    try {
+        const tsf::StlfParts r = tsf::r_mstl_parts(Vec(y, y + n), Vec(periods, periods + n_periods), h);
+        std::copy(r.xsa.begin(), r.xsa.end(), xsa);
+        std::copy(r.seas_fc.begin(), r.seas_fc.end(), seas_fc);
+        return r.freq;
+    } catch (...) {
+        return 0;
+    }
+}
+
 TSF_API int tsf_mstl_parts(const double* y, int32_t n, const double* periods, int32_t n_periods, int32_t h, double* xsa,
                            double* seas_fc) {
     try {

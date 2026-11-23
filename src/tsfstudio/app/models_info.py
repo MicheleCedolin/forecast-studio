@@ -50,6 +50,9 @@ REFS = {
                           "based on loess. Journal of Official Statistics, 6(1), 3–73."),
     "prokhorenkova2018": _ref("Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A. V., & Gulin, A. (2018). CatBoost: unbiased boosting with "
                               "categorical features. Advances in Neural Information Processing Systems 31.", "https://arxiv.org/abs/1706.09516"),
+    "bergmeir2016": _ref("Bergmeir, C., Hyndman, R. J., & Benítez, J. M. (2016). Bagging exponential smoothing methods using STL "
+                         "decomposition and Box–Cox transformation. International Journal of Forecasting, 32(2), 303–312.",
+                         "https://doi.org/10.1016/j.ijforecast.2015.07.002"),
     "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
                    "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
                    "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
@@ -379,6 +382,41 @@ MODELS: dict[str, dict] = {
         "caution": "If no valid period is found (e.g. yearly data) the series falls back to the fallback forecast; this is expected.",
         "engines": {PY: "statsforecast MSTL; trend forecaster is the library default (AutoETS, non-seasonal)."},
         "params": [], "refs": ["bandara2021", "cleveland1990"], "cost": "Medium (measure with a short trial).",
+    },
+    "stl_ets": {
+        "name": "STL + ETS (stlf)", "group": "yerel", "task": "local",
+        "summary": "R's stlf: STL removes the seasonality, ETS forecasts the seasonally adjusted series, the last seasonal cycle is added back.",
+        "how": "Same as R forecast::stlf(y): mstl() with R's stl() settings (s.window 11, 15, … per period; one pass for one period, "
+               "two passes for several; periods shorter than half the series), ets(model = \"ZZN\") on trend + remainder, the last "
+               "cycle of each seasonal component repeated.",
+        "use": "Seasonal daily/weekly data where a slowly changing seasonal pattern and a separate trend model are wanted; a strong, fast alternative to seasonal ETS (also for periods > 24, where ets() ignores seasonality).",
+        "caution": "Needs a seasonal period and more than two full periods of data; otherwise the series falls back. Close to MSTL, which uses statsmodels' STL settings instead of R's.",
+        "engines": {PY: "R's stl/mstl ported to Python (identical decomposition to the C++ engine); statsforecast AutoETS(ZZN) for the adjusted series, so forecasts are close to, not equal to, R."},
+        "params": [], "refs": ["cleveland1990", "hyndman2008", "fpp3"], "cost": "Low (NN5 daily, 111 series: 0.1 s in C++).",
+    },
+    "stl_arima": {
+        "name": "STL + ARIMA", "group": "yerel", "task": "local",
+        "summary": "As STL + ETS, but the seasonally adjusted series is forecast with a non-seasonal auto.arima.",
+        "how": "R forecast(mstl(y), method = \"arima\"): the same R STL decomposition, auto.arima(seasonal = FALSE) on trend + remainder, the last seasonal cycle added back.",
+        "use": "Seasonal series whose adjusted part has autocorrelation that ETS does not capture.",
+        "caution": "Needs a seasonal period and more than two full periods of data; otherwise the series falls back.",
+        "engines": {PY: "R's stl/mstl ported to Python; statsforecast AutoARIMA (non-seasonal) for the adjusted series, so forecasts are close to, not equal to, R."},
+        "params": [], "refs": ["cleveland1990", "hyndman2008", "fpp3"], "cost": "Medium (NN5 daily, 111 series: 2 s in C++).",
+    },
+    "bagged_ets": {
+        "name": "Bagged ETS", "group": "yerel", "task": "local",
+        "summary": "ETS fitted to the series and to bootstrapped copies of it; the forecasts are averaged.",
+        "how": "R forecast::baggedETS after set.seed(seed): Box-Cox (Guerrero lambda in [0, 1] for positive data), periodic STL, a moving-block "
+               "bootstrap of the remainder (blocks of two seasons) gives n_boot − 1 new series; ets() is fitted to each and to the "
+               "original, and the point forecasts are averaged. R's random number generator is reproduced, so a seed gives R's numbers.",
+        "use": "When ETS is a good model but its selection is unstable; bagging usually improves accuracy (strong on M3 monthly).",
+        "caution": "About n_boot times the cost of ETS. Non-seasonal series (frequency 1, or fewer than two full periods) are not supported yet and fall back.",
+        "engines": {PY: "The bootstrap equals R's (and the C++ engine's); each copy is forecast with statsforecast AutoETS, so the result is close to, "
+                        "not equal to, R. Slow: about 100 AutoETS fits per series."},
+        "params": [P("n_boot", "Number of bootstrap series", "int", 100, "Including the original series (R's default 100). C++ engine: 100 only.",
+                     min=1, max=1000),
+                   P("seed", "Random seed", "int", 0, "set.seed() value used before each series (C++ engine: 0 only).", min=0, advanced=True)],
+        "refs": ["bergmeir2016", "hyndman2008"], "cost": "C++: NN5 weekly 111 series 4 s (R: 200 s). Python: minutes.",
     },
     "auto_mfles": {
         "name": "Auto MFLES", "group": "yerel", "task": "local",

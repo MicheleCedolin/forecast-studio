@@ -41,7 +41,9 @@ NATIVE_LOCAL = ("naive", "snaive", "ses", "theta",
 # `forecast_one`'a dalını geri koyun.
 SF_LOCAL = {"ets": "AutoETS", "arima": "AutoARIMA", "dhr_arima": "AutoARIMA",
             **{k: v["cls"] for k, v in S.SPECS.items()},      # C3: aralıklı talep + ek klasik modeller
-            "scum": "DynamicOptimizedTheta"}                   # 2026-11-22: ETS/CES/ARIMA/DOTM medyanı
+            "scum": "DynamicOptimizedTheta",                   # 2026-11-22: ETS/CES/ARIMA/DOTM medyanı
+            "stl_ets": "AutoETS", "stl_arima": "AutoARIMA",    # 2026-11-23: R stlf (R'ın STL ayarları)
+            "bagged_ets": "AutoETS"}                           # 2026-11-23: R baggedETS (R'ın bootstrap'ı)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -65,6 +67,10 @@ def forecast_one(method: str, y: np.ndarray, h: int, seasonality: tuple[float, .
         return M.comb_shd(y, h, m)
     if method == "scum":
         return S.forecast_scum(y, h, m, seasonality, params)
+    if method in ("stl_ets", "stl_arima"):
+        return S.forecast_stl(method, y, h, seasonality)
+    if method == "bagged_ets":
+        return S.forecast_bagged_ets(y, h, m, seasonality, params)
     if method == "ets":
         return S.forecast_ets(y, h, m)
     if method == "arima":
