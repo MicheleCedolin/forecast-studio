@@ -243,6 +243,15 @@ def test_bagged_ets_reproduces_r_bagged_ets():
     assert not flags.any()
     rel = np.abs(f - ref) / np.maximum(np.abs(ref), 1e-9)
     assert rel.max() < 1e-10 and np.median(rel) < 1e-13, f"worst {rel.max():.2e}"
+    # Daily (R: 5473 s, C++ ~200 s on 6 cores): 97 of 111 series <= 1e-6; the rest inherit the known ETS
+    # multiplicative-season differences (worst: series 73, 0.3%). Slow, so only checked against the stored output
+    # of a few series here.
+    tr = [r[~np.isnan(r)] for r in _load(G / "nn5_daily", "train")]
+    refd = _load(G / "nn5_daily", "r_bagged_ets")
+    idx = [0, 1, 2, 3]
+    fd, flags, _ = C.forecast_batch("bagged_ets", [tr[i] for i in idx], refd.shape[1], (7.0,))
+    assert not flags.any()
+    np.testing.assert_allclose(fd, refd[idx], rtol=1e-6)
     with pytest.raises(Exception, match="n_boot = 100"):
         C.CppEngine().run(EngineJob(task="local", method="bagged_ets", train=train[:2], horizon=3, seasonality=(52.0,),
                                     params={"n_boot": 20}))
