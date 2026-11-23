@@ -214,7 +214,12 @@ def _cmd_sweep(a) -> int:
 
 
 def _cmd_sweep_task(a) -> int:
+    import signal
+
     from . import sweep as S
+    for name in ("SIGUSR1", "SIGUSR2"):                     # SGE's notify signals are handled by the sweep, not here
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), signal.SIG_IGN)
     st = S.run_task(json.loads(a.spec))
     if st["state"] != "done":
         print(st.get("message", ""), flush=True)

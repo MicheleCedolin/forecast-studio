@@ -26,7 +26,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export TSFSTUDIO_DATA_DIR
 [ "$SWEEP_THREADS" -lt 1 ] && SWEEP_THREADS=1
 
-source .venv/bin/activate
+source scripts/hpc/activate.sh
 export OMP_NUM_THREADS="$SWEEP_THREADS" OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONUNBUFFERED=1
 
 args=(--out "$SWEEP_OUT" --datasets "$SWEEP_DATASETS" --methods "$SWEEP_METHODS" --jobs "$SWEEP_JOBS"

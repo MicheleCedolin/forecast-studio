@@ -18,6 +18,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(tsfcore PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3 -Wall -Wextra>)
   # catch22 is compiled like R builds Rcatch22 (-O2, warnings off: the code is kept verbatim).
   target_compile_options(tsfcore PRIVATE $<$<COMPILE_LANGUAGE:C>:-O2 -std=gnu99 -w>)
+  # Linux: -DTSF_STATIC_RUNTIME=ON puts libstdc++ / libgcc inside tsfcore.so. Needed when the compiler is newer than the
+  # system's (an old cluster with a conda or devtoolset compiler): the library then loads without that compiler's runtime.
+  option(TSF_STATIC_RUNTIME "Link libstdc++ and libgcc statically (non-Windows)" OFF)
+  if(TSF_STATIC_RUNTIME AND NOT MINGW)
+    target_link_options(tsfcore PRIVATE -static-libgcc -static-libstdc++)
+  endif()
   if(MINGW)
     # No dependency on MinGW runtime DLLs: the DLL runs on any Windows machine.
     target_link_options(tsfcore PRIVATE -static -static-libgcc -static-libstdc++)

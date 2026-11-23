@@ -305,7 +305,7 @@ class _Stop(Exception):
 
 
 def default_threads() -> int:
-    """Cores granted by the scheduler (SLURM, PBS), else the cores this process may use."""
+    """Cores granted by the scheduler (SLURM, PBS, SGE slots), else the cores this process may use."""
     for var in ("SLURM_CPUS_PER_TASK", "PBS_NP", "NSLOTS"):
         v = os.environ.get(var, "")
         if v.isdigit() and int(v) > 0:
@@ -429,15 +429,19 @@ def sweep(datasets: Sequence[str], methods: Sequence[str], out: str | Path, *, e
             "cpu": _cpu_model(), "cpu_count": os.cpu_count(), "platform": platform.platform(),
             "scheduler": {k: v for k, v in os.environ.items() if k in (
                 "SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID", "SLURM_JOB_PARTITION", "SLURM_CPUS_PER_TASK",
-                "SLURM_MEM_PER_NODE", "SLURM_JOB_NODELIST", "PBS_JOBID")},
+                "SLURM_MEM_PER_NODE", "SLURM_JOB_NODELIST", "PBS_JOBID", "JOB_ID", "SGE_TASK_ID", "NSLOTS", "PE", "QUEUE")},
             "software": {"tsfstudio": __version__, "python": platform.python_version(), "numpy": np.__version__,
                          "pandas": pd.__version__, "git_commit": _git_commit()}}, default=str) + "\n")
 
     def on_signal(signum, _frame):
         raise _Stop(signum)
 
+    # SGE with `-notify`: SIGUSR2 announces the kill (qdel, time limit), SIGUSR1 a suspension (whose default would end us).
     try:
         old = {s: signal.signal(s, on_signal) for s in (signal.SIGTERM, signal.SIGINT)}
+        if hasattr(signal, "SIGUSR2"):
+            old[signal.SIGUSR2] = signal.signal(signal.SIGUSR2, on_signal)
+            old[signal.SIGUSR1] = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
     except ValueError:                                      # not the main thread: no signal handling
         old = {}
     counts = {"done": 0, "skipped": 0, "failed": 0}

@@ -5,9 +5,9 @@ each task the error measures, the computation time and the memory, and for every
 made for unattended jobs: a task that fails, runs out of memory or exceeds its time limit is recorded and the sweep goes
 on; a job that the scheduler stops is continued by submitting the same command again.
 
-Two launchers take the same variables: `scripts/hpc/sweep.sbatch` for SLURM, and `scripts/hpc/run_sweep.sh` for a machine
-without a scheduler (a server reached by ssh; it runs in the background with `nohup`). On another scheduler only the
-launcher changes; the `sweep` command is the same.
+Three launchers take the same variables: `scripts/hpc/sweep.sge` for SGE (Grid Engine), `scripts/hpc/sweep.sbatch` for
+SLURM, and `scripts/hpc/run_sweep.sh` for a machine without a scheduler (a server reached by ssh; it runs in the
+background with `nohup`). The `sweep` command is the same under all of them.
 
 ## 1. Set-up (once, on the login node)
 
@@ -16,6 +16,21 @@ git clone <repository> forecast-studio && cd forecast-studio
 module load gcc cmake python          # whatever the cluster calls them; GCC >= 9, CMake >= 3.16, Python >= 3.10
 bash scripts/hpc/setup.sh             # .venv, tsfcore.so, engine list, agreement tests, data check
 ```
+
+On a system whose own tools are too old for the build (C++17 needs GCC >= 8; for example CentOS 7 has g++ 4.8,
+CMake 2.8 and Python 3.6), take everything from conda-forge instead:
+
+```bash
+bash scripts/hpc/setup_conda.sh       # conda environment "tsfstudio": Python 3.11, CMake, GCC, the packages; builds tsfcore.so
+qsub scripts/hpc/check.sge            # agreement tests on a compute node (SGE); read sge-tsf-check.<job>.log
+```
+
+The script needs conda on PATH or in `~/miniforge3` (the two lines that install Miniforge are at its top) and about
+2 GB in the home file system for Miniforge and the environment. The library is linked with the compiler's runtime
+inside (`TSF_STATIC_RUNTIME=ON`), so it does not depend on the old system libstdc++. `scripts/hpc/activate.sh`, which
+all launchers source, activates `.venv` if it exists and the conda environment otherwise. This path was written for
+CentOS 7 with SGE and has not been run on such a system: read the output of the set-up script and of `check.sge`
+before the first sweep.
 
 Copy the `.tsf` files into `data/tsf/` (or set `TSFSTUDIO_DATA_DIR`), then `python -m tsfstudio data-check`. Only files
 whose size matches the catalogue are used; a `.tsf` file outside the catalogue can be named by its path.
@@ -85,6 +100,22 @@ Continuing: submit the same command again. Finished tasks are skipped; a task th
 (`interrupted`) runs again; tasks that `failed`, hit the task limit (`timeout`) or `crashed` are left as they are unless
 `--retry-failed` is given (`SWEEP_EXTRA="--retry-failed"`). Keep `SWEEP_TASK_TIMEOUT_MIN` below the job's `--time`, so
 that one task cannot use up the whole job. New methods or datasets can be added later to the same `--out` folder.
+
+SGE (`scripts/hpc/sweep.sge`: queue `all.q`, parallel environment `smp`, 32 slots on one node; edit the `#$` lines for
+another site):
+
+```bash
+qsub scripts/hpc/sweep.sge                                          # 4 tasks at a time x 8 threads
+qsub -v PROBE=20 scripts/hpc/sweep.sge                              # time estimate
+qsub -v SWEEP_JOBS=32,SWEEP_THREADS=1 scripts/hpc/sweep.sge         # single-thread timings
+SWEEP_METHODS=study,benchmarks qsub -V scripts/hpc/sweep.sge        # values with commas: export, then -V
+qstat; tail -f sge-tsf-sweep.<job id>.log; qdel <job id>
+```
+
+`qdel` first sends a notice (`-notify`), so the running tasks are recorded as `interrupted` and the report is written.
+Where a slot is a hardware thread (hyper-threading on), 32 slots can be the two threads of 16 physical cores when the
+rest of the node is busy; computation times measured then are longer and noisier than on 32 free cores. For times that
+go into a paper, ask for the whole node (all its slots) and still run with 32 threads in total, or state the setting.
 
 Without a scheduler:
 

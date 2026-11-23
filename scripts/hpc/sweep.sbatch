@@ -36,8 +36,7 @@ set -uo pipefail
 export TSFSTUDIO_DATA_DIR
 
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
-# module load gcc/13 python/3.11             # the modules used in scripts/hpc/setup.sh, if the cluster needs them
-source .venv/bin/activate
+source scripts/hpc/activate.sh
 export OMP_NUM_THREADS="$SWEEP_THREADS" OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONUNBUFFERED=1
 
 args=(--out "$SWEEP_OUT" --datasets "$SWEEP_DATASETS" --methods "$SWEEP_METHODS" --jobs "$SWEEP_JOBS" --threads "$SWEEP_THREADS"
