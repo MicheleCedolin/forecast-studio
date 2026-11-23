@@ -1,4 +1,6 @@
-"""Time-series features computed per series: catch22 (native library) and a set of basic descriptive features.
+"""Time-series features computed per series: catch22 (native library) and a set of basic descriptive features
+(level, spread, intermittency with the Syntetos-Boylan class, Box-Cox lambda). Trend and seasonal strength come with
+the tsfeatures set (stl_features).
 
 catch22 is Rcatch22 v0.1.13's C code (GPL-3, cpp/src/catch22/), run inside the C++ library tsfcore over all series of
 a dataset in one call. Two variants:
@@ -67,3 +69,75 @@ def catch22(series: list[np.ndarray], study_fft: bool = False, threads: int = 0)
         lib.tsf_catch22(cpp_engine._ptr(values, ctypes.c_double), cpp_engine._ptr(offsets, ctypes.c_int64),
                         len(arrs), int(bool(study_fft)), int(threads), cpp_engine._ptr(out, ctypes.c_double))
     return out
+
+
+# ---------------------------------------------------------------- basic features
+# Syntetos, Boylan & Croston (2005) cut-offs for the demand classes.
+ADI_CUT, CV2_CUT = 1.32, 0.49
+DEMAND_CLASSES = ("smooth", "intermittent", "erratic", "lumpy")
+
+BASIC_NAMES: tuple[str, ...] = (
+    "length", "mean", "sd", "cv", "min", "max", "zero_share", "adi", "cv2", "demand_class", "boxcox_lambda",
+)
+
+
+def demand_class(adi: float, cv2: float) -> str | None:
+    """Syntetos-Boylan class from ADI and CV^2 (None when either is undefined)."""
+    if not (np.isfinite(adi) and np.isfinite(cv2)):
+        return None
+    return DEMAND_CLASSES[(adi >= ADI_CUT) + 2 * (cv2 >= CV2_CUT)]
+
+
+def basic_features(y, m: float = 1) -> dict:
+    """Descriptive features of one series (missing values dropped).
+
+    length, mean, sd (n-1), cv = sd/|mean|, min, max, zero_share (share of exact zeros);
+    adi = length / number of non-zero values (average demand interval), cv2 = (sd/mean)^2 of the non-zero values
+    and demand_class, the Syntetos-Boylan class from them (ADI 1.32, CV^2 0.49);
+    boxcox_lambda = forecast::BoxCox.lambda(y, "guerrero", -1, 2) for seasonal period m (lower bound 0 when y has
+    values <= 0; 1 when the series is shorter than two periods), as R computes it.
+    """
+    from .engines.r_boot import box_cox_lambda
+
+    x = np.asarray(y, dtype=np.float64).ravel()
+    x = x[np.isfinite(x)]
+    n = x.size
+    nan = float("nan")
+    out = dict.fromkeys(BASIC_NAMES, nan)
+    out["length"] = n
+    out["demand_class"] = None
+    if n == 0:
+        return out
+    mu = float(np.mean(x))
+    sd = float(np.std(x, ddof=1)) if n > 1 else nan
+    nz = x[x != 0]
+    out.update(mean=mu, sd=sd, cv=sd / abs(mu) if mu != 0 else nan, min=float(x.min()), max=float(x.max()),
+               zero_share=float(np.mean(x == 0)))
+    if nz.size:
+        out["adi"] = n / nz.size
+        nz_mu = float(np.mean(nz))
+        out["cv2"] = (float(np.std(nz, ddof=1)) / nz_mu) ** 2 if nz.size > 1 and nz_mu != 0 else nan
+    out["demand_class"] = demand_class(out["adi"], out["cv2"])
+    try:
+        lam = box_cox_lambda(x, -1.0, 2.0, float(m))
+        out["boxcox_lambda"] = lam if np.isfinite(lam) else nan
+    except (ValueError, ZeroDivisionError, OverflowError):
+        pass
+    return out
+
+
+def compute(series: list[np.ndarray], m: float = 1, sets: tuple[str, ...] = ("basic", "catch22"),
+            study_fft: bool = False, threads: int = 0, names: list[str] | None = None):
+    """A DataFrame of features (one row per series, index = series names) for the requested feature sets."""
+    import pandas as pd
+
+    idx = pd.Index(names if names is not None else [f"T{i + 1}" for i in range(len(series))], name="series")
+    parts = []
+    for s in sets:
+        if s == "basic":
+            parts.append(pd.DataFrame([basic_features(y, m) for y in series], index=idx, columns=list(BASIC_NAMES)))
+        elif s == "catch22":
+            parts.append(pd.DataFrame(catch22(series, study_fft, threads), index=idx, columns=list(CATCH22_NAMES)))
+        else:
+            raise ValueError(f"unknown feature set: {s}")
+    return pd.concat(parts, axis=1) if parts else pd.DataFrame(index=idx)

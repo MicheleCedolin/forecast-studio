@@ -55,3 +55,31 @@ def test_catch22_degenerate_series_give_nan_rows():
     out = catch22([np.arange(5.0), np.full(30, 2.0), np.r_[np.arange(20.0), np.nan], np.arange(30.0) % 7])
     assert np.isnan(out[:3]).all()
     assert np.isfinite(out[3]).all()
+
+
+def test_basic_features_by_hand():
+    from tsfstudio.features import basic_features
+    f = basic_features([0, 3, 0, 0, 6, np.nan, 3, 0], m=1)
+    assert f["length"] == 7 and f["zero_share"] == pytest.approx(4 / 7)
+    assert f["mean"] == pytest.approx(12 / 7) and f["max"] == 6 and f["min"] == 0
+    assert f["adi"] == pytest.approx(7 / 3)
+    assert f["cv2"] == pytest.approx((np.std([3, 6, 3], ddof=1) / 4) ** 2)
+    assert f["demand_class"] == "intermittent"
+    assert basic_features(np.arange(1.0, 30))["demand_class"] == "smooth"
+    assert basic_features([0, 0, 0])["demand_class"] is None
+
+
+def test_basic_boxcox_lambda_matches_r():
+    from tsfstudio.features import basic_features
+    # forecast::BoxCox.lambda(ts(x, frequency = 12)) in R 4.6.2 / forecast 9.0.2.
+    x = np.arange(1.0, 40) % 12 + 2
+    assert basic_features(x, 12)["boxcox_lambda"] == pytest.approx(1.99992424816297, abs=1e-12)
+    assert basic_features(x[:20], 12)["boxcox_lambda"] == 1.0
+
+
+def test_compute_builds_one_table():
+    from tsfstudio.features import BASIC_NAMES, CATCH22_NAMES, compute
+    rng = np.random.default_rng(0)
+    df = compute([rng.normal(10, 1, 50), rng.normal(5, 2, 80)], m=4, names=["a", "b"])
+    assert list(df.index) == ["a", "b"]
+    assert list(df.columns) == list(BASIC_NAMES) + list(CATCH22_NAMES)
