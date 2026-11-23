@@ -322,3 +322,9 @@ table.t td.name { font-family: var(--serif); font-size: 16.5px; }
   /* Phone: keep checkbox, run name, MASE and the Open button (child 8 is the only way to load a past run). */
   .runrow > :nth-child(3), .runrow > :nth-child(4), .runrow > :nth-child(5), .runrow > :nth-child(7) { display: none; }
 }
+
+/* Series features view */
+label.chk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.tablewrap.tall { max-height: 420px; overflow: auto; }
+.tablewrap.tall thead th { position: sticky; top: 0; background: var(--paper); }
+table.t tr.grp th { text-align: left; font-weight: 700; padding-top: 10px; }

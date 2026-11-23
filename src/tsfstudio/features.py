@@ -93,12 +93,11 @@ def basic_features(y, m: float = 1) -> dict:
 
     length, mean, sd (n-1), cv = sd/|mean|, min, max, zero_share (share of exact zeros);
     adi = length / number of non-zero values (average demand interval), cv2 = (sd/mean)^2 of the non-zero values
+    (population sd, as in the app's data profile)
     and demand_class, the Syntetos-Boylan class from them (ADI 1.32, CV^2 0.49);
     boxcox_lambda = forecast::BoxCox.lambda(y, "guerrero", -1, 2) for seasonal period m (lower bound 0 when y has
     values <= 0; 1 when the series is shorter than two periods), as R computes it.
     """
-    from .engines.r_boot import box_cox_lambda
-
     x = np.asarray(y, dtype=np.float64).ravel()
     x = x[np.isfinite(x)]
     n = x.size
@@ -116,27 +115,62 @@ def basic_features(y, m: float = 1) -> dict:
     if nz.size:
         out["adi"] = n / nz.size
         nz_mu = float(np.mean(nz))
-        out["cv2"] = (float(np.std(nz, ddof=1)) / nz_mu) ** 2 if nz.size > 1 and nz_mu != 0 else nan
+        out["cv2"] = (float(np.std(nz)) / nz_mu) ** 2 if nz_mu != 0 else nan
     out["demand_class"] = demand_class(out["adi"], out["cv2"])
-    try:
-        lam = box_cox_lambda(x, -1.0, 2.0, float(m))
-        out["boxcox_lambda"] = lam if np.isfinite(lam) else nan
-    except (ValueError, ZeroDivisionError, OverflowError):
-        pass
+    lam = _boxcox_lambda(x, float(m))
+    out["boxcox_lambda"] = lam if np.isfinite(lam) else nan
     return out
 
 
+def _boxcox_lambda(x: np.ndarray, m: float) -> float:
+    """forecast::BoxCox.lambda(x, "guerrero", -1, 2): the native port when the library is there (same numbers, ~100x
+    faster), else the Python one."""
+    lib = cpp_engine.load_lib()
+    if lib is not None:
+        if not getattr(lib, "_bc_ready", False):
+            lib.tsf_boxcox_lambda.restype = ctypes.c_double
+            lib.tsf_boxcox_lambda.argtypes = [ctypes.POINTER(ctypes.c_double), ctypes.c_int32, ctypes.c_double,
+                                              ctypes.c_double, ctypes.c_double]
+            lib._bc_ready = True
+        xc = np.ascontiguousarray(x, dtype=np.float64)
+        return float(lib.tsf_boxcox_lambda(cpp_engine._ptr(xc, ctypes.c_double), xc.size, -1.0, 2.0, m))
+    from .engines.r_boot import box_cox_lambda
+    try:
+        return box_cox_lambda(x, -1.0, 2.0, m)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return float("nan")
+
+
+FEATURE_SETS = ("basic", "catch22")
+
+
+class FeaturesCancelled(Exception):
+    pass
+
+
 def compute(series: list[np.ndarray], m: float = 1, sets: tuple[str, ...] = ("basic", "catch22"),
-            study_fft: bool = False, threads: int = 0, names: list[str] | None = None):
-    """A DataFrame of features (one row per series, index = series names) for the requested feature sets."""
+            study_fft: bool = False, threads: int = 0, names: list[str] | None = None, progress=None, cancel=None):
+    """A DataFrame of features (one row per series, index = series names) for the requested feature sets.
+
+    progress(stage, done, total) is called as work advances; cancel is a threading.Event checked between series.
+    """
     import pandas as pd
 
     idx = pd.Index(names if names is not None else [f"T{i + 1}" for i in range(len(series))], name="series")
+    report = progress or (lambda *a: None)
     parts = []
     for s in sets:
         if s == "basic":
-            parts.append(pd.DataFrame([basic_features(y, m) for y in series], index=idx, columns=list(BASIC_NAMES)))
+            rows = []
+            for i, y in enumerate(series):
+                if cancel is not None and cancel.is_set():
+                    raise FeaturesCancelled()
+                if i % 50 == 0:
+                    report("basic", i, len(series))
+                rows.append(basic_features(y, m))
+            parts.append(pd.DataFrame(rows, index=idx, columns=list(BASIC_NAMES)))
         elif s == "catch22":
+            report("catch22", 0, len(series))
             parts.append(pd.DataFrame(catch22(series, study_fft, threads), index=idx, columns=list(CATCH22_NAMES)))
         else:
             raise ValueError(f"unknown feature set: {s}")

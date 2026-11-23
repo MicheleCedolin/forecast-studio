@@ -287,3 +287,28 @@ def test_upload_tsf_xlsx_and_rejections(app, tmp_path):
 
 def test_shutdown_requires_token(app):
     assert app.call("shutdown", {}, token="yanlis")[0] == 403
+
+
+# ------------------------------------------------------------------------------------------------ series features
+def test_features_compute_store_and_download(app):
+    from tsfstudio.engines import cpp_engine
+    if cpp_engine.load_lib() is None:
+        pytest.skip("native library not built")
+    q = "features?dataset=upload%3Ademo&sets=basic,catch22&study=0"
+    st, j = app.call(q)
+    assert st == 200 and j["status"] == "none"
+    st, job = app.call("features", {"dataset": "upload:demo", "sets": ["catch22", "basic"]})
+    assert st == 200
+    # A feature job does not block forecast runs.
+    assert app.service.current_job() is None
+    assert _wait(app, job["id"])["status"] == "done"
+    st, j = app.call(q)
+    assert st == 200 and j["status"] == "ready" and j["n_series"] == 30
+    assert j["groups"]["basic"][0] == "length" and len(j["groups"]["catch22"]) == 22
+    assert j["index"][:2] == ["S1", "S2"] and len(j["rows"][0]) == len(j["columns"]) == 33
+    st, h, body = app.raw("GET", "/api/" + q.replace("features?", "features/file?"), headers={"X-TSF-Token": TOKEN})
+    assert st == 200 and body.startswith(b"series,length,mean")
+    st, j = app.call("features", {"dataset": "upload:demo", "sets": ["tsfresh"]})
+    assert st == 400
+    st, j = app.call("features", {"dataset": "../etc", "sets": ["basic"]})
+    assert st in (400, 404)

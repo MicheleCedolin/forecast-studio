@@ -63,7 +63,7 @@ def test_basic_features_by_hand():
     assert f["length"] == 7 and f["zero_share"] == pytest.approx(4 / 7)
     assert f["mean"] == pytest.approx(12 / 7) and f["max"] == 6 and f["min"] == 0
     assert f["adi"] == pytest.approx(7 / 3)
-    assert f["cv2"] == pytest.approx((np.std([3, 6, 3], ddof=1) / 4) ** 2)
+    assert f["cv2"] == pytest.approx((np.std([3, 6, 3]) / 4) ** 2)
     assert f["demand_class"] == "intermittent"
     assert basic_features(np.arange(1.0, 30))["demand_class"] == "smooth"
     assert basic_features([0, 0, 0])["demand_class"] is None

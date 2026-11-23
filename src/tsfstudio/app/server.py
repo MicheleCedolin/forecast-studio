@@ -182,6 +182,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, p.read_bytes(), ctype, {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(dl)}"})
             if head == "jobs" and len(parts) == 2:
                 return self._json(s.job(parts[1]))
+            if parts == ["features"]:
+                return self._json(s.features(self._feat_query(qs)))
+            if parts == ["features", "file"]:
+                body, name = s.features_file(self._feat_query(qs))
+                return self._send(200, body, "text/csv; charset=utf-8",
+                                  {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
             if parts == ["template.xlsx"]:
                 return self._send(200, s.template_xlsx(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   {"Content-Disposition": "attachment; filename*=UTF-8''forecast_studio_template.xlsx"})
@@ -192,6 +198,8 @@ class Handler(BaseHTTPRequestHandler):
             if parts == ["run"]:
                 body = self._body_json()
                 return self._json(s.start_run(body.get("config") or {}, confirm_long=bool(body.get("confirm_long"))))
+            if parts == ["features"]:
+                return self._json(s.start_features(self._body_json()))
             if head == "jobs" and len(parts) == 3 and parts[2] == "cancel":
                 return self._json(s.cancel_job(parts[1]))
             if parts == ["upload"]:
@@ -201,6 +209,11 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
                 return
         raise AppError("Not found.", 404)
+
+    @staticmethod
+    def _feat_query(qs: dict) -> dict:
+        g = lambda k: (qs.get(k) or [""])[0]  # noqa: E731
+        return {"dataset": g("dataset"), "sets": g("sets"), "study_fft": g("study") == "1"}
 
     def _upload(self, qs: dict) -> None:
         name = (qs.get("name") or [""])[0]

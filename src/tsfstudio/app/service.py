@@ -416,7 +416,7 @@ class AppService:
     def current_job(self) -> Job | None:
         with self._lock:
             for j in reversed(self._jobs.values()):
-                if j.status == "running":
+                if j.status == "running" and j.payload.get("kind") != "features":   # feature jobs run alongside
                     return j
         return None
 
@@ -482,6 +482,112 @@ class AppService:
             j.cancel.set()
             j.cancelling = True
         return j.view()
+
+    # ============================================================================================ series features
+    def _feat_spec(self, payload: dict) -> tuple[str, tuple[str, ...], bool]:
+        from .. import features as F
+        ds_id = payload.get("dataset")
+        self.resolve(ds_id)
+        sets = payload.get("sets") or list(F.FEATURE_SETS)
+        if isinstance(sets, str):
+            sets = [s for s in sets.split(",") if s]
+        bad = [s for s in sets if s not in F.FEATURE_SETS]
+        if bad or not sets:
+            raise AppError(f"Unknown feature set: {', '.join(bad) or '(none)'}")
+        sets = tuple(s for s in F.FEATURE_SETS if s in sets)          # canonical order
+        return ds_id, sets, bool(payload.get("study_fft")) and "catch22" in sets
+
+    def _feat_path(self, ds_id: str, sets: tuple[str, ...], study_fft: bool) -> Path:
+        tag = "+".join(sets) + ("_studyfft" if study_fft else "")
+        return self.runs_dir / "_features" / f"{_safe_name(ds_id.replace(':', '_'))}__{tag}.csv"
+
+    def start_features(self, payload: dict) -> dict:
+        ds_id, sets, study_fft = self._feat_spec(payload)
+        with self._lock:
+            for j in self._jobs.values():
+                if j.status == "running" and j.payload.get("kind") == "features":
+                    raise AppError("Features are already being computed; wait for that job to finish or cancel it.", 409)
+            self._seq += 1
+            job = Job(id=f"f{int(time.time())}-{self._seq}",
+                      payload={"kind": "features", "dataset": ds_id, "sets": list(sets), "study_fft": study_fft})
+            self._jobs[job.id] = job
+        threading.Thread(target=self._features_job, args=(job, ds_id, sets, study_fft), daemon=True,
+                         name=f"tsfs-{job.id}").start()
+        return job.view()
+
+    def _features_job(self, job: Job, ds_id: str, sets: tuple[str, ...], study_fft: bool) -> None:
+        from .. import features as F
+
+        def progress(stage, done, total):
+            job.stage, job.done, job.total = stage, int(done), int(total)
+
+        try:
+            progress("loading", 0, 1)
+            ds, _ = self._load(ds_id)
+            m = primary_period(seasonality_for(ds.frequency))
+            df = F.compute(ds.values, m=m, sets=sets, study_fft=study_fft, names=list(ds.series_names),
+                           progress=progress, cancel=job.cancel)
+            p = self._feat_path(ds_id, sets, study_fft)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_suffix(".tmp")
+            df.to_csv(tmp, float_format="%.17g")
+            os.replace(tmp, p)
+            job.status = "done"
+        except F.FeaturesCancelled:
+            job.status = "cancelled"
+        except F.FeatureError as exc:
+            job.status, job.error = "error", str(exc)
+        except Exception as exc:  # noqa: BLE001
+            job.status, job.error = "error", f"{type(exc).__name__}: {exc}"
+            try:
+                self.runs_dir.mkdir(parents=True, exist_ok=True)
+                with open(self.runs_dir / "_app_errors.log", "a", encoding="utf-8") as fh:
+                    fh.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} {job.id} features {ds_id}\n{traceback.format_exc()}")
+            except OSError:
+                pass
+        finally:
+            job.t1 = time.time()
+
+    def _feat_frame(self, payload: dict) -> tuple[pd.DataFrame | None, Path]:
+        ds_id, sets, study_fft = self._feat_spec(payload)
+        p = self._feat_path(ds_id, sets, study_fft)
+        if not p.is_file():
+            return None, p
+        return pd.read_csv(p, index_col=0, keep_default_na=True), p
+
+    def features(self, payload: dict, max_rows: int = 5000) -> dict:
+        """The stored feature table of a dataset (computed earlier with start_features), with a per-feature summary."""
+        from .. import features as F
+        df, p = self._feat_frame(payload)
+        if df is None:
+            return {"status": "none"}
+        num = df.select_dtypes(include=[np.number])
+        summary = []
+        for c in df.columns:
+            if c in num.columns:
+                v = num[c].to_numpy(float)
+                f = v[np.isfinite(v)]
+                summary.append({"name": c, "missing": int(v.size - f.size),
+                                "mean": f.mean() if f.size else None, "sd": f.std(ddof=1) if f.size > 1 else None,
+                                "min": f.min() if f.size else None, "median": np.median(f) if f.size else None,
+                                "max": f.max() if f.size else None, "distinct": int(np.unique(f).size)})
+            else:
+                vc = df[c].value_counts(dropna=True)
+                summary.append({"name": c, "missing": int(df[c].isna().sum()), "levels": {str(k): int(v) for k, v in vc.items()}})
+        groups = {"basic": [c for c in F.BASIC_NAMES if c in df.columns],
+                  "catch22": [c for c in F.CATCH22_NAMES if c in df.columns]}
+        rows = df.head(max_rows)
+        return clean({"status": "ready", "n_series": int(len(df)), "columns": list(df.columns), "groups": groups,
+                      "summary": summary, "updated": p.stat().st_mtime, "truncated": len(df) > max_rows,
+                      "index": [str(i) for i in rows.index],
+                      "rows": [[None if (isinstance(x, float) and not math.isfinite(x)) else x for x in r]
+                               for r in rows.itertuples(index=False, name=None)]})
+
+    def features_file(self, payload: dict) -> tuple[bytes, str]:
+        df, p = self._feat_frame(payload)
+        if df is None:
+            raise AppError("No features computed for this dataset yet.", 404)
+        return p.read_bytes(), p.name
 
     # ============================================================================================ geçmiş koşular
     def _run_dir(self, run_id: str) -> Path:

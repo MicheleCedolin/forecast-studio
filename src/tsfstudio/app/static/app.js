@@ -262,6 +262,7 @@ function renderStatus() {
 }
 function bindRail() {
   $("#view-history").addEventListener("click", () => setView("history"));
+  $("#view-features").addEventListener("click", () => setView("features"));
   $("#view-work").addEventListener("click", () => setView("work"));
   let armed = false;
   $("#quit").addEventListener("click", async ev => {
@@ -285,9 +286,9 @@ function updateRail() {
 }
 function setView(v) {
   S.view = v;
-  $("#view-work-body").hidden = v !== "work"; $("#view-history-body").hidden = v !== "history";
-  $("#view-history").hidden = v === "history"; $("#view-work").hidden = v === "work";
+  for (const k of ["work", "history", "features"]) { $(`#view-${k}-body`).hidden = v !== k; $(`#view-${k}`).hidden = v === k; }
   if (v === "history") renderHistory();
+  if (v === "features") renderFeatures();
   window.scrollTo({ top: 0 });
 }
 async function refreshHistoryCount() {
@@ -1030,6 +1031,103 @@ function renderCompare(runs, metricKeys) {
       el("select", { onchange: ev => { S.cmpMetric = ev.target.value; renderCompare(runs, metricKeys); } }, metrics.map(k => el("option", { value: k, selected: k === cm }, (S.models.metrics[k] || { name: k }).name)))),
     el("div", { class: "bars" }, sel.map((r, i) => el("div", { class: "b" + (comparable && vals[i] != null && vals[i] === best[cm] ? " best" : "") },
       el("span", { text: label(r) }), el("div", {}, el("i", { style: `width:${vals[i] == null ? 0 : Math.max(0.5, Math.abs(vals[i]) / mx * 100)}%` })), el("span", { text: fmtM(cm, vals[i]) })))));
+}
+
+// ================================================================================================ series features
+const FSETS = [["basic", "Basic", "Length, level, spread, share of zeros, ADI and CV² with the demand class, Box-Cox λ."],
+  ["catch22", "catch22", "The 22 canonical time-series characteristics of Lubba et al. (2019), computed by the C++ library."]];
+const FSTAGE = { loading: "Reading data", basic: "Basic features", catch22: "catch22 features" };
+S.feat = { sets: new Set(["basic", "catch22"]), study: false, data: null, job: null, err: null, busy: false };
+const featQuery = () => `dataset=${encodeURIComponent(S.sel.dataset)}&sets=${[...S.feat.sets].join(",")}&study=${S.feat.study ? 1 : 0}`;
+function featuresNote() {
+  return el("div", {}, el("h3", { text: "Series features" }),
+    el("p", { class: "lead", text: "One row of descriptive features per series of the selected dataset, for describing the data and relating it to forecast accuracy." }),
+    el("p", { text: "catch22 (Lubba et al., 2019, Data Mining and Knowledge Discovery 33) is a set of 22 features selected from the hctsa library for being informative and little redundant. Each is computed on the z-scored series." }),
+    runIn("Ranking study values.", "The catch22 values stored with the ranking study came from an Rcatch22 build whose FFT was faulty (every twiddle factor equal to 1). Tick “Reproduce the study’s catch22 values” to get exactly those numbers; leave it off for correct catch22. Seven features differ between the two.", "caution"),
+    el("p", { text: "Series shorter than 10 points, constant series and series with missing values get empty catch22 values." }));
+}
+async function renderFeatures() {
+  const host = $("#view-features-body");
+  const head = [el("h2", {}, "Series features"), el("p", { class: "lead", text: "Compute features for every series of the dataset chosen in step 1, look at their summary and download them." })];
+  if (!S.sel.dataset) {
+    host.replaceChildren(el("section", { class: "sec" }, head, el("p", { class: "empty", text: "Choose a dataset in the workspace first (step 1, Data)." })));
+    return;
+  }
+  const ds = S.sel.dataset.replace(/^upload:/, "");
+  const setBoxes = FSETS.map(([k, l, help]) => bindNote(el("label", { class: "chk" }, el("input", { type: "checkbox", checked: S.feat.sets.has(k),
+    onchange: ev => { ev.target.checked ? S.feat.sets.add(k) : S.feat.sets.delete(k); loadFeatures(); } }), " " + l),
+    () => el("div", {}, el("h3", { text: l }), el("p", { text: help }))));
+  const study = bindNote(el("label", { class: "chk" }, el("input", { type: "checkbox", checked: S.feat.study, disabled: !S.feat.sets.has("catch22"),
+    onchange: ev => { S.feat.study = ev.target.checked; loadFeatures(); } }), " Reproduce the study’s catch22 values"), featuresNote);
+  host.replaceChildren(el("section", { class: "sec" }, head,
+    el("p", {}, "Dataset: ", el("b", { text: ds })),
+    el("div", { class: "toolbar" }, setBoxes, study,
+      el("button", { type: "button", class: "btn", id: "feat-go", disabled: !S.feat.sets.size || S.feat.busy, onclick: startFeatures }, "Compute features")),
+    el("div", { id: "feat-progress" }), el("div", { id: "feat-body" })));
+  Note.base = featuresNote; Note.restore();
+  await loadFeatures();
+}
+async function loadFeatures() {
+  const btn = $("#feat-go"); if (btn) btn.disabled = !S.feat.sets.size || S.feat.busy;
+  const chk = $$("#view-features-body label.chk input"); if (chk.length) chk[chk.length - 1].disabled = !S.feat.sets.has("catch22");
+  S.feat.data = null; S.feat.err = null;
+  if (S.feat.sets.size) {
+    try { S.feat.data = await api("features?" + featQuery()); } catch (e) { S.feat.err = e.message; }
+  }
+  renderFeatureBody();
+}
+async function startFeatures() {
+  try {
+    S.feat.job = await api("features", { dataset: S.sel.dataset, sets: [...S.feat.sets], study_fft: S.feat.study });
+    S.feat.busy = true; $("#feat-go").disabled = true; pollFeatures();
+  } catch (e) { toast(e.message, true); }
+}
+async function pollFeatures() {
+  const j = S.feat.job; if (!j) return;
+  let v;
+  try { v = await api("jobs/" + j.id); } catch (e) { S.feat.busy = false; toast(e.message, true); return; }
+  S.feat.job = v;
+  const host = $("#feat-progress");
+  if (v.status === "running") {
+    if (host) host.replaceChildren(el("p", { class: "hint" }, `${FSTAGE[v.stage] || v.stage}${v.total ? ` ${fint(v.done)}/${fint(v.total)}` : ""}, ${mmss(v.elapsed)} `,
+      el("button", { type: "button", class: "linkish", onclick: () => api(`jobs/${v.id}/cancel`, {}).catch(() => {}) }, v.cancelling ? "Cancelling…" : "Cancel")));
+    setTimeout(pollFeatures, 700);
+    return;
+  }
+  S.feat.busy = false;
+  if (host) host.replaceChildren(v.status === "error" ? el("p", { class: "note err", text: v.error }) :
+    v.status === "cancelled" ? el("p", { class: "hint", text: "Cancelled." }) : el("p", { class: "hint", text: `Done in ${mmss(v.elapsed)}.` }));
+  if (S.view === "features") loadFeatures();
+}
+function renderFeatureBody() {
+  const host = $("#feat-body"); if (!host) return;
+  const d = S.feat.data;
+  if (!S.feat.sets.size) { host.replaceChildren(el("p", { class: "empty", text: "Tick at least one feature set." })); return; }
+  if (S.feat.err) { host.replaceChildren(el("p", { class: "note err", text: S.feat.err })); return; }
+  if (!d) { host.replaceChildren(el("p", { class: "empty", text: "Reading…" })); return; }
+  if (d.status !== "ready") { host.replaceChildren(el("p", { class: "empty", text: "Not computed yet for this choice of feature sets. Press “Compute features”." })); return; }
+  const byName = Object.fromEntries(d.summary.map(s => [s.name, s]));
+  const sumRow = n => {
+    const s = byName[n];
+    if (s.levels) return el("tr", {}, el("td", { class: "name", text: n }), el("td", { text: fint(s.missing) }),
+      el("td", { colspan: 6, text: Object.entries(s.levels).map(([k, c]) => `${k} ${fint(c)}`).join(", ") }));
+    return el("tr", {}, el("td", { class: "name", text: n }), el("td", { text: fint(s.missing) }),
+      ["mean", "sd", "min", "median", "max"].map(k => el("td", { text: fmt(s[k]) })), el("td", { text: fint(s.distinct) }));
+  };
+  const groups = FSETS.filter(([k]) => d.groups[k] && d.groups[k].length);
+  const nPrev = Math.min(d.rows.length, 200);
+  host.replaceChildren(
+    el("p", {}, `${fint(d.n_series)} series, ${d.columns.length} features. Stored ${new Date(d.updated * 1000).toLocaleString()}. `,
+      el("a", { href: `/api/features/file?${featQuery()}&t=${encodeURIComponent(TOKEN)}`, download: "" }, "Download CSV")),
+    el("h3", { text: "Summary" }),
+    el("div", { class: "tablewrap" }, el("table", { class: "t" },
+      el("thead", {}, el("tr", {}, ["Feature", "Missing", "Mean", "SD", "Min", "Median", "Max", "Distinct"].map(h => el("th", { text: h })))),
+      groups.map(([k, l]) => el("tbody", {}, el("tr", { class: "grp" }, el("th", { colspan: 8, text: l })), d.groups[k].map(sumRow))))),
+    el("h3", { text: `Values (first ${fint(nPrev)} series)` }),
+    el("div", { class: "tablewrap tall" }, el("table", { class: "t" },
+      el("thead", {}, el("tr", {}, el("th", { text: "Series" }), d.columns.map(c => el("th", { text: c })))),
+      el("tbody", {}, d.rows.slice(0, nPrev).map((r, i) => el("tr", {}, el("td", { class: "name", text: d.index[i] }),
+        r.map(v => el("td", { text: typeof v === "number" ? fmt(v) : (v == null ? "—" : String(v)) }))))))));
 }
 
 init();
