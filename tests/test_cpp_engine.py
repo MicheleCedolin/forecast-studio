@@ -192,6 +192,26 @@ def test_catboost_bit_identical_to_python():
                                     params={"catboost": {"depth": 4}}))
 
 
+@pytest.mark.skipif(C.lightgbm_lib_path() is None, reason="lightgbm package (lib_lightgbm) not installed")
+@pytest.mark.parametrize("dataset,lag,h", [("nn5_weekly", 12, 8), ("nn5_daily", 21, 56)])
+def test_lightgbm_bit_identical_to_python(dataset, lag, h):
+    """C++ lightgbm (same data pipeline and parameter string, LightGBM C API from C++) gives the Python engine's
+    forecasts bit for bit, with default and custom parameters, on all NN5 series."""
+    from tsfstudio.engines import py_global as PG
+    train = [r[~np.isnan(r)] for r in _load(G / dataset, "train")]
+    ref, _ = PG.lightgbm_forecast(train, lag, h)
+    np.testing.assert_array_equal(C.lightgbm(train, lag, h), ref)
+    custom = {"num_iterations": 150, "learning_rate": 0.05, "num_leaves": 15, "min_data_in_leaf": 10, "seed": 3}
+    ref2, _ = PG.lightgbm_forecast(train, lag, h, max_obs=200, params=custom, workers=4)
+    job = EngineJob(task="global", method="lightgbm", train=train, horizon=h, seasonality=(1.0,), lag=lag, workers=4,
+                    params={"max_obs": 200, "lightgbm": custom})
+    np.testing.assert_array_equal(C.CppEngine().run(job).forecasts, ref2)
+    assert not np.array_equal(ref, ref2)
+    with pytest.raises(Exception, match="Unknown LightGBM parameter"):
+        C.CppEngine().run(EngineJob(task="global", method="lightgbm", train=train, horizon=h, seasonality=(1.0,), lag=lag,
+                                    params={"lightgbm": {"max_depth": 4}}))
+
+
 @pytest.mark.parametrize("method", ["historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model"])
 def test_simple_benchmarks_match_python_bit_for_bit(case, method):
     """Ports of statsforecast's HistoricAverage, WindowAverage, SeasonalWindowAverage,

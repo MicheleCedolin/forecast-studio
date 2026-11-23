@@ -50,6 +50,9 @@ REFS = {
                           "based on loess. Journal of Official Statistics, 6(1), 3–73."),
     "prokhorenkova2018": _ref("Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A. V., & Gulin, A. (2018). CatBoost: unbiased boosting with "
                               "categorical features. Advances in Neural Information Processing Systems 31.", "https://arxiv.org/abs/1706.09516"),
+    "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
+                   "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
+                   "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
     "montero2021": _ref("Montero-Manso, P., & Hyndman, R. J. (2021). Principles and algorithms for forecasting groups of time series: locality "
                         "and globality. International Journal of Forecasting, 37(4), 1632–1653.",
                         "https://econpapers.repec.org/RePEc:eee:intfor:v:37:y:2021:i:4:p:1632-1653", True),
@@ -101,6 +104,20 @@ CATBOOST_PARAMS = [
       step=0.01, placeholder="automatic"),
     P("catboost.l2_leaf_reg", "L2 regularisation", "float", None, "Empty: CatBoost default (3).", min=0, max=100, step=0.5, placeholder="3"),
     P("catboost.random_seed", "Random seed", "int", None, "Empty: 0 (same as the original R call).", min=0, placeholder="0", advanced=True),
+]
+
+LIGHTGBM_PARAMS = [
+    MAX_OBS,
+    P("lightgbm.num_iterations", "Number of trees (iterations)", "int", None, "Number of boosting rounds. Empty: LightGBM default (100).",
+      min=1, max=20000, placeholder="100"),
+    P("lightgbm.learning_rate", "Learning rate", "float", None, "Empty: LightGBM default (0.1).", min=0.001, max=1, step=0.01,
+      placeholder="0.1"),
+    P("lightgbm.num_leaves", "Leaves per tree", "int", None, "Maximum leaves in one tree. Empty: LightGBM default (31).", min=2,
+      max=4096, placeholder="31"),
+    P("lightgbm.min_data_in_leaf", "Minimum rows per leaf", "int", None, "Empty: LightGBM default (20).", min=1, max=100000,
+      placeholder="20"),
+    P("lightgbm.seed", "Random seed", "int", None, "Empty: 0. Training is deterministic for a given seed.", min=0, placeholder="0",
+      advanced=True),
 ]
 
 PY = "python"
@@ -456,6 +473,19 @@ MODELS: dict[str, dict] = {
         "engines": {PY: "Requires the catboost Python package; the 'doctor' command checks whether it is installed.",
                     R: "Requires the R catboost package; not installed on your machine (doctor warning)."},
         "params": CATBOOST_PARAMS, "refs": ["prokhorenkova2018", "montero2021"], "cost": "Depends on the data; try a small subset.",
+    },
+    "lightgbm": {
+        "name": "LightGBM", "group": "kuresel", "task": "global",
+        "summary": "Histogram-based gradient-boosted trees on the same lag matrix.",
+        "how": "The same data pipeline as pooled regression (mean-scaled series, lag matrix of all series stacked); a LightGBM "
+               "regressor (L2 loss, leaf-wise trees) instead of the linear model. Forecasting is recursive. Training is "
+               "deterministic with a fixed seed.",
+        "use": "Non-linear relationships across many series; usually much faster than CatBoost on large data.",
+        "caution": "Like every recursive tree model it cannot forecast beyond the range of values seen in training (no trend "
+                   "extrapolation after mean scaling).",
+        "engines": {PY: "Requires the lightgbm Python package; the 'doctor' command checks whether it is installed. This method "
+                        "does not exist in the R engine."},
+        "params": LIGHTGBM_PARAMS, "refs": ["ke2017", "montero2021"], "cost": "Depends on the data; typically seconds for NN5.",
     },
 }
 

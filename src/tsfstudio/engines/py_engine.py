@@ -10,6 +10,7 @@ Yerleşik (yalnızca numpy/scipy; R algoritmasıyla birebir sınanmıştır, doc
                             auto_theta, auto_ces, holt_winters, mstl, auto_mfles (ek klasik)
     (tbats: kullanıcı kararıyla devre dışı, bkz. aşağıdaki not)
     catboost       -> catboost                       (global)
+    lightgbm       -> lightgbm                       (global)
 
 R ile aynı hata semantiği: bir serinin modeli hata verirse o seri `snaive` (R `msts` frekansıyla) tahmini alır ve
 bu SAYILIR (`fallbacks`). Fark: model NaN/Inf üretirse R bunu 0 yapar (`na_replaced`); burada da yedek tahmine düşülür
@@ -128,31 +129,36 @@ def _mp_context():
 class PythonEngine(Engine):
     name = "python"
     LOCAL_METHODS = NATIVE_LOCAL + tuple(SF_LOCAL)          # üst küme; `methods()` kuruluma göre süzer
-    GLOBAL_METHODS = ("pooled_regression", "catboost")
-    # Bellek: pooled_regression akış hâlinde (tasarım matrisi yok); catboost float32 matris + Pool kopyası.
-    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2}
+    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm")
+    # Bellek: pooled_regression akış hâlinde (tasarım matrisi yok); catboost float32 matris + Pool kopyası;
+    # lightgbm float64 matris + kutulanmış Dataset (matrisin yaklaşık 1/8'i).
+    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5}
 
     def methods(self) -> dict[str, tuple[str, ...]]:
         local = list(NATIVE_LOCAL)
         if S.sf_available():
             local += [k for k, cls in SF_LOCAL.items() if S.has_model(cls) and not S.missing_requirements(k)]
-        glob = ["pooled_regression"] + (["catboost"] if G.catboost_available() else [])
+        glob = (["pooled_regression"] + (["catboost"] if G.catboost_available() else [])
+                + (["lightgbm"] if G.lightgbm_available() else []))
         return {"local": tuple(local), "global": tuple(glob)}
 
     def versions(self) -> dict:
         import scipy
         v = {"python": platform.python_version(), "numpy": np.__version__, "scipy": scipy.__version__,
-             "statsforecast": S.sf_version(), "catboost": None}
+             "statsforecast": S.sf_version(), "catboost": None, "lightgbm": None}
         if G.catboost_available():
             import catboost
             v["catboost"] = catboost.__version__
+        if G.lightgbm_available():
+            import lightgbm
+            v["lightgbm"] = lightgbm.__version__
         return v
 
     def available(self) -> tuple[bool, str]:
         v = self.versions()
         ms = self.methods()
         miss = [m for m in self.LOCAL_METHODS + self.GLOBAL_METHODS if m not in ms["local"] + ms["global"]]
-        txt = f"numpy {v['numpy']}, scipy {v['scipy']}, statsforecast {v['statsforecast'] or 'MISSING'}, catboost {v['catboost'] or 'MISSING'}"
+        txt = f"numpy {v['numpy']}, scipy {v['scipy']}, statsforecast {v['statsforecast'] or 'MISSING'}, catboost {v['catboost'] or 'MISSING'}, lightgbm {v['lightgbm'] or 'MISSING'}"
         if miss:
             txt += f" | methods unavailable because they are not installed: {', '.join(miss)}"
             pips = sorted({p for m in miss for p in S.missing_requirements(m)})
@@ -274,6 +280,8 @@ class PythonEngine(Engine):
         try:
             if job.method == "pooled_regression":
                 f, info = G.pooled_regression_forecast(job.train, lag, H, max_obs)
+            elif job.method == "lightgbm":
+                f, info = G.lightgbm_forecast(job.train, lag, H, max_obs, (job.params or {}).get("lightgbm"), job.workers)
             else:
                 f, info = G.catboost_forecast(job.train, lag, H, max_obs, (job.params or {}).get("catboost"), job.workers)
         except ValueError as exc:

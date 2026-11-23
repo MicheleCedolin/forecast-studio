@@ -174,3 +174,66 @@ def catboost_forecast(series: Sequence[np.ndarray], lag: int, horizon: int, max_
     info = GlobalFitInfo(n_rows=n_rows, rank=lag)
     pred = lambda L: model.predict(np.asarray(L, dtype=np.float32))   # noqa: E731
     return forecast_recursive(pred, final_lags(norm, lag), horizon, means), info
+
+
+# ------------------------------------------------------------------------------------------------
+# LightGBM
+# ------------------------------------------------------------------------------------------------
+# LightGBM's own defaults, plus a fixed seed and deterministic training so a run is reproducible (and the C++ engine,
+# which drives the same lib_lightgbm through its C API with the same parameter string, gives the same numbers).
+LIGHTGBM_DEFAULTS = {"objective": "regression", "num_iterations": 100, "learning_rate": 0.1, "num_leaves": 31,
+                     "min_data_in_leaf": 20, "seed": 0}
+LIGHTGBM_FIXED = {"deterministic": True, "force_col_wise": True, "verbosity": -1}
+LIGHTGBM_KEYS = ("num_iterations", "learning_rate", "num_leaves", "min_data_in_leaf", "seed")
+
+
+def lightgbm_available() -> bool:
+    try:
+        import lightgbm  # noqa: F401
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def lightgbm_params(params: dict | None = None, workers: int = 1) -> dict:
+    """Effective parameters: defaults, the user's values (only the keys in LIGHTGBM_KEYS) and the fixed settings."""
+    p = dict(LIGHTGBM_DEFAULTS)
+    for k, v in (params or {}).items():
+        if k not in LIGHTGBM_KEYS:
+            raise ValueError(f"Unknown LightGBM parameter '{k}' (allowed: {', '.join(LIGHTGBM_KEYS)}).")
+        if v is not None:
+            p[k] = float(v) if k == "learning_rate" else int(v)
+    p.update(LIGHTGBM_FIXED)
+    p["num_threads"] = int(workers) if workers and int(workers) > 1 else 0
+    return p
+
+
+def lag_matrix(norm_series: Sequence[np.ndarray], lag: int) -> tuple[np.ndarray, np.ndarray]:
+    """Row-major float64 design matrix [Lag1..Lag_lag] and target, rows in R's rbind order."""
+    n_rows = sum(len(x) - lag for x in norm_series)
+    X = np.empty((n_rows, lag), dtype=np.float64)
+    y = np.empty(n_rows, dtype=np.float64)
+    pos = 0
+    for x in norm_series:
+        e = embed(x, lag)
+        k = e.shape[0]
+        X[pos: pos + k] = e[:, 1:]
+        y[pos: pos + k] = e[:, 0]
+        pos += k
+    return X, y
+
+
+def lightgbm_forecast(series: Sequence[np.ndarray], lag: int, horizon: int, max_obs: int | None = None,
+                      params: dict | None = None, workers: int = 1) -> tuple[np.ndarray, GlobalFitInfo]:
+    """Global LightGBM (Ke et al. 2017) on the same lag matrix as pooled regression; recursive forecasts."""
+    import lightgbm as lgb
+
+    p = lightgbm_params(params, workers)
+    norm, means = normalise(series, lag, max_obs)
+    X, y = lag_matrix(norm, lag)
+    rounds = p.pop("num_iterations")
+    model = lgb.train(p, lgb.Dataset(X, label=y, params=p), num_boost_round=rounds)
+    info = GlobalFitInfo(n_rows=X.shape[0], rank=lag)
+    del X, y
+    pred = lambda L: model.predict(np.ascontiguousarray(L, dtype=np.float64))   # noqa: E731
+    return forecast_recursive(pred, final_lags(norm, lag), horizon, means), info

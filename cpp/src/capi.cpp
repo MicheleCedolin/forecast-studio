@@ -28,6 +28,7 @@
 #include "tbats.hpp"
 #include "global.hpp"
 #include "catboost_bridge.hpp"
+#include "lightgbm_bridge.hpp"
 #include "simple_sf.hpp"
 
 #if defined(_WIN32)
@@ -230,6 +231,26 @@ TSF_API int tsf_catboost(const double* values, const int64_t* offsets, int32_t n
         tsf::CatboostSetup s;
         s.exe = exe; s.model_lib = model_lib; s.workdir = workdir; s.threads = threads;
         const std::vector<Vec> f = tsf::catboost_forecast(series, lag, h, max_obs, s);
+        for (int32_t i = 0; i < n_series; ++i) std::copy(f[i].begin(), f[i].end(), out + static_cast<int64_t>(i) * h);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
+// Global LightGBM through LightGBM's C library (lib_path). params: LightGBM parameter string; rounds: iterations.
+// out: n_series x h. Returns 0, or 1 on error (message in msg).
+TSF_API int tsf_lightgbm(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
+                         int32_t max_obs, const char* lib_path, const char* params, int32_t rounds, double* out, char* msg,
+                         int32_t len) {
+    try {
+        std::vector<Vec> series(n_series);
+        for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
+        tsf::LightgbmSetup s;
+        s.lib = lib_path; s.params = params; s.rounds = rounds;
+        const std::vector<Vec> f = tsf::lightgbm_forecast(series, lag, h, max_obs, s);
         for (int32_t i = 0; i < n_series; ++i) std::copy(f[i].begin(), f[i].end(), out + static_cast<int64_t>(i) * h);
         if (msg && len > 0) msg[0] = '\0';
         return 0;

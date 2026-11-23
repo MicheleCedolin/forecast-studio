@@ -41,6 +41,12 @@ statsmodels (BSD 3-Clause)
   Copyright (C) Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
   Translated: STL defaults, seasonal_decompose, acf (cpp/src/mstl_sf.cpp, cpp/src/sf_common.cpp, cpp/src/theta_sf.cpp).
 
+Libraries loaded at run time (not translated; bundled unchanged in the Windows release)
+  CatBoost (Apache License 2.0), Copyright (C) YANDEX LLC. https://github.com/catboost/catboost
+    catboost.exe and catboostmodel.dll, used by cpp/src/catboost_bridge.cpp.
+  LightGBM (MIT License), Copyright (C) Microsoft Corporation. https://github.com/microsoft/LightGBM
+    lib_lightgbm (from the lightgbm Python package), used by cpp/src/lightgbm_bridge.cpp.
+
 Redistributions of the BSD-licensed parts must retain the above copyright notices; the BSD 3-Clause licenses also
 state that the names of the copyright holders may not be used to endorse products derived from this software without
 permission. The Apache-2.0 and BSD-3-Clause licenses are compatible with GPL-3.

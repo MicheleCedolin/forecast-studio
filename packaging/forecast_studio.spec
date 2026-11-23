@@ -23,7 +23,8 @@ for f in (PKG / "native").glob("tsfcore.*"):
 # optional: without them the C++ engine simply does not offer catboost.
 for f in (PKG.parents[1] / "third_party" / "catboost").glob("catboost*"):
     binaries.append((str(f), "tsfstudio/native/catboost"))
-for pkg in ("statsforecast", "catboost", "numba", "llvmlite", "sklearn", "coreforecast", "utilsforecast"):
+# lightgbm: collect_all brings lightgbm/bin/lib_lightgbm.dll, which the C++ engine's lightgbm also loads.
+for pkg in ("statsforecast", "catboost", "lightgbm", "numba", "llvmlite", "sklearn", "coreforecast", "utilsforecast"):
     try:
         d, b, h = collect_all(pkg)
         datas += d; binaries += b; hiddenimports += h
