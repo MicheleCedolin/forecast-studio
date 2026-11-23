@@ -2,7 +2,9 @@
 
     python -m tsfstudio sweep --datasets all --methods study --out results/sweep1 --threads 8
 
-One task = one (dataset, method) pair = one `runner.run`. `--jobs J` runs J tasks at the same time, each with
+One task = one (dataset, method) pair = one `runner.run`. Datasets are worked through strictly one after another:
+no task of the next dataset starts before every task of the current one has ended. `--jobs J` runs J tasks of the
+current dataset at the same time, each with
 `--threads T` threads inside the engine (J x T = the cores of the job). Each task runs in its own Python process, so a task that
 crashes, runs out of memory or exceeds `--task-timeout` is recorded and the sweep goes on with the next one. A sweep that
 is started again with the same `--out` skips the tasks that already finished, so a job that hit the wall-time limit of the
@@ -493,6 +495,9 @@ def sweep(datasets: Sequence[str], methods: Sequence[str], out: str | Path, *, e
                 echo(f"{head(i, p)}: already {st['state']}, skipped")
                 continue
             spec = dict(p, opts=opts, dir=str(d))
+            while running and running[0].spec["dataset"] != p["dataset"]:
+                reap(block=False)                           # a dataset is finished before the next one starts
+                time.sleep(0.05)
             reap(block=len(running) >= jobs)
             echo(f"{head(i, p)}: started {datetime.now().strftime('%H:%M:%S')}")
             if in_process:

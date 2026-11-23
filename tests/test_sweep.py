@@ -154,3 +154,14 @@ def test_parallel_jobs_give_the_same_results_as_one_at_a_time(data, tmp_path):
     pd.testing.assert_frame_equal(a, b)
     res = pd.read_csv(tmp_path / "par" / "report" / "results.csv")
     assert len(res) == 4 and (res["state"] == "done").all() and (res["concurrent_tasks"] == 4).all()
+
+
+def test_a_dataset_is_finished_before_the_next_one_starts(data, tmp_path):
+    """With several tasks at a time, the tasks of the second dataset start only after all tasks of the first ended."""
+    rc, _ = _sweep(data, tmp_path / "sw", jobs=4)
+    assert rc == 0
+    st = {(d, m): json.loads((tmp_path / "sw" / "tasks" / d / m / "status.json").read_text())
+          for d in ("small_a", "small_b") for m in ("naive", "snaive")}
+    first_end = max(st["small_b", m]["finished_utc"] for m in ("naive", "snaive"))      # small_b is the smaller file
+    second_start = min(st["small_a", m]["started_utc"] for m in ("naive", "snaive"))
+    assert first_end <= second_start

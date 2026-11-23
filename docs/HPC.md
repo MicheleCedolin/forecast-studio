@@ -112,22 +112,24 @@ SWEEP_METHODS=study,benchmarks qsub -V scripts/hpc/sweep.sge        # values wit
 qstat; tail -f sge-tsf-sweep.<job id>.log; qdel <job id>
 ```
 
-One job per dataset (`scripts/hpc/submit_datasets.sh`, run on the login node): every dataset becomes its own job
-`tsf-<dataset>` with its own log, the methods run in turn inside it on all slots of the job, and a last job
-`tsf-report`, held until the others end, builds the report. A dataset can then be followed, stopped (`qdel tsf-m4_monthly`)
-or resubmitted on its own.
+One job per dataset, strictly in turn (`scripts/hpc/submit_datasets.sh`, run on the login node): every dataset becomes
+its own job `tsf-<dataset>` with its own log, and each job is held (`-hold_jid`) until the job of the dataset before it
+has ended, so no dataset starts before the previous one is finished. Inside a job the methods run in turn on all slots
+of the job. A last job `tsf-report`, held until all others end, builds the report.
 
 ```bash
 DRY=1 bash scripts/hpc/submit_datasets.sh                              # print the qsub commands only
 PROBE=20 bash scripts/hpc/submit_datasets.sh                           # time estimate per dataset
-bash scripts/hpc/submit_datasets.sh                                    # all datasets, 32 slots each
+bash scripts/hpc/submit_datasets.sh                                    # all datasets in turn, 32 slots each
 SWEEP_DATASETS=m4_monthly,nn5_daily bash scripts/hpc/submit_datasets.sh
-SLOTS=8 bash scripts/hpc/submit_datasets.sh                            # 8 slots per job
 ```
 
-With a limit of 32 slots per user, jobs of 32 slots run one after another, smallest dataset first; with `SLOTS=8` four
-datasets run side by side, each with 8 threads. All jobs write into the same `--out` folder (one sub-folder per
-dataset), so the report covers them together.
+Order: smallest file first. A dataset whose job fails or is deleted (`qdel <job id>`) does not block the ones after
+it; submit it again later on its own. All jobs write into the same `--out` folder (one sub-folder per dataset), so the
+report covers them together. `CHAIN=0 SLOTS=8` removes the chain and lets datasets run side by side.
+
+The single job (`qsub scripts/hpc/sweep.sge`) keeps the same order: with several tasks at a time (`SWEEP_JOBS`), no
+task of the next dataset starts before every task of the current dataset has ended.
 
 `qdel` first sends a notice (`-notify`), so the running tasks are recorded as `interrupted` and the report is written.
 Where a slot is a hardware thread (hyper-threading on), 32 slots can be the two threads of 16 physical cores when the
@@ -147,7 +149,8 @@ kill "$(cat results/sweep/sweep.pid)"              # stop it; running tasks are 
 Two levels, `--jobs J` x `--threads T` = the cores (`SWEEP_JOBS`, `SWEEP_THREADS`; with 32 cores the launchers default to
 4 x 8):
 
-- `--jobs J`: J (dataset, method) tasks run at the same time, each in its own process.
+- `--jobs J`: J methods of the current dataset run at the same time, each in its own process (never tasks of two
+  datasets together).
 - `--threads T`: inside a task the C++ library spreads the series over T threads. Global models and datasets with fewer
   series than T cannot use all of them.
 
