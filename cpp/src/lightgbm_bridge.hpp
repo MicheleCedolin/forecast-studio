@@ -24,5 +24,8 @@ std::vector<Vec> lightgbm_forecast(const std::vector<Vec>& series, int lag, int 
 // series holds three seasons, else 1 (no seasonal features). Recursive forecasts.
 std::vector<Vec> lightgbm_feat_forecast(const std::vector<Vec>& series, int lag, int h, int m, int max_obs,
                                         const LightgbmSetup& s);
+// py_global.lightgbm_direct_forecast: the same features at the forecast origin, one booster per step (no recursion).
+std::vector<Vec> lightgbm_direct_forecast(const std::vector<Vec>& series, int lag, int h, int m, int max_obs,
+                                          const LightgbmSetup& s);
 
 }  // namespace tsf

@@ -675,3 +675,18 @@ def test_engine_run_horizons_threads_and_fallback():
     assert np.isnan(r1.forecasts[30, 3:]).all() and np.isfinite(r1.forecasts[30, :3]).all()
     with pytest.raises(Exception, match="does not support"):
         eng.run(EngineJob(task="local", method="no_such_model", train=train, horizon=3, seasonality=(7.0,)))
+
+
+def test_lightgbm_direct_python_equals_cpp_and_first_step_equals_recursive():
+    from tsfstudio.engines import py_global as G
+    if not G.lightgbm_available() or C.lightgbm_lib_path() is None:
+        pytest.skip("lightgbm not installed")
+    rng = np.random.default_rng(11)
+    t = np.arange(90)
+    train = [20 + 5 * np.sin(2 * np.pi * t / 7 + i) + rng.normal(size=90) for i in range(12)]
+    py, _ = G.lightgbm_direct_forecast(train, 10, 9, 7)
+    cpp = C.lightgbm_feat(train, 10, 9, 7, direct=True)
+    np.testing.assert_array_equal(py, cpp)
+    rec, _ = G.lightgbm_feat_forecast(train, 10, 9, 7)
+    np.testing.assert_array_equal(py[:, 0], rec[:, 0])          # step-1 model = the recursive model
+    assert not np.allclose(py[:, 1:], rec[:, 1:])

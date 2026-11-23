@@ -296,6 +296,40 @@ def lightgbm_feat_forecast(series: Sequence[np.ndarray], lag: int, horizon: int,
     return out * means[:, None], info
 
 
+def lightgbm_direct_forecast(series: Sequence[np.ndarray], lag: int, horizon: int, m: int, max_obs: int | None = None,
+                             params: dict | None = None, workers: int = 1) -> tuple[np.ndarray, GlobalFitInfo]:
+    """Direct multi-horizon LightGBM: the features of lightgbm_feat at the forecast origin t, and one model per step k
+    whose target is the value at t + k (k = 0 .. horizon - 1). No forecast is fed back, so errors do not compound over
+    the horizon; the price is `horizon` models. Model k learns from the origins t = h0 .. n - 1 - k of every series."""
+    import lightgbm as lgb
+
+    p = lightgbm_params(params, workers)
+    norm, means = normalise(series, lag, max_obs)
+    m_eff, w1, w2 = lgb_feature_spec(norm, lag, m)
+    h0 = max(lag, 2 * m_eff if m_eff > 1 else 0, w2)
+    short = [i + 1 for i, x in enumerate(norm) if len(x) <= h0]
+    if short:
+        raise ValueError(f"Series {short[0]} is too short for the LightGBM features (at least {h0 + 1} observations required).")
+    feats = [lgb_features(x, np.arange(h0, len(x)), lag, m_eff, w1, w2) for x in norm]
+    F_last = np.vstack([lgb_features(np.concatenate([x, [0.0]]), np.array([len(x)]), lag, m_eff, w1, w2) for x in norm])
+    rounds = p.pop("num_iterations")
+    out = np.empty((len(norm), horizon))
+    n_rows = 0
+    for k in range(horizon):
+        rows = [(f[: len(x) - h0 - k], x[h0 + k:]) for f, x in zip(feats, norm) if len(x) - h0 - k > 0]
+        if not rows:
+            raise ValueError(f"No training rows for forecast step {k + 1}: the series are too short for this horizon.")
+        X = np.vstack([r[0] for r in rows])
+        y = np.concatenate([r[1] for r in rows])
+        n_rows = max(n_rows, X.shape[0])
+        model = lgb.train(p, lgb.Dataset(X, label=y, params=p), num_boost_round=rounds)
+        out[:, k] = model.predict(np.ascontiguousarray(F_last))
+    info = GlobalFitInfo(n_rows=n_rows, rank=F_last.shape[1])
+    info.notes.append(f"Direct strategy: {horizon} models, one per forecast step. Features: "
+                      f"{', '.join(lgb_feature_names(lag, m_eff, w1, w2))}.")
+    return out * means[:, None], info
+
+
 def lightgbm_forecast(series: Sequence[np.ndarray], lag: int, horizon: int, max_obs: int | None = None,
                       params: dict | None = None, workers: int = 1) -> tuple[np.ndarray, GlobalFitInfo]:
     """Global LightGBM (Ke et al. 2017) on the same lag matrix as pooled regression; recursive forecasts."""

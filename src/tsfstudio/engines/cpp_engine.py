@@ -65,6 +65,8 @@ def load_lib():
             lib.tsf_lightgbm_feat.argtypes = [dp, i64p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
                                               ctypes.c_int32, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int32, dp,
                                               ctypes.c_char_p, ctypes.c_int32]
+            lib.tsf_lightgbm_direct.restype = ctypes.c_int32
+            lib.tsf_lightgbm_direct.argtypes = lib.tsf_lightgbm_feat.argtypes
             lib.tsf_holt_sse.restype = ctypes.c_double
             lib.tsf_holt_sse.argtypes = [dp, ctypes.c_int32, ctypes.c_int32]
             _LIB = lib
@@ -218,8 +220,9 @@ def lightgbm(train: list[np.ndarray], lag: int, h: int, max_obs: int | None = No
 
 
 def lightgbm_feat(train: list[np.ndarray], lag: int, h: int, m: int, max_obs: int | None = None, params: dict | None = None,
-                  workers: int = 1) -> np.ndarray:
-    """Global LightGBM with M5-style features (py_global.lightgbm_feat_forecast) through LightGBM's C library."""
+                  workers: int = 1, direct: bool = False) -> np.ndarray:
+    """Global LightGBM with M5-style features through LightGBM's C library: recursive (py_global.lightgbm_feat_forecast)
+    or, with direct=True, one model per forecast step (py_global.lightgbm_direct_forecast)."""
     from .py_global import lightgbm_params
     lib = load_lib()
     if lib is None:
@@ -239,9 +242,10 @@ def lightgbm_feat(train: list[np.ndarray], lag: int, h: int, m: int, max_obs: in
     values = np.ascontiguousarray(np.concatenate([np.asarray(s, dtype=np.float64) for s in train]) if n else np.zeros(0))
     out = np.empty((n, h), dtype=np.float64)
     msg = ctypes.create_string_buffer(1024)
-    rc = lib.tsf_lightgbm_feat(_ptr(values, ctypes.c_double), _ptr(offsets, ctypes.c_int64), n, int(lag), int(h), int(m),
-                               int(max_obs or 0), str(path).encode(), _lgb_param_str(p).encode(), int(rounds),
-                               _ptr(out, ctypes.c_double), msg, 1024)
+    fn = lib.tsf_lightgbm_direct if direct else lib.tsf_lightgbm_feat
+    rc = fn(_ptr(values, ctypes.c_double), _ptr(offsets, ctypes.c_int64), n, int(lag), int(h), int(m),
+            int(max_obs or 0), str(path).encode(), _lgb_param_str(p).encode(), int(rounds),
+            _ptr(out, ctypes.c_double), msg, 1024)
     if rc != 0:
         raise EngineError(msg.value.decode(errors="replace"))
     return out
@@ -258,7 +262,7 @@ class CppEngine(Engine):
                      "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "comb_eat", "comb_eat_median", "auto_theta", "mstl", "auto_mfles", "tbats",
                      "holt_ets", "historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model",
                      "stl_ets", "stl_arima", "bagged_ets", "thief", "mapa")
-    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat")
+    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat", "lightgbm_direct")
 
     def methods(self) -> dict[str, tuple[str, ...]]:
         ok = load_lib() is not None
@@ -295,9 +299,9 @@ class CppEngine(Engine):
             elif job.method == "lightgbm":
                 f = lightgbm(list(job.train), int(job.lag), job.horizon, max_obs, (job.params or {}).get("lightgbm"),
                              job.workers or 1)
-            elif job.method == "lightgbm_feat":
+            elif job.method in ("lightgbm_feat", "lightgbm_direct"):
                 f = lightgbm_feat(list(job.train), int(job.lag), job.horizon, _season(job.seasonality), max_obs,
-                                  (job.params or {}).get("lightgbm"), job.workers or 1)
+                                  (job.params or {}).get("lightgbm"), job.workers or 1, direct=job.method == "lightgbm_direct")
             else:
                 f, aliased = pooled_regression(list(job.train), int(job.lag), job.horizon, max_obs)
             if job.integer_conversion:

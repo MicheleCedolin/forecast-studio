@@ -62,6 +62,9 @@ REFS = {
     "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
                    "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
                    "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
+    "taieb2012": _ref("Ben Taieb, S., Bontempi, G., Atiya, A. F., & Sorjamaa, A. (2012). A review and comparison of strategies for multi-step "
+                      "ahead time series forecasting based on the NN5 forecasting competition. Expert Systems with Applications, 39(8), "
+                      "7067–7083.", "https://doi.org/10.1016/j.eswa.2012.01.039"),
     "makridakis2000": _ref("Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and implications. International "
                            "Journal of Forecasting, 16(4), 451–476.", "https://doi.org/10.1016/S0169-2070(00)00057-1"),
     "oreshkin2020": _ref("Oreshkin, B. N., Carpov, D., Chapados, N., & Bengio, Y. (2020). N-BEATS: Neural basis expansion analysis for "
@@ -596,6 +599,21 @@ MODELS: dict[str, dict] = {
                         "This method does not exist in the R engine."},
         "params": LIGHTGBM_PARAMS, "refs": ["ke2017", "makridakis2022", "montero2021"], "cost": "About the cost of LightGBM; NN5 daily about 1 s in C++.",
     },
+    "lightgbm_direct": {
+        "name": "LightGBM, direct multi-horizon (M5-style features)", "group": "kuresel", "task": "global",
+        "summary": "One global LightGBM model per forecast step, each predicting its own step directly from the same features.",
+        "how": "The features of the M5-style LightGBM (lags, seasonal lags, rolling mean and standard deviation, position in the "
+               "season) are taken at the forecast origin. For step k a separate model learns the value k steps after the origin, "
+               "from every origin in the training data. No forecast is fed back as an input, so errors do not compound along the "
+               "horizon (direct strategy; Taieb et al. 2012).",
+        "use": "Long horizons, where recursive forecasts drift; compare it with the recursive M5-style LightGBM on the same data.",
+        "caution": "Trains as many models as the horizon is long (56 for NN5 daily), so it is that many times slower than the "
+                   "recursive version. Later steps learn from fewer rows. Every series needs more than max(lag, 2m, 2·max(4, m)) observations.",
+        "engines": {PY: "Requires the lightgbm Python package. The C++ engine builds the same features and gives the same forecasts. "
+                        "This method does not exist in the R engine."},
+        "params": LIGHTGBM_PARAMS, "refs": ["taieb2012", "ke2017", "makridakis2022"],
+        "cost": "About horizon × the cost of the recursive LightGBM.",
+    },
     "nhits": {
         "name": "N-HiTS (deep learning)", "group": "kuresel", "task": "global",
         "summary": "A global neural network (MLP stacks with multi-rate pooling) trained on all series at once.",
@@ -726,8 +744,9 @@ CPP_NOTES = {
     "catboost": "C++ drives the official CatBoost 1.2.10 programs (CatBoost's defaults); the same forecasts as the Python engine.",
     "lightgbm": "C++ drives LightGBM's C library with the Python engine's parameters; the same forecasts bit for bit.",
     "lightgbm_feat": "C++ builds the same features and drives LightGBM's C library; the same forecasts bit for bit.",
+    "lightgbm_direct": "C++ builds the same features and trains one booster per step through LightGBM's C library; the same forecasts as Python.",
 }
-CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None}  # None: all
+CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None, "lightgbm_direct": None}  # None: all
 
 
 def _wire_cpp() -> None:
