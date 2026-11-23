@@ -1,5 +1,6 @@
 """Deep-learning and foundation models for the Python engine (optional packages).
 
+nbeats   N-BEATS (Oreshkin et al., 2020) via neuralforecast, the same way as nhits.
 nhits    N-HiTS (Challu et al., 2023) via Nixtla neuralforecast: one global network trained on all series; input window =
          the job's lag, robust scaling per window, deterministic seed. Needs torch + neuralforecast.
 chronos  Chronos-Bolt (Ansari et al., 2024) via chronos-forecasting: a pretrained model used zero-shot (no training);
@@ -46,12 +47,23 @@ def versions() -> dict:
 
 def nhits_forecast(train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
                    workers: int) -> np.ndarray:
+    return _neural_forecast("NHITS", train, H, input_size, params, seed, workers)
+
+
+def nbeats_forecast(train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
+                    workers: int) -> np.ndarray:
+    """N-BEATS (Oreshkin et al., 2020), the interpretable configuration (trend, seasonality and identity stacks)."""
+    return _neural_forecast("NBEATS", train, H, input_size, params, seed, workers)
+
+
+def _neural_forecast(kind: str, train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
+                     workers: int) -> np.ndarray:
     import logging
 
     import pandas as pd
     import torch
     from neuralforecast import NeuralForecast
-    from neuralforecast.models import NHITS
+    from neuralforecast.models import NBEATS, NHITS
 
     p = dict(params or {})
     for name in ("lightning", "pytorch_lightning", "lightning.pytorch", "lightning_fabric"):
@@ -62,10 +74,11 @@ def nhits_forecast(train: list[np.ndarray], H: int, input_size: int, params: dic
         y = np.asarray(y, dtype=np.float64)
         rows.append(pd.DataFrame({"unique_id": i, "ds": np.arange(len(y)), "y": y}))
     df = pd.concat(rows, ignore_index=True)
-    model = NHITS(h=H, input_size=int(input_size), max_steps=int(p.get("max_steps", 500)),
+    common = dict(h=H, input_size=int(input_size), max_steps=int(p.get("max_steps", 500)),
                   learning_rate=float(p.get("learning_rate", 1e-3)), scaler_type="robust", random_seed=int(seed),
                   start_padding_enabled=True, enable_progress_bar=False, enable_model_summary=False, logger=False,
                   accelerator="cpu", devices=1)
+    model = NHITS(**common) if kind == "NHITS" else NBEATS(**common)
     nf = NeuralForecast(models=[model], freq=1)
     nf.fit(df=df)
     fc = nf.predict()

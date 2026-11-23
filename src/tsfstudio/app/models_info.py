@@ -64,6 +64,9 @@ REFS = {
                    "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
     "makridakis2000": _ref("Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and implications. International "
                            "Journal of Forecasting, 16(4), 451–476.", "https://doi.org/10.1016/S0169-2070(00)00057-1"),
+    "oreshkin2020": _ref("Oreshkin, B. N., Carpov, D., Chapados, N., & Bengio, Y. (2020). N-BEATS: Neural basis expansion analysis for "
+                         "interpretable time series forecasting. International Conference on Learning Representations.",
+                         "https://openreview.net/forum?id=r1ecqn4YwB"),
     "challu2023": _ref("Challu, C., Olivares, K. G., Oreshkin, B. N., Garza Ramirez, F., Mergenthaler Canseco, M., & Dubrawski, A. "
                        "(2023). NHITS: Neural hierarchical interpolation for time series forecasting. Proceedings of the AAAI "
                        "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854"),
@@ -608,6 +611,22 @@ MODELS: dict[str, dict] = {
                    P("nhits.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1, step=0.0001,
                      engines=("python",), advanced=True)],
         "refs": ["challu2023"], "cost": "NN5 weekly, 111 series, 100 steps: about 25 s on the CPU.",
+    },
+    "nbeats": {
+        "name": "N-BEATS (deep learning)", "group": "kuresel", "task": "global",
+        "summary": "A global neural network of fully connected blocks with backward and forward residual links, trained on all series.",
+        "how": "Windows of the last 'lag' observations of every series are robust-scaled; stacks of blocks (trend, seasonality and "
+               "generic) each remove what they explain from the input and add their part to the forecast of the whole horizon. "
+               "Trained with Adam on MAE for a fixed number of steps; the seed fixes the result on one machine.",
+        "use": "The deep-learning model that beat the statistical benchmarks in M4; compare it with N-HiTS (its successor).",
+        "caution": "Takes tens of seconds to minutes on the CPU. Results can vary slightly between machines (floating point in PyTorch). "
+                   "Series shorter than the window are zero-padded at the start.",
+        "engines": {PY: "Requires torch and neuralforecast (optional extras; installed on this machine). Not in the R engine."},
+        "params": [P("nbeats.max_steps", "Training steps", "int", 500, "Number of training steps (mini-batches).", min=10, max=20000,
+                     engines=("python",)),
+                   P("nbeats.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1, step=0.0001,
+                     engines=("python",), advanced=True)],
+        "refs": ["oreshkin2020"], "cost": "Similar to N-HiTS; NN5 weekly, 111 series, 200 steps: tens of seconds on the CPU.",
     },
     "chronos": {
         "name": "Chronos-Bolt (foundation model)", "group": "kuresel", "task": "global",

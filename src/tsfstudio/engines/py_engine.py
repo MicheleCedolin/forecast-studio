@@ -171,10 +171,10 @@ def _mp_context():
 class PythonEngine(Engine):
     name = "python"
     LOCAL_METHODS = NATIVE_LOCAL + tuple(SF_LOCAL)          # üst küme; `methods()` kuruluma göre süzer
-    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat", "nhits", "chronos")
+    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat", "nhits", "nbeats", "chronos")
     # Bellek: pooled_regression akış hâlinde (tasarım matrisi yok); catboost float32 matris + Pool kopyası;
     # lightgbm float64 matris + kutulanmış Dataset (matrisin yaklaşık 1/8'i).
-    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5, "lightgbm_feat": 2.0, "nhits": None,
+    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5, "lightgbm_feat": 2.0, "nhits": None, "nbeats": None,
                      "chronos": None}
 
     def methods(self) -> dict[str, tuple[str, ...]]:
@@ -183,7 +183,7 @@ class PythonEngine(Engine):
             local += [k for k, cls in SF_LOCAL.items() if S.has_model(cls) and not S.missing_requirements(k)]
         glob = (["pooled_regression"] + (["catboost"] if G.catboost_available() else [])
                 + (["lightgbm", "lightgbm_feat"] if G.lightgbm_available() else [])
-                + (["nhits"] if DL.nhits_available() else []) + (["chronos"] if DL.chronos_available() else []))
+                + (["nhits", "nbeats"] if DL.nhits_available() else []) + (["chronos"] if DL.chronos_available() else []))
         return {"local": tuple(local), "global": tuple(glob)}
 
     def versions(self) -> dict:
@@ -334,6 +334,9 @@ class PythonEngine(Engine):
             elif job.method == "nhits":
                 f = DL.nhits_forecast(job.train, H, lag, (job.params or {}).get("nhits"), job.seed, job.workers)
                 return f, [], ["N-HiTS: one global network (neuralforecast); input window = lag."]
+            elif job.method == "nbeats":
+                f = DL.nbeats_forecast(job.train, H, lag, (job.params or {}).get("nbeats"), job.seed, job.workers)
+                return f, [], ["N-BEATS: one global network (neuralforecast); input window = lag."]
             elif job.method == "chronos":
                 f = DL.chronos_forecast(job.train, H, (job.params or {}).get("chronos"), job.workers)
                 return f, [], ["Chronos-Bolt, zero-shot (no training); lag is not used. Its pretraining data include "
