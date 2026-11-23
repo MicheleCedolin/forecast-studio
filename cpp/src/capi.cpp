@@ -295,6 +295,19 @@ TSF_API void tsf_supsmu(const double* y, int32_t n, double* out) {
     std::copy(s.begin(), s.end(), out);
 }
 
+// R's as.numeric(scale(x)): colMeans (long double), then x - mean divided by sqrt(sum(v^2) / (n - 1)) with R's long
+// double sum (80-bit here, as in R on x86).
+TSF_API void tsf_r_scale(const double* x, int32_t n, double* out) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
+    long double s = 0.0L;
+    for (int32_t i = 0; i < n; ++i) s += x[i];
+    const double mean = static_cast<double>(s / n);
+    long double ss = 0.0L;
+    for (int32_t i = 0; i < n; ++i) { out[i] = x[i] - mean; ss += static_cast<long double>(out[i] * out[i]); }
+    const double sd = std::sqrt(static_cast<double>(ss) / (n - 1));
+    for (int32_t i = 0; i < n; ++i) out[i] /= sd;
+}
+
 // tsfeatures::holt_parameters: forecast::ets(y, model = "AAN") (damped and undamped trend compared by AICc);
 // out = (alpha, beta). Returns 1 when ets fails.
 TSF_API int tsf_holt_params(const double* y, int32_t n, double* out) {

@@ -60,6 +60,19 @@ def scalets(x: np.ndarray) -> np.ndarray:
     if np.all(x == x[0]):
         return x
     # scale(x): colMeans (long double), then sd = sqrt(sum(v^2) / (n - 1)) with R's long double sum
+    import ctypes
+    from .engines import cpp_engine
+    lib = cpp_engine.load_lib()
+    if lib is not None:
+        if not getattr(lib, "_scale_ready", False):
+            dp = ctypes.POINTER(ctypes.c_double)
+            lib.tsf_r_scale.restype = None
+            lib.tsf_r_scale.argtypes = [dp, ctypes.c_int32, dp]
+            lib._scale_ready = True
+        xc = np.ascontiguousarray(x, dtype=np.float64)
+        out = np.empty_like(xc)
+        lib.tsf_r_scale(cpp_engine._ptr(xc, ctypes.c_double), xc.size, cpp_engine._ptr(out, ctypes.c_double))
+        return out
     from .engines.r_boot import _ld, _ld_sum, r_col_mean
     v = x - r_col_mean(x.tolist())
     ss = float(_ld(_ld_sum((v * v).tolist())))
@@ -71,7 +84,10 @@ def r_acf(x: np.ndarray, lag_max: int) -> np.ndarray:
     n = x.size
     lag_max = int(min(lag_max, n - 1))
     d = x - x.mean()
-    acov = np.array([np.dot(d[: n - k], d[k:]) / n for k in range(lag_max + 1)])
+    if lag_max > 64:                                     # many lags (high frequencies): one C-level correlation
+        acov = np.correlate(d, d, "full")[n - 1:n + lag_max] / n
+    else:
+        acov = np.array([np.dot(d[: n - k], d[k:]) / n for k in range(lag_max + 1)])
     return acov / acov[0]
 
 
@@ -86,6 +102,15 @@ def r_pacf(x: np.ndarray, lag_max: int) -> np.ndarray:
         return out
     phi[1] = rho[1]
     out[0] = rho[1]
+    if nlag > 64:                                        # many lags: the same recursion with vector updates
+        for ll in range(2, nlag + 1):
+            c = (rho[ll] - np.dot(phi[1:ll], rho[ll - 1:0:-1])) / (1.0 - np.dot(phi[1:ll], rho[1:ll]))
+            out[ll - 1] = c
+            if ll == nlag:
+                break
+            phi[ll] = c
+            phi[1:ll] = phi[1:ll] - c * phi[ll - 1:0:-1]
+        return out
     for ll in range(2, nlag + 1):
         a = rho[ll]
         b = 1.0
@@ -293,7 +318,7 @@ def pacf_features(x, m):
 
 def arch_stat(x, lags=12):
     n = x.size
-    if n <= lags + 1:
+    if n <= 13:                                          # tsfeatures 1.0.x: fixed at 13, whatever `lags` is
         return {"ARCH.LM": NAN}
     x2 = (x - x.mean()) ** 2
     rows = n - lags
@@ -590,6 +615,11 @@ def stl_features(x: np.ndarray, kind: str, periods: tuple, startx: int = 0, peri
     kind "msts": several seasonal periods (attributes(x)$msts = periods); "ts": one frequency periods[0]; startx =
     start(x)[2] - 1 (the cycle position of the first observation, for peak and trough)."""
     n = x.size
+    # The study's tsfeatures stopped for a multi-period (msts) series not longer than two of its longest periods (the
+    # caller then falls back to frequency 1), as the stored m4_hourly values show; a short single-period series kept
+    # nperiods and seasonal_period but no seasonal components (stored m4_weekly).
+    if kind == "msts" and n <= 2 * max(periods):
+        raise ValueError("insufficient data to compute STL decomposition")
     if kind == "msts":
         msts_out, nperiods = list(periods), len(periods)
     else:
