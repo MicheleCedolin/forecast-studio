@@ -174,18 +174,48 @@ def pca(df, n_components: int = 3, max_missing: float = 0.5) -> dict:
     return {"scores": (Z @ V), "explained": var[:k] / var.sum(), "loadings": V, "features": cols, "dropped": dropped}
 
 
-FEATURE_SETS = ("basic", "catch22")
+FEATURE_SETS = ("basic", "catch22", "tsfeatures")
 
 
 class FeaturesCancelled(Exception):
     pass
 
 
+def tsfeatures_table(series: list[np.ndarray], periods, starts=None, progress=None, cancel=None):
+    """The ranking study's tsfeatures set (tsfeat.study_features, stl_features included) for every series, with the
+    study's rule that a column missing for some series is dropped for all. Missing values are removed first."""
+    import pandas as pd
+    from . import tsfeat
+
+    starts = starts if starts is not None else [None] * len(series)
+    rows = []
+    for i, (y, st) in enumerate(zip(series, starts)):
+        if cancel is not None and cancel.is_set():
+            raise FeaturesCancelled()
+        if i % 10 == 0 and progress:
+            progress("tsfeatures", i, len(series))
+        x = np.asarray(y, dtype=float)
+        x = x[np.isfinite(x)]
+        try:
+            rows.append(tsfeat.study_features(x, periods, stl=True, startx=tsfeat.study_startx(st, periods))
+                        if x.size >= 4 else {})
+        except Exception:  # noqa: BLE001 - one odd series must not stop the table
+            rows.append({})
+    full = [r for r in rows if r]
+    if not full:
+        return pd.DataFrame(index=range(len(series)))
+    cols = [c for c in full[0] if all(c in r for r in full)]
+    return pd.DataFrame([[r.get(c, np.nan) for c in cols] for r in rows], columns=cols)
+
+
 def compute(series: list[np.ndarray], m: float = 1, sets: tuple[str, ...] = ("basic", "catch22"),
-            study_fft: bool = False, threads: int = 0, names: list[str] | None = None, progress=None, cancel=None):
+            study_fft: bool = False, threads: int = 0, names: list[str] | None = None, progress=None, cancel=None,
+            periods=None, starts=None):
     """A DataFrame of features (one row per series, index = series names) for the requested feature sets.
 
     progress(stage, done, total) is called as work advances; cancel is a threading.Event checked between series.
+    periods (the seasonal periods, default (m,)) and starts (start timestamps) are used by the tsfeatures set; its
+    columns that clash with an earlier set (mean) get the prefix "tsf_".
     """
     import pandas as pd
 
@@ -205,6 +235,11 @@ def compute(series: list[np.ndarray], m: float = 1, sets: tuple[str, ...] = ("ba
         elif s == "catch22":
             report("catch22", 0, len(series))
             parts.append(pd.DataFrame(catch22(series, study_fft, threads), index=idx, columns=list(CATCH22_NAMES)))
+        elif s == "tsfeatures":
+            tf = tsfeatures_table(series, tuple(periods) if periods else (m,), starts, report, cancel)
+            tf.index = idx
+            taken = {c for p in parts for c in p.columns}
+            parts.append(tf.rename(columns={c: "tsf_" + c for c in tf.columns if c in taken}))
         else:
             raise ValueError(f"unknown feature set: {s}")
     return pd.concat(parts, axis=1) if parts else pd.DataFrame(index=idx)

@@ -167,6 +167,89 @@ void stlss(const double* y, int n, int np, int ns, int isdeg, int nsjump, bool u
     }
 }
 
+// psort() of R's stl.c (translated from stl.f): a partial quicksort meant to place the ind[]-th smallest values;
+// ported as is (its final insertion pass is skipped for segments starting at 1, so the result can deviate from true
+// order statistics, and stl() depends on exactly that).
+void stl_psort(double* a, int n, int* ind, int ni) {
+    if (n < 2 || ni <= 0) return;
+    int il[16], iu[16], indl[16], indu[16];
+    --a;
+    --ind;
+    int jl = 1, ju = ni, i = 1, j = n, m = 0, k, l, ij, p1;
+    double t, tt;
+    indl[0] = 1;
+    indu[0] = ni;
+LoopOuter:
+    if (i < j) goto L10;
+Loop:
+    --m;
+    if (m < 0) return;
+    i = il[m];
+    j = iu[m];
+    jl = indl[m];
+    ju = indu[m];
+    if (!(jl <= ju)) goto Loop;
+L173:
+    if (!(j - i > 10)) goto L174;
+L10:
+    k = i;
+    l = j;
+    ij = (i + j) / 2;
+    t = a[ij];
+    if (a[i] > t) { a[ij] = a[i]; a[i] = t; t = a[ij]; }
+    if (a[j] < t) {
+        a[ij] = a[j]; a[j] = t; t = a[ij];
+        if (a[i] > t) { a[ij] = a[i]; a[i] = t; t = a[ij]; }
+    }
+    for (;;) {
+        --l;
+        if (a[l] <= t) {
+            tt = a[l];
+            do ++k; while (a[k] < t);
+            if (k > l) break;
+            a[l] = a[k];
+            a[k] = tt;
+        }
+    }
+    indl[m] = jl;
+    indu[m] = ju;
+    p1 = m;
+    ++m;
+    if (l - i <= j - k) {
+        il[p1] = k;
+        iu[p1] = j;
+        j = l;
+    L_1:
+        if (jl > ju) goto Loop;
+        if (ind[ju] > j) { --ju; goto L_1; }
+        indl[p1] = ju + 1;
+    } else {
+        il[p1] = i;
+        iu[p1] = l;
+        i = k;
+    L_2:
+        if (jl > ju) goto Loop;
+        if (ind[jl] < i) { ++jl; goto L_2; }
+        indu[p1] = jl - 1;
+    }
+    goto L173;
+L174:
+    if (i != 1) {
+        --i;
+        for (;;) {
+            ++i;
+            if (i == j) goto Loop;
+            t = a[i + 1];
+            if (a[i] > t) {
+                k = i;
+                do { a[k + 1] = a[k]; --k; } while (!(t >= a[k]));
+                a[k + 1] = t;
+            }
+        }
+    }
+    goto LoopOuter;
+}
+
 }  // namespace
 
 StlOut stl(const Vec& x, double period, int s_window) {
@@ -185,9 +268,9 @@ StlOut stl(const Vec& x, double period, int s_window) {
 }
 
 StlOut stl_core(const Vec& x, int period, int s_win, int t_window, int l_window, int isdeg, int itdeg, int ildeg,
-                int nsjump, int ntjump, int nljump, int ni) {
+                int nsjump, int ntjump, int nljump, int ni, int no) {
     const int n = static_cast<int>(x.size());
-    // subroutine stl: window sanity (odd and >= 3), np >= 2; robust = FALSE (no outer loop)
+    // subroutine stl: window sanity (odd and >= 3), np >= 2; no > 0 adds the robustness iterations (stlrwt)
     int ns = std::max(3, s_win), nt = std::max(3, t_window), nl = std::max(3, l_window);
     if (ns % 2 == 0) ++ns;
     if (nt % 2 == 0) ++nt;
@@ -198,16 +281,66 @@ StlOut stl_core(const Vec& x, int period, int s_win, int t_window, int l_window,
     StlOut out;
     out.seasonal.assign(n, 0.0);
     out.trend.assign(n, 0.0);
-    const bool userw = false;
-    for (int j = 0; j < ni; ++j) {                      // stlstp
-        for (int i = 0; i < n; ++i) w1[i] = x[i] - out.trend[i];
-        stlss(w1.data(), n, np, ns, isdeg, nsjump, userw, rw.data(), w2.data(), w3.data(), w4.data(), w5.data(),
-              out.seasonal.data());
-        stlfts(w2.data(), nw, np, w3.data(), w1.data());
-        stless(w3.data(), n, nl, ildeg, nljump, false, w4.data(), w1.data(), w5.data());
-        for (int i = 0; i < n; ++i) out.seasonal[i] = w2[np + i] - w1[i];
-        for (int i = 0; i < n; ++i) w1[i] = x[i] - out.seasonal[i];
-        stless(w1.data(), n, nt, itdeg, ntjump, userw, rw.data(), out.trend.data(), w3.data());
+    bool userw = false;
+    for (int k = 0;; ++k) {
+        for (int j = 0; j < ni; ++j) {                  // stlstp
+            for (int i = 0; i < n; ++i) w1[i] = x[i] - out.trend[i];
+            stlss(w1.data(), n, np, ns, isdeg, nsjump, userw, rw.data(), w2.data(), w3.data(), w4.data(), w5.data(),
+                  out.seasonal.data());
+            stlfts(w2.data(), nw, np, w3.data(), w1.data());
+            stless(w3.data(), n, nl, ildeg, nljump, false, w4.data(), w1.data(), w5.data());
+            for (int i = 0; i < n; ++i) out.seasonal[i] = w2[np + i] - w1[i];
+            for (int i = 0; i < n; ++i) w1[i] = x[i] - out.seasonal[i];
+            stless(w1.data(), n, nt, itdeg, ntjump, userw, rw.data(), out.trend.data(), w3.data());
+        }
+        if (k + 1 > no) break;
+        // stlrwt: bisquare weights from 6 * median |residual| (psort on positions n/2+1 and n-n/2)
+        Vec r(n);
+        for (int i = 0; i < n; ++i) r[i] = std::fabs(x[i] - (out.trend[i] + out.seasonal[i]));
+        Vec s = r;
+        int mid[2] = {n / 2 + 1, 0};
+        mid[1] = n - mid[0] + 1;
+        stl_psort(s.data(), n, mid, 2);                  // R's psort, quirks included (not always exact)
+        const double cmad = (s[mid[0] - 1] + s[mid[1] - 1]) * 3.;
+        const double c9 = .999 * cmad, c1 = .001 * cmad;
+        for (int i = 0; i < n; ++i) {
+            if (r[i] <= c1) rw[i] = 1.0;
+            else if (r[i] <= c9) { const double u = r[i] / cmad; rw[i] = (1.0 - u * u) * (1.0 - u * u); }
+            else rw[i] = 0.0;
+        }
+        userw = true;
+    }
+    return out;
+}
+
+StlOut r_stl(const Vec& x, double period, bool periodic, int s_window, bool robust) {
+    const int n = static_cast<int>(x.size());
+    if (period < 2 || n <= 2 * period) throw std::runtime_error("series is not periodic or has less than two periods");
+    const int np = static_cast<int>(period);
+    auto nextodd = [](double v) { int r = static_cast<int>(std::nearbyint(v)); return (r % 2 == 0) ? r + 1 : r; };
+    auto win_check = [&](double k) { return std::max(3, nextodd(k)); };
+    const double sw = periodic ? 10.0 * n + 1 : s_window;
+    const int t_window = win_check(std::ceil(1.5 * period / (1.0 - 1.5 / sw)));
+    const int s_win = win_check(sw), l_window = win_check(nextodd(period));
+    const int nsjump = std::max(1, static_cast<int>(std::ceil(s_win / 10.0)));
+    const int ntjump = std::max(1, static_cast<int>(std::ceil(t_window / 10.0)));
+    const int nljump = std::max(1, static_cast<int>(std::ceil(l_window / 10.0)));
+    StlOut out = stl_core(x, np, s_win, t_window, l_window, 0, 1, 1, nsjump, ntjump, nljump, robust ? 1 : 2,
+                          robust ? 15 : 0);
+    if (periodic) {                                     // tapply(seasonal, cycle(x), mean): R's two-pass mean
+        for (int c = 0; c < np; ++c) {
+            long double s = 0.0L;
+            int cnt = 0;
+            for (int i = c; i < n; i += np) { s += out.seasonal[i]; ++cnt; }
+            s /= cnt;
+            if (std::isfinite(static_cast<double>(s))) {
+                long double t = 0.0L;
+                for (int i = c; i < n; i += np) t += out.seasonal[i] - s;
+                s += t / cnt;
+            }
+            const double m = static_cast<double>(s);
+            for (int i = c; i < n; i += np) out.seasonal[i] = m;
+        }
     }
     return out;
 }

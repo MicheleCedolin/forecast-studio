@@ -327,3 +327,15 @@ def test_features_pca_endpoint(app):
     assert j["color"]["kind"] == "num"
     st, j = app.call("features/pca?dataset=upload%3Ademo&sets=basic,catch22&color=best%3AMASE")
     assert st == 400                                     # no runs on this dataset yet
+
+
+def test_features_tsfeatures_set(app):
+    from tsfstudio.engines import cpp_engine
+    if cpp_engine.load_lib() is None:
+        pytest.skip("native library not built")
+    st, job = app.call("features", {"dataset": "upload:demo", "sets": ["basic", "tsfeatures"]})
+    assert st == 200 and _wait(app, job["id"], timeout=120)["status"] == "done"
+    st, j = app.call("features?dataset=upload%3Ademo&sets=basic,tsfeatures")
+    assert st == 200 and j["status"] == "ready"
+    ts = j["groups"]["tsfeatures"]
+    assert "tsf_mean" in ts and "hurst" in ts and "seasonal_strength" in ts and "mean" in j["groups"]["basic"]

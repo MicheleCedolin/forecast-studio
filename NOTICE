@@ -34,10 +34,24 @@ catch22 / R package "Rcatch22" v0.1.13 (GPL-3)
   Included: the C feature code and its helpers, comments removed (cpp/src/catch22/), with a switch reproducing the
   ranking study's Rcatch22 build (unit FFT twiddle factors).
 
+R package "tsfeatures" (GPL-3)
+  Copyright (C) Rob J Hyndman, Yanfei Kang, Pablo Montero-Manso, Mitchell O'Hara-Wild, Thiyanga Talagala, Earo Wang,
+  Yangzhuoran Yang. Translated: the feature functions the ranking study used, scalets() and the stl_features() logic
+  (src/tsfstudio/tsfeat.py).
+
+R package "fracdiff" (GPL-2 or later)
+  Copyright (C) Chris Fraley, Friedrich Leisch, Martin Maechler, Valderio Reisen, Artur Lemonte. Translated: fracdf(),
+  dopt(), pqopt(), fdfilt() for the case without ARMA terms (cpp/src/fracdiff.cpp).
+
+R packages "urca" (GPL-2 or later, Bernhard Pfaff) and "tseries" (GPL-2, Adrian Trapletti, Kurt Hornik)
+  Translated: ur.kpss() and ur.pp() test statistics; terasvirta.test() (src/tsfstudio/tsfeat.py).
+
 R "stats" package, part of R (GPL-2 or later)
   Copyright (C) The R Core Team. https://www.r-project.org
   Translated: arima() with ARIMA_Like / ARIMA_CSS / getQ0, optim()'s vmmin (BFGS) and nmmin (Nelder-Mead) and
-  optimhess (cpp/src/arima.cpp, cpp/src/ets.cpp), stl() / stl.c (cpp/src/autoarima.cpp, src/tsfstudio/engines/r_stl.py),
+  optimhess (cpp/src/arima.cpp, cpp/src/ets.cpp), stl() / stl.c with its robustness iterations and psort()
+  (cpp/src/autoarima.cpp, src/tsfstudio/engines/r_stl.py), supsmu() / smooth() of ppr.f (cpp/src/supsmu.cpp),
+  ar.burg() / C_Burg, acf(), pacf() (src/tsfstudio/tsfeat.py),
   optimize() (Brent_fmin), loess() for one predictor (loessc.c / loessf.f by W. S. Cleveland, E. Grosse and
   M. J. Shyu, in cpp/src/loess.cpp and src/tsfstudio/engines/r_loess.py); LINPACK dqrdc / dqrsl / dsvdc (R's src/appl)
   and the reference BLAS of R's src/extra/blas (ddot, daxpy, dscal, drot, dnrm2, drotg) in the same files;

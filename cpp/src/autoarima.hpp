@@ -22,7 +22,10 @@ StlOut stl(const Vec& x, double period, int s_window);
 
 // The stl.f procedure with explicit windows, degrees, jumps and inner iterations (statsmodels' STL uses other defaults).
 StlOut stl_core(const Vec& x, int period, int s_window, int t_window, int l_window, int s_deg, int t_deg, int l_deg,
-                int s_jump, int t_jump, int l_jump, int inner);
+                int s_jump, int t_jump, int l_jump, int inner, int outer = 0);
+// stats::stl(ts(x, frequency = period), s.window, robust): s.window = "periodic" when periodic (seasonal replaced by
+// its cycle means), else the numeric s_window; robust = TRUE runs 1 inner and 15 robustness iterations.
+StlOut r_stl(const Vec& x, double period, bool periodic, int s_window, bool robust);
 
 // forecast::seas.heuristic (via mstl) and nsdiffs(test = "seas", max.D = 1).
 double seas_heuristic(const Vec& x, int period);

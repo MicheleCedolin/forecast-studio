@@ -524,9 +524,12 @@ class AppService:
         try:
             progress("loading", 0, 1)
             ds, _ = self._load(ds_id)
+            from .. import tsfeat
             m = primary_period(seasonality_for(ds.frequency))
+            starts = list(ds.attrs["start_timestamp"]) if "start_timestamp" in ds.attrs.columns else None
             df = F.compute(ds.values, m=m, sets=sets, study_fft=study_fft, names=list(ds.series_names),
-                           progress=progress, cancel=job.cancel)
+                           progress=progress, cancel=job.cancel, periods=tsfeat.study_periods(ds.frequency),
+                           starts=starts)
             p = self._feat_path(ds_id, sets, study_fft)
             p.parent.mkdir(parents=True, exist_ok=True)
             tmp = p.with_suffix(".tmp")
@@ -576,6 +579,9 @@ class AppService:
                 summary.append({"name": c, "missing": int(df[c].isna().sum()), "levels": {str(k): int(v) for k, v in vc.items()}})
         groups = {"basic": [c for c in F.BASIC_NAMES if c in df.columns],
                   "catch22": [c for c in F.CATCH22_NAMES if c in df.columns]}
+        rest = [c for c in df.columns if c not in groups["basic"] and c not in groups["catch22"]]
+        if rest:
+            groups["tsfeatures"] = rest
         rows = df.head(max_rows)
         return clean({"status": "ready", "n_series": int(len(df)), "columns": list(df.columns), "groups": groups,
                       "summary": summary, "updated": p.stat().st_mtime, "truncated": len(df) > max_rows,

@@ -36,6 +36,8 @@
 #include "rstats.hpp"
 #include "simple_sf.hpp"
 #include "catch22/catch22.h"
+#include "fracdiff.hpp"
+#include "supsmu.hpp"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -261,6 +263,51 @@ TSF_API int tsf_catch22(const double* values, const int64_t* offsets, int32_t n_
     return 0;
 }
 TSF_API int32_t tsf_catch22_count() { return CATCH22_N; }
+
+// fracdiff::fracdiff(y, 0, 0, M = 100)$d (tsfeatures::hurst() is d + 0.5); NaN on failure.
+TSF_API double tsf_fracdiff_d(const double* y, int32_t n) {
+    try {
+        return tsf::fracdiff_d(std::vector<double>(y, y + n), 100);
+    } catch (...) {
+        return std::nan("");
+    }
+}
+
+// stats::stl(ts(x, frequency = period), s.window = "periodic" | s_window, robust): seasonal and trend into out_s, out_t.
+TSF_API int tsf_stl(const double* x, int32_t n, double period, int32_t periodic, int32_t s_window, int32_t robust,
+                    double* out_s, double* out_t) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
+    try {
+        const tsf::StlOut f = tsf::r_stl(Vec(x, x + n), period, periodic != 0, s_window, robust != 0);
+        std::copy(f.seasonal.begin(), f.seasonal.end(), out_s);
+        std::copy(f.trend.begin(), f.trend.end(), out_t);
+        return 0;
+    } catch (...) {
+        return 1;
+    }
+}
+
+// stats::supsmu(seq_len(n), y)$y (forecast::mstl's trend for non-seasonal series).
+TSF_API void tsf_supsmu(const double* y, int32_t n, double* out) {
+    std::vector<double> x(n);
+    for (int32_t i = 0; i < n; ++i) x[i] = i + 1.0;
+    const std::vector<double> s = tsf::supsmu(x, std::vector<double>(y, y + n));
+    std::copy(s.begin(), s.end(), out);
+}
+
+// tsfeatures::holt_parameters: forecast::ets(y, model = "AAN") (damped and undamped trend compared by AICc);
+// out = (alpha, beta). Returns 1 when ets fails.
+TSF_API int tsf_holt_params(const double* y, int32_t n, double* out) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
+    try {
+        const tsf::EtsResult f = tsf::ets_holt(Vec(y, y + n), 1);
+        out[0] = f.alpha;
+        out[1] = f.beta;
+        return 0;
+    } catch (...) {
+        return 1;
+    }
+}
 TSF_API const char* tsf_catch22_name(int32_t i) { return (i >= 0 && i < CATCH22_N) ? CATCH22_NAMES[i] : nullptr; }
 
 // Diagnostic hook: R's x ^ y as the C++ engine computes it.

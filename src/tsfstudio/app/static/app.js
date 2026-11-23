@@ -1035,8 +1035,9 @@ function renderCompare(runs, metricKeys) {
 
 // ================================================================================================ series features
 const FSETS = [["basic", "Basic", "Length, level, spread, share of zeros, ADI and CV² with the demand class, Box-Cox λ."],
-  ["catch22", "catch22", "The 22 canonical time-series characteristics of Lubba et al. (2019), computed by the C++ library."]];
-const FSTAGE = { loading: "Reading data", basic: "Basic features", catch22: "catch22 features" };
+  ["catch22", "catch22", "The 22 canonical time-series characteristics of Lubba et al. (2019), computed by the C++ library."],
+  ["tsfeatures", "tsfeatures", "The tsfeatures set of the ranking study (Hyndman et al.): shifts, autocorrelations, entropy, Holt parameters, Hurst, unit-root tests, nonlinearity, lumpiness, stability and STL trend/seasonal strength, ported from R and checked against the study's values. Slower: about a second per long series."]];
+const FSTAGE = { loading: "Reading data", basic: "Basic features", catch22: "catch22 features", tsfeatures: "tsfeatures" };
 S.feat = { sets: new Set(["basic", "catch22"]), study: false, data: null, job: null, err: null, busy: false };
 const featQuery = () => `dataset=${encodeURIComponent(S.sel.dataset)}&sets=${[...S.feat.sets].join(",")}&study=${S.feat.study ? 1 : 0}`;
 function featuresNote() {
