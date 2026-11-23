@@ -57,12 +57,14 @@ def test_metrics_info_covers_defaults():
 
 def test_param_schema_is_valid():
     for mid, info in MI.MODELS.items():
-        for eng in ("python", "r"):
+        for eng in ("python", "r", "cpp"):
             keys = MI.model_param_keys(mid, eng)
             assert len(keys) == len(set(keys)), f"{mid}/{eng}: yinelenen parametre"
         for p in info["params"]:
             assert p["kind"] in ("int", "float", "bool", "choice"), (mid, p["key"])
-            assert set(p["engines"]) <= {"python", "r"} and p["engines"]
+            assert set(p["engines"]) <= {"python", "r", "cpp"} and p["engines"]
+            if "cpp" in p["engines"]:                       # C++ shows a setting only where it accepts every value
+                assert MI.CPP_PARAMS.get(mid, set()) is None or p["key"] in MI.CPP_PARAMS[mid], (mid, p["key"])
             assert p["help"].strip() and p["label"].strip()
             if p["kind"] == "choice":
                 vals = [c["value"] for c in p["choices"]]
@@ -101,3 +103,13 @@ def test_build_catalog_marks_availability():
 def test_intermittent_group_warns_about_rounding(mid):
     txt = (MI.MODELS[mid]["caution"] + MI.MODELS[mid]["how"] + MI.MODELS[mid]["use"]).lower()
     assert "rounding" in txt, f"{mid}: no warning about rounding to integers"
+
+def test_cpp_engine_is_offered_for_its_methods():
+    """Every method of the C++ engine appears in the interface catalogue with a C++ note, and the catalogue marks it
+    available when the native library is present."""
+    from tsfstudio.engines.cpp_engine import CppEngine
+    meths = tuple(CppEngine.LOCAL_METHODS) + tuple(CppEngine.GLOBAL_METHODS)
+    for mid in meths:
+        assert "cpp" in MI.MODELS[mid]["engines"], mid
+    cat = {m["id"]: m for m in MI.build_catalog({"cpp": {"local": CppEngine.LOCAL_METHODS, "global": CppEngine.GLOBAL_METHODS}})}
+    assert all(cat[m]["engines"]["cpp"]["available"] for m in meths)

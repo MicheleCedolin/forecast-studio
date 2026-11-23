@@ -612,6 +612,49 @@ def model_param_keys(model_id: str, engine: str | None = None) -> list[str]:
     return [p["key"] for p in MODELS[model_id]["params"] if engine is None or engine in p["engines"]]
 
 
+# ------------------------------------------------------------------------------------------------ C++ engine
+# The C++ engine (engines/cpp_engine.py, native library tsfcore) offers the methods in CppEngine.LOCAL_METHODS /
+# GLOBAL_METHODS. Its notes say what it reproduces (cpp/README.md has the full validation); parameters are offered in
+# C++ only where the C++ engine accepts every value (elsewhere it runs the method's defaults and the setting is hidden).
+CPP = "cpp"
+_CPP_R = "Native C++ port of the R code; forecasts equal R's to rounding (cpp/README.md)."
+_CPP_PY = "Native C++ port of the Python engine's statsforecast model; forecasts equal the Python engine's to rounding."
+CPP_NOTES = {
+    "naive": "Native C++; same rule as the Python engine.", "snaive": _CPP_R, "drift": "Native C++; same rule as the Python engine.",
+    "ses": _CPP_R, "theta": _CPP_R, "naive2": _CPP_R, "comb_shd": _CPP_R,
+    "ets": "Native C++ port of R forecast::ets (incl. its small-sample branch and class-3 mean forecasts); equals R to rounding.",
+    "holt_winters": _CPP_R + " Additive errors only (the default).", "holt_ets": _CPP_R,
+    "arima": "Native C++ port of R auto.arima with the study's call chain; equals R to rounding.",
+    "dhr_arima": _CPP_R + " K = 1 Fourier terms (the study's setting).",
+    "tbats": "Native C++ port of R forecast::tbats; equals the study's R forecasts to rounding.",
+    "stl_ets": _CPP_R, "stl_arima": _CPP_R,
+    "bagged_ets": _CPP_R + " Runs n_boot = 100 and seed 0 (the defaults); other values need the Python engine.",
+    "thief": _CPP_R, "mapa": _CPP_R,
+    "scum": "Native C++: median of the C++ ets, auto_ces, arima and dotm (R-based ETS / ARIMA, so it differs slightly from the Python SCUM).",
+    "mstl": _CPP_PY + " The trend forecaster is the C++ (R) ETS.",
+    "pooled_regression": "Native C++ least squares (streamed QR); equals R glm to rounding.",
+    "catboost": "C++ drives the official CatBoost 1.2.10 programs (CatBoost's defaults); the same forecasts as the Python engine.",
+    "lightgbm": "C++ drives LightGBM's C library with the Python engine's parameters; the same forecasts bit for bit.",
+    "lightgbm_feat": "C++ builds the same features and drives LightGBM's C library; the same forecasts bit for bit.",
+}
+CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None}  # None: all
+
+
+def _wire_cpp() -> None:
+    from ..engines.cpp_engine import CppEngine
+    for mid in tuple(CppEngine.LOCAL_METHODS) + tuple(CppEngine.GLOBAL_METHODS):
+        if mid not in MODELS:
+            continue
+        MODELS[mid]["engines"].setdefault(CPP, CPP_NOTES.get(mid, _CPP_PY + " Runs the method's default settings."))
+        allowed = CPP_PARAMS.get(mid, set())
+        for p in MODELS[mid]["params"]:
+            if (allowed is None or p["key"] in allowed) and CPP not in p["engines"]:
+                p["engines"].append(CPP)
+
+
+_wire_cpp()
+
+
 def build_catalog(engine_methods: dict[str, dict | None]) -> list[dict]:
     """Model list for the interface. `engine_methods`: engine -> {"local": (...), "global": (...)} (unavailable engine: None).
 
@@ -619,7 +662,7 @@ def build_catalog(engine_methods: dict[str, dict | None]) -> list[dict]:
     out = []
     for mid, info in MODELS.items():
         engines = {}
-        for eng in (PY, R):
+        for eng in (PY, R, CPP):
             ms = engine_methods.get(eng)
             avail = bool(ms) and mid in tuple(ms.get(info["task"], ()))
             note = info["engines"].get(eng)

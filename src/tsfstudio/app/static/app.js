@@ -62,7 +62,9 @@ function fmtM(k, v) {
 const FREQ = { "4_seconds": "4-second", minutely: "minutely", "10_minutes": "10-minute", "15_minutes": "15-minute", half_hourly: "half-hourly",
   hourly: "hourly", daily: "daily", weekly: "weekly", monthly: "monthly", quarterly: "quarterly", yearly: "yearly" };
 const frq = f => FREQ[f] || f || "—";
-const ENGINE_NAME = { python: "Python", r: "R" };
+const ENGINE_NAME = { python: "Python", r: "R", cpp: "C++" };
+const ENGINES = ["python", "r", "cpp"];
+const ENGINE_SHORT = { python: "Py", r: "R", cpp: "C++" };
 const STAGE = { loading: "Reading data", prepare: "Preparing data", forecasting: "Generating forecasts", fitting: "Fitting models",
   metrics: "Computing error measures", writing: "Writing files", done: "Done", finished: "Forecasts ready", starting: "Starting" };
 
@@ -179,7 +181,7 @@ function modelNote(m, engine) {
     runIn("When to use.", m.use),
     runIn("Caution.", m.caution, "caution"),
     el("div", { class: "kv" },
-      ["python", "r"].map(k => m.engines[k].supported ? el("div", {}, el("b", { text: ENGINE_NAME[k] + " engine: " }),
+      ENGINES.map(k => m.engines[k] && m.engines[k].supported ? el("div", {}, el("b", { text: ENGINE_NAME[k] + " engine: " }),
         (m.engines[k].available ? "" : "not available on this machine. ") + (m.engines[k].note || "")) : null),
       el("div", {}, el("b", { text: "Run time: " }), m.cost)),
     refList(m.refs));
@@ -207,7 +209,7 @@ const SETTING_NOTES = {
   integer: ["Round to integers", "Rounds forecasts to the nearest integer. For count data (car_parts, M5, ...) the catalogue turns this ON, as in the reference study. Intermittent-demand methods forecast a flat demand rate (often below 0.5); rounding turns it into 0 and every forecast becomes 0."],
   missing: ["Missing values", "What to do about missing values in the training part. By default the run does not start, because the choice affects the results and we do not change data silently."],
   seed: ["Seed", "Reproducibility for methods that involve randomness. Most classical methods are deterministic; the seed is still written to the manifest."],
-  workers: ["Workers", "In the Python engine, series are run in this many parallel processes. The R engine runs on a single core on Windows. With 8 GB of memory we suggest 1-2."],
+  workers: ["Workers", "In the Python engine, series are run in this many parallel processes. The C++ engine uses this many threads (1 = all CPU cores). The R engine runs on a single core on Windows. With 8 GB of memory we suggest 1-2 for Python."],
   metrics: ["Measures", "The error measures to compute. Hover over a measure name to see its definition and what to watch out for."],
 };
 function settingNote(k, extra) {
@@ -253,7 +255,7 @@ function renderStatus() {
       el("p", { text: e.message })));
   };
   const mem = sys.free_memory_gb;
-  $("#status").replaceChildren(eng("python"), eng("r"),
+  $("#status").replaceChildren(...ENGINES.filter(k => sys.engines[k]).map(eng),
     el("span", { class: "st" }, el("i", { class: "dot" + (mem != null && mem < 1.5 ? " warn" : "") }), mem == null ? "Free memory unknown" : `Free memory ${nf1.format(mem)} GB`),
     el("button", { type: "button", class: "linkish", onclick: async () => {
       try { S.sys = await api("system?refresh=1"); S.models = await api("models"); renderStatus(); renderModel(); renderKosuDebounced(); toast("Status refreshed."); } catch (e) { toast(e.message, true); } } }, "Refresh"));
@@ -450,10 +452,10 @@ async function doUpload(file, fill, info) {
 
 // ================================================================================================ 2 MODEL
 function engineBadges(m) {
-  return ["python", "r"].map(k => {
+  return ENGINES.filter(k => m.engines[k]).map(k => {
     const e = m.engines[k];
-    if (!e.supported) return el("span", { class: "eng no", title: "Not available in this engine", text: k === "python" ? "Py" : "R" });
-    return el("span", { class: "eng" + (e.available ? "" : " miss"), text: k === "python" ? "Py" : "R", title: e.available ? "" : "Not installed" });
+    if (!e.supported) return el("span", { class: "eng no", title: "Not available in this engine", text: ENGINE_SHORT[k] });
+    return el("span", { class: "eng" + (e.available ? "" : " miss"), text: ENGINE_SHORT[k], title: e.available ? "" : "Not installed" });
   });
 }
 function renderModel() {
@@ -468,7 +470,7 @@ function renderModel() {
       return el("div", { class: "group" }, el("h3", { text: g.title }), el("p", { text: g.text }),
         ms.map(m => {
           const on = S.sel.method === m.id;
-          const any = ["python", "r"].some(k => m.engines[k].available);
+          const any = ENGINES.some(k => m.engines[k] && m.engines[k].available);
           const row = el("div", { class: "mrow", role: "radio", "aria-checked": String(on), tabindex: 0, "data-id": m.id, onclick: () => selectModel(m.id),
             onkeydown: ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectModel(m.id); } } },
             el("span", { class: "t" }, on ? el("span", { class: "hl", text: m.name }) : m.name, studied.has(m.id) ? el("span", { class: "studied", text: "used in the reference study" }) : null),
@@ -484,12 +486,12 @@ function renderEnginePick() {
   const host = $("#enginepick"); if (!host) return;
   const m = curModel();
   if (!m) { host.replaceChildren(); return; }
-  const opts = ["python", "r"].filter(k => m.engines[k].supported);
+  const opts = ENGINES.filter(k => m.engines[k] && m.engines[k].supported);
   host.replaceChildren(el("div", { class: "enginepick" }, el("span", { text: "Engine:" }),
     el("div", { class: "seg", role: "group", "aria-label": "Engine" }, opts.map(k => bindNote(el("button", { type: "button", "aria-pressed": String(S.sel.engine === k),
       onclick: () => setEngine(k) }, ENGINE_NAME[k] + (m.engines[k].available ? "" : " (unavailable)")), () => el("div", {}, el("h3", { text: ENGINE_NAME[k] + " engine" }), el("p", { text: m.engines[k].note || "" }),
       m.engines[k].available ? null : runIn("Unavailable.", ((S.sys.engines[k].message) || "") , "caution"))))),
-    opts.length === 1 ? el("span", { class: "hint", text: "This method exists only in the " + ENGINE_NAME[opts[0]] + " engine." }) : el("span", { class: "hint", text: "The R engine runs the original R code of the reference study; the Python engine uses its own libraries." })));
+    opts.length === 1 ? el("span", { class: "hint", text: "This method exists only in the " + ENGINE_NAME[opts[0]] + " engine." }) : el("span", { class: "hint", text: "The R engine runs the original R code of the reference study; the Python engine uses its own libraries; the C++ engine is a fast native port (of the R code, or of the Python model where noted)." })));
 }
 function setEngine(k) {
   S.sel.engine = k; store.set("sel", S.sel);
@@ -498,8 +500,9 @@ function setEngine(k) {
 function selectModel(id, silent) {
   const m = model(id); if (!m) return;
   S.sel.method = id;
-  const avail = ["python", "r"].filter(k => m.engines[k].supported && m.engines[k].available);
-  if (!m.engines[S.sel.engine] || !m.engines[S.sel.engine].supported || (!m.engines[S.sel.engine].available && avail.length)) S.sel.engine = avail[0] || (m.engines.python.supported ? "python" : "r");
+  const avail = ENGINES.filter(k => m.engines[k] && m.engines[k].supported && m.engines[k].available);
+  if (!m.engines[S.sel.engine] || !m.engines[S.sel.engine].supported || (!m.engines[S.sel.engine].available && avail.length))
+    S.sel.engine = avail[0] || ENGINES.find(k => m.engines[k] && m.engines[k].supported) || "python";
   S.autoOff = false;
   if (m.group !== "aralikli" && S.settings.integer === "off" && S.autoOff === false && S._autoOffSet) { S.settings.integer = "auto"; }
   S._autoOffSet = false;

@@ -116,7 +116,7 @@ class AppService:
             if self._engine_cache and not refresh and time.time() - self._engine_cache[0] < 90:
                 return self._engine_cache[1]
         out = {}
-        for name in ("python", "r"):
+        for name in ("python", "r", "cpp"):
             eng = get_engine(name)
             try:
                 ok, msg = eng.available()
@@ -304,7 +304,7 @@ class AppService:
         engine = payload.get("engine") or "python"
         if method not in MI.MODELS:
             raise AppError(f"Unknown method: {method!r}")
-        if engine not in ("python", "r"):
+        if engine not in ("python", "r", "cpp"):
             raise AppError(f"Unknown engine: {engine!r}")
         info = MI.MODELS[method]
         if engine not in info["engines"]:
