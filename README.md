@@ -87,7 +87,8 @@ ended. Set-up, the SLURM script, the time estimate and the output tables are in 
 bash scripts/hpc/setup.sh                                                    # login node: .venv + tsfcore.so + checks
 python -m tsfstudio sweep --out results/sweep --methods study --dry-run      # the plan
 PROBE=20 sbatch --time=02:00:00 scripts/hpc/sweep.sbatch                     # projected time from 20 series per dataset
-sbatch scripts/hpc/sweep.sbatch                                              # the run
+sbatch scripts/hpc/sweep.sbatch                                              # the run (32 cores: 4 tasks at a time x 8 threads)
+bash scripts/hpc/run_sweep.sh                                                # the same on a machine without SLURM
 ```
 
 ## Loading data from Excel
@@ -153,7 +154,7 @@ docs/APP.md                  interface: use, security, limits, references
 docs/DOCKER_WINDOWS.md       installation, .wslconfig, troubleshooting
 docs/VALIDATION.md           golden tests: what, how, results
 docs/HPC.md                  cluster runs: set-up, SLURM script, time estimate, outputs, agreement on Linux
-Dockerfile, docker-compose.yml, docker/, scripts/windows/, scripts/hpc/ (setup.sh, sweep.sbatch)
+Dockerfile, docker-compose.yml, docker/, scripts/windows/, scripts/hpc/ (setup.sh, sweep.sbatch, run_sweep.sh)
 ```
 
 Language note: the interface, the run messages and the CLI output are in English. Source comments, the older documents (`docs/METRICS.md`, `docs/CHANGES_R.md`, `docs/PYTHON_ENGINE.md`, `docs/VALIDATION.md`, `docs/DOCKER_WINDOWS.md`) and the Windows set-up scripts are still in Turkish.

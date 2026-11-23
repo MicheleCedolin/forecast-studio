@@ -206,7 +206,7 @@ def _cmd_sweep(a) -> int:
                        data_dir=a.data_dir, threads=a.threads, task_timeout=a.task_timeout * 60 if a.task_timeout else None,
                        missing_policy=a.missing_policy, metrics=metrics, max_series=a.max_series, probe=a.probe, seed=a.seed,
                        lag=a.lag, horizon=a.horizon, origins=a.origins, force=a.force, retry_failed=a.retry_failed,
-                       rerun=a.rerun, in_process=a.in_process, array_index=a.array_index, report=not a.no_report,
+                       rerun=a.rerun, in_process=a.in_process, array_index=a.array_index, jobs=a.jobs, report=not a.no_report,
                        dry_run=a.dry_run, echo=lambda m: print(m, flush=True))
     except S.SweepError as exc:
         print("ERROR:", exc)
@@ -658,8 +658,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--exclude-methods", action="append", help="comma list of methods to leave out")
     sp.add_argument("--engine", default="cpp", help="cpp (default) | python | r | python-baseline")
     sp.add_argument("--data-dir", default=None, help="default: $TSFSTUDIO_DATA_DIR or data/tsf")
+    sp.add_argument("--jobs", type=int, default=1, metavar="J",
+                    help="tasks ((dataset, method) pairs) running at the same time (default 1); J x threads should equal the cores")
     sp.add_argument("--threads", type=int, default=None,
-                    help="threads per task, fixed exactly (default: the cores granted by the scheduler, else those available)")
+                    help="threads per task, fixed exactly (default: the cores granted by the scheduler, else those available, divided by --jobs)")
     sp.add_argument("--task-timeout", type=float, default=None, metavar="MINUTES",
                     help="stop a task after this many minutes and go on (state 'timeout'); default: no limit")
     sp.add_argument("--missing-policy", choices=("error", "zero", "locf", "interpolate"), default="error",

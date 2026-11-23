@@ -143,3 +143,14 @@ def test_cpp_thread_count_is_fixed_by_the_environment(monkeypatch):
     monkeypatch.setenv("TSFSTUDIO_CPP_THREADS", "0")
     with pytest.raises(EngineError):
         C.fixed_threads()
+
+
+def test_parallel_jobs_give_the_same_results_as_one_at_a_time(data, tmp_path):
+    rc1, _ = _sweep(data, tmp_path / "seq")
+    rc4, lines = _sweep(data, tmp_path / "par", jobs=4)
+    assert rc1 == 0 and rc4 == 0 and any("4 task(s) at a time x 1 thread(s)" in ln for ln in lines)
+    a = pd.read_csv(tmp_path / "seq" / "report" / "errors_per_series.csv.gz")
+    b = pd.read_csv(tmp_path / "par" / "report" / "errors_per_series.csv.gz")
+    pd.testing.assert_frame_equal(a, b)
+    res = pd.read_csv(tmp_path / "par" / "report" / "results.csv")
+    assert len(res) == 4 and (res["state"] == "done").all() and (res["concurrent_tasks"] == 4).all()

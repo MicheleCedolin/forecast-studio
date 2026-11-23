@@ -2,7 +2,8 @@
 
     python -m tsfstudio sweep --datasets all --methods study --out results/sweep1 --threads 8
 
-One task = one (dataset, method) pair = one `runner.run`. Each task runs in its own Python process, so a task that
+One task = one (dataset, method) pair = one `runner.run`. `--jobs J` runs J tasks at the same time, each with
+`--threads T` threads inside the engine (J x T = the cores of the job). Each task runs in its own Python process, so a task that
 crashes, runs out of memory or exceeds `--task-timeout` is recorded and the sweep goes on with the next one. A sweep that
 is started again with the same `--out` skips the tasks that already finished, so a job that hit the wall-time limit of the
 scheduler is continued by submitting it again.
@@ -334,45 +335,49 @@ def _cpu_model() -> str | None:
     return platform.processor() or None
 
 
-def _spawn(spec: dict, timeout: float | None) -> tuple[str, str]:
-    """Runs the task in a child process. Returns (state override or '', message)."""
-    d = Path(spec["dir"])
-    d.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ)
-    src = str(Path(__file__).resolve().parents[1])
-    env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    with open(d / "log.txt", "ab") as log:
-        log.write(f"\n=== {_now()} {spec['dataset']} / {spec['method']} ===\n".encode())
-        log.flush()
-        proc = subprocess.Popen([sys.executable, "-m", "tsfstudio", "sweep-task", json.dumps(spec)], stdout=log,
-                                stderr=subprocess.STDOUT, env=env, start_new_session=(os.name != "nt"))
+class _Child:
+    """One task running in its own Python process."""
 
-        def kill():
-            try:
-                if os.name != "nt":
-                    os.killpg(proc.pid, signal.SIGKILL)     # the task and what it started (the CatBoost program)
-                else:
-                    proc.kill()
-            except OSError:
-                pass
-            proc.wait()
+    def __init__(self, spec: dict, index: int):
+        self.spec, self.index, self.dir, self.t0 = spec, index, Path(spec["dir"]), time.time()
+        self.dir.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ)
+        src = str(Path(__file__).resolve().parents[1])
+        env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        self.log = open(self.dir / "log.txt", "ab")
+        self.log.write(f"\n=== {_now()} {spec['dataset']} / {spec['method']} ===\n".encode())
+        self.log.flush()
+        self.proc = subprocess.Popen([sys.executable, "-m", "tsfstudio", "sweep-task", json.dumps(spec)], stdout=self.log,
+                                     stderr=subprocess.STDOUT, env=env, start_new_session=(os.name != "nt"))
 
+    def kill(self) -> None:
         try:
-            rc = proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            kill()
-            return "timeout", f"stopped after the task time limit of {format_duration(timeout)}"
-        except BaseException:
-            kill()
-            raise
-    st = read_status(d)
-    if st is not None and st.get("state") in ("done", "failed"):
-        return "", ""
-    if rc == -signal.SIGTERM:                               # the scheduler ends the job: run it again next time
-        return "interrupted", "the task process was terminated (scheduler time limit or cancel)"
-    why = f"signal {-rc}" if rc < 0 else f"exit code {rc}"
-    hint = " (killed: usually the memory limit of the job)" if rc == -9 else ""
-    return "crashed", f"the task process ended with {why}{hint}; see log.txt"
+            if os.name != "nt":
+                os.killpg(self.proc.pid, signal.SIGKILL)    # the task and what it started (the CatBoost program)
+            else:
+                self.proc.kill()
+        except OSError:
+            pass
+        self.proc.wait()
+        self.log.close()
+
+    def poll(self, timeout: float | None) -> tuple[str, str] | None:
+        """None while running; else (state override or '', message)."""
+        rc = self.proc.poll()
+        if rc is None:
+            if timeout is not None and time.time() - self.t0 > timeout:
+                self.kill()
+                return "timeout", f"stopped after the task time limit of {format_duration(timeout)}"
+            return None
+        self.log.close()
+        st = read_status(self.dir)
+        if st is not None and st.get("state") in ("done", "failed"):
+            return "", ""
+        if rc == -signal.SIGTERM:                           # the scheduler ends the job: run it again next time
+            return "interrupted", "the task process was terminated (scheduler time limit or cancel)"
+        why = f"signal {-rc}" if rc < 0 else f"exit code {rc}"
+        hint = " (killed: usually the memory limit of the job)" if rc == -9 else ""
+        return "crashed", f"the task process ended with {why}{hint}; see log.txt"
 
 
 def sweep(datasets: Sequence[str], methods: Sequence[str], out: str | Path, *, engine: str = "cpp",
@@ -381,10 +386,14 @@ def sweep(datasets: Sequence[str], methods: Sequence[str], out: str | Path, *, e
           metrics: Sequence[str] = DEFAULT_METRICS, max_series: int | None = None, probe: int | None = None,
           seed: int = 1, lag: int | None = None, horizon: int | None = None, origins: int = 1, force: bool = False,
           retry_failed: bool = False, rerun: bool = False, in_process: bool = False, array_index: int | None = None,
+          jobs: int = 1,
           report: bool = True, dry_run: bool = False, echo=print) -> int:
-    """Runs the plan; returns 0 when every task of this invocation is done, 1 when some failed, 143 when stopped."""
+    """Runs the plan; returns 0 when every task of this invocation is done, 1 when some failed, 143 when stopped.
+    `jobs` tasks run at the same time, each with `threads` threads (default: the granted cores divided by `jobs`)."""
     out = Path(out) / "probe" if probe else Path(out)
-    threads = int(threads or default_threads())
+    jobs = 1 if in_process else max(1, int(jobs or 1))
+    cores = default_threads()
+    threads = int(threads or max(1, cores // jobs))
     plan, notes = build_plan(datasets, methods, engine=engine, exclude_datasets=exclude_datasets,
                              exclude_methods=exclude_methods, data_dir=data_dir, lag=lag)
     ds_order = list(dict.fromkeys(p["dataset"] for p in plan))
@@ -396,8 +405,11 @@ def sweep(datasets: Sequence[str], methods: Sequence[str], out: str | Path, *, e
         report = False
     for n in notes:
         echo(f"NOTE: {n}")
+    if jobs * threads > cores:
+        echo(f"NOTE: {jobs} tasks x {threads} threads = {jobs * threads} exceeds the {cores} cores available; "
+             "tasks will share cores and the recorded times will be longer than on free cores.")
     echo(f"Plan: {len(plan)} tasks on {len(dict.fromkeys(p['dataset'] for p in plan))} datasets | engine {engine} | "
-         f"{threads} thread(s) | output {out}" + (f" | probe on {probe} series per dataset" if probe else ""))
+         f"{jobs} task(s) at a time x {threads} thread(s) | output {out}" + (f" | probe on {probe} series per dataset" if probe else ""))
     if dry_run:
         for i, ds in enumerate(ds_order):
             ms = [p["method"] for p in plan if p["dataset"] == ds]
@@ -413,7 +425,7 @@ def sweep(datasets: Sequence[str], methods: Sequence[str], out: str | Path, *, e
         fh.write(json.dumps({
             "started_utc": _now(), "argv": sys.argv, "datasets": list(datasets), "methods": list(methods),
             "exclude_datasets": list(exclude_datasets), "exclude_methods": list(exclude_methods), "options": opts,
-            "task_timeout_sec": task_timeout, "array_index": array_index, "n_tasks": len(plan), "host": socket.gethostname(),
+            "task_timeout_sec": task_timeout, "array_index": array_index, "jobs": jobs, "n_tasks": len(plan), "host": socket.gethostname(),
             "cpu": _cpu_model(), "cpu_count": os.cpu_count(), "platform": platform.platform(),
             "scheduler": {k: v for k, v in os.environ.items() if k in (
                 "SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID", "SLURM_JOB_PARTITION", "SLURM_CPUS_PER_TASK",
@@ -431,47 +443,74 @@ def sweep(datasets: Sequence[str], methods: Sequence[str], out: str | Path, *, e
     counts = {"done": 0, "skipped": 0, "failed": 0}
     rc = 0
     t_sweep = time.time()
+    running: list[_Child] = []
+
+    def head(i: int, p: dict) -> str:
+        return f"[{i}/{len(plan)}] {p['dataset']} / {p['method']}"
+
+    def finish(i: int, p: dict, d: Path, state: str, msg: str, t0: float) -> None:
+        nonlocal rc
+        st = read_status(d) or dict(p, engine=engine, threads=threads, sample=probe)
+        if state:                                           # timeout / crash: the child could not write its own end
+            st.update(state=state, message=msg, finished_utc=_now())
+        st.update(wall_sec=time.time() - t0, isolated=not in_process, concurrent_tasks=jobs)
+        _write_json(d / STATUS, st)
+        if st["state"] == "done":
+            counts["done"] += 1
+            s = st.get("summary", {})
+            key = next((k for k in ("MASE", "SMAPE") if k in s), next(iter(s), None))
+            err = f" | mean {key} {s[key]['mean']:.4f}" if key and s[key]["mean"] is not None else ""
+            echo(f"{head(i, p)}: done | {st['n_series']} series | engine {st['engine_sec']:.2f} s{err}"
+                 + (f" | {st['fallbacks']} fallbacks" if st.get("fallbacks") else ""))
+        else:
+            counts["failed"] += 1
+            rc = 1
+            echo(f"{head(i, p)}: {st['state'].upper()} | {str(st.get('message', ''))[:300]}")
+
+    def reap(block: bool) -> None:
+        """Collects finished tasks; with `block`, waits until at least one slot is free."""
+        while running:
+            for c in list(running):
+                res = c.poll(task_timeout)
+                if res is not None:
+                    running.remove(c)
+                    finish(c.index, c.spec, c.dir, res[0], res[1], c.t0)
+            if not block or len(running) < jobs:
+                return
+            time.sleep(0.05)
+
+    current: tuple[dict, Path] | None = None                # the task of an in-process run
     try:
         for i, p in enumerate(plan, 1):
             d = task_dir(out, p["dataset"], p["method"])
             st = read_status(d)
-            head = f"[{i}/{len(plan)}] {p['dataset']} / {p['method']}"
             if st is not None and not rerun and (st.get("state") == "done" or (st.get("state") in BAD_STATES and not retry_failed)):
                 counts["skipped"] += 1
-                echo(f"{head}: already {st['state']}, skipped")
+                echo(f"{head(i, p)}: already {st['state']}, skipped")
                 continue
             spec = dict(p, opts=opts, dir=str(d))
-            echo(f"{head}: started {datetime.now().strftime('%H:%M:%S')}")
-            t0 = time.time()
-            try:
-                if in_process:
-                    state, msg = "", ""
-                    run_task(spec)
-                else:
-                    state, msg = _spawn(spec, task_timeout)
-            except _Stop:
-                st = read_status(d) or dict(p, engine=engine, threads=threads)
-                st.update(state="interrupted", message="the sweep was stopped (scheduler time limit or cancel) during this task",
-                          finished_utc=_now())
-                _write_json(d / STATUS, st)
-                raise
-            st = read_status(d) or dict(p, engine=engine, threads=threads, sample=probe)
-            if state:                                       # timeout / crash: the child could not write its own end
-                st.update(state=state, message=msg, finished_utc=_now())
-            st.update(wall_sec=time.time() - t0, isolated=not in_process)
-            _write_json(d / STATUS, st)
-            if st["state"] == "done":
-                counts["done"] += 1
-                s = st.get("summary", {})
-                key = next((k for k in ("MASE", "SMAPE") if k in s), next(iter(s), None))
-                err = f" | mean {key} {s[key]['mean']:.4f}" if key and s[key]["mean"] is not None else ""
-                echo(f"{head}: done | {st['n_series']} series | engine {st['engine_sec']:.2f} s{err}"
-                     + (f" | {st['fallbacks']} fallbacks" if st.get("fallbacks") else ""))
+            reap(block=len(running) >= jobs)
+            echo(f"{head(i, p)}: started {datetime.now().strftime('%H:%M:%S')}")
+            if in_process:
+                current, t0 = (p, d), time.time()
+                run_task(spec)
+                current = None
+                finish(i, p, d, "", "", t0)
             else:
-                counts["failed"] += 1
-                rc = 1
-                echo(f"{head}: {st['state'].upper()} | {str(st.get('message', ''))[:300]}")
+                running.append(_Child(spec, i))
+        while running:
+            reap(block=False)
+            time.sleep(0.05)
     except _Stop:
+        stopped = [(c.spec, c.dir) for c in running] + ([current] if current else [])
+        for c in running:
+            c.kill()
+        for p, d in stopped:
+            st = read_status(d) or dict(p, engine=engine, threads=threads)
+            if st.get("state") not in ("done", "failed"):
+                st.update(state="interrupted", finished_utc=_now(),
+                          message="the sweep was stopped (scheduler time limit or cancel) during this task")
+                _write_json(d / STATUS, st)
         echo("Stopped by a signal; the finished tasks are kept. Start the same command again to continue.")
         rc = 143
     finally:
@@ -513,7 +552,8 @@ def build_report(out: str | Path) -> Path:
         row = {"dataset": st.get("dataset"), "task": st.get("task"), "method": st.get("method"), "engine": st.get("engine"),
                "state": state, "n_series": st.get("n_series"), "n_series_total": st.get("n_series_total"),
                "n_excluded": st.get("n_excluded"), "frequency": st.get("frequency"), "horizon": st.get("horizon"),
-               "lag": st.get("lag"), "threads": st.get("threads"), "fallbacks": st.get("fallbacks")}
+               "lag": st.get("lag"), "threads": st.get("threads"), "concurrent_tasks": st.get("concurrent_tasks"),
+               "fallbacks": st.get("fallbacks")}
         for m, v in (st.get("summary") or {}).items():
             row[f"mean_{m}"], row[f"median_{m}"] = v["mean"], v["median"]
             long_rows.append({"dataset": row["dataset"], "task": row["task"], "method": row["method"], "measure": m, **v})

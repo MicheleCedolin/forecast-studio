@@ -5,8 +5,9 @@ each task the error measures, the computation time and the memory, and for every
 made for unattended jobs: a task that fails, runs out of memory or exceeds its time limit is recorded and the sweep goes
 on; a job that the scheduler stops is continued by submitting the same command again.
 
-The job script is written for SLURM (`scripts/hpc/sweep.sbatch`). On another scheduler only that file changes; the
-`sweep` command is the same.
+Two launchers take the same variables: `scripts/hpc/sweep.sbatch` for SLURM, and `scripts/hpc/run_sweep.sh` for a machine
+without a scheduler (a server reached by ssh; it runs in the background with `nohup`). On another scheduler only the
+launcher changes; the `sweep` command is the same.
 
 ## 1. Set-up (once, on the login node)
 
@@ -85,6 +86,35 @@ Continuing: submit the same command again. Finished tasks are skipped; a task th
 `--retry-failed` is given (`SWEEP_EXTRA="--retry-failed"`). Keep `SWEEP_TASK_TIMEOUT_MIN` below the job's `--time`, so
 that one task cannot use up the whole job. New methods or datasets can be added later to the same `--out` folder.
 
+Without a scheduler:
+
+```bash
+bash scripts/hpc/run_sweep.sh                      # SWEEP_CORES=32: 4 tasks at a time x 8 threads, in the background
+tail -f results/sweep/sweep.log                    # follow it
+kill "$(cat results/sweep/sweep.pid)"              # stop it; running tasks are recorded as interrupted
+```
+
+### Using the cores
+
+Two levels, `--jobs J` x `--threads T` = the cores (`SWEEP_JOBS`, `SWEEP_THREADS`; with 32 cores the launchers default to
+4 x 8):
+
+- `--jobs J`: J (dataset, method) tasks run at the same time, each in its own process.
+- `--threads T`: inside a task the C++ library spreads the series over T threads. Global models and datasets with fewer
+  series than T cannot use all of them.
+
+| Setting (32 cores) | Use |
+|---|---|
+| `SWEEP_JOBS=4 SWEEP_THREADS=8` (default) | a balance: small tasks overlap, long ones still get 8 threads |
+| `SWEEP_JOBS=32 SWEEP_THREADS=1` | single-thread times for every task while all cores work; the longest task (for example ARIMA or TBATS on tens of thousands of series) then runs on one core and decides when the sweep ends |
+| `SWEEP_JOBS=1 SWEEP_THREADS=32` | one task at a time: the least disturbed timings, idle cores during small or global tasks |
+
+Forecasts and errors do not depend on the setting. Times do, slightly: tasks that run side by side share memory
+bandwidth and the processor's frequency headroom. On 4 cores, NN5 weekly + daily, 38 tasks: one at a time 80 s, four at
+a time 22 s, with the same summed `engine_sec` (38.2 s and 38.3 s). `results.csv` records `threads` and
+`concurrent_tasks` for every task. Memory adds up over the J tasks (each holds its dataset), so lower J for the large
+files if the job is killed for memory (state `crashed`, "signal 9").
+
 ## 5. Outputs
 
 ```
@@ -124,7 +154,7 @@ Times, all in seconds:
 | `peak_rss_mb` | peak resident memory of the task process (megabytes) |
 
 For a comparison of computation times, report `engine_sec` together with `threads`, the CPU model and the node
-(`sweep_runs.jsonl`). `--threads 1` gives single-thread times; with more threads `cpu_sec` stays close to the
+(`sweep_runs.jsonl`). `--threads 1` gives single-thread times (see "Using the cores"); with more threads `cpu_sec` stays close to the
 single-thread cost while `engine_sec` falls. The thread count is fixed exactly (`TSFSTUDIO_CPP_THREADS`): without it
 the library would start one thread per core of the node, not per core granted to the job. Timings taken while other
 array tasks share the node are noisier than those of an exclusive node (`#SBATCH --exclusive`).
