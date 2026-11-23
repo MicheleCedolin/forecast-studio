@@ -28,6 +28,7 @@ from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
 import numpy as np
 
+from . import py_deep as DL
 from . import py_global as G
 from . import py_models as M
 from . import py_sf as S
@@ -140,17 +141,19 @@ def _mp_context():
 class PythonEngine(Engine):
     name = "python"
     LOCAL_METHODS = NATIVE_LOCAL + tuple(SF_LOCAL)          # üst küme; `methods()` kuruluma göre süzer
-    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat")
+    GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat", "nhits", "chronos")
     # Bellek: pooled_regression akış hâlinde (tasarım matrisi yok); catboost float32 matris + Pool kopyası;
     # lightgbm float64 matris + kutulanmış Dataset (matrisin yaklaşık 1/8'i).
-    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5, "lightgbm_feat": 2.0}
+    MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5, "lightgbm_feat": 2.0, "nhits": None,
+                     "chronos": None}
 
     def methods(self) -> dict[str, tuple[str, ...]]:
         local = list(NATIVE_LOCAL)
         if S.sf_available():
             local += [k for k, cls in SF_LOCAL.items() if S.has_model(cls) and not S.missing_requirements(k)]
         glob = (["pooled_regression"] + (["catboost"] if G.catboost_available() else [])
-                + (["lightgbm", "lightgbm_feat"] if G.lightgbm_available() else []))
+                + (["lightgbm", "lightgbm_feat"] if G.lightgbm_available() else [])
+                + (["nhits"] if DL.nhits_available() else []) + (["chronos"] if DL.chronos_available() else []))
         return {"local": tuple(local), "global": tuple(glob)}
 
     def versions(self) -> dict:
@@ -163,6 +166,7 @@ class PythonEngine(Engine):
         if G.lightgbm_available():
             import lightgbm
             v["lightgbm"] = lightgbm.__version__
+        v.update(DL.versions())
         return v
 
     def available(self) -> tuple[bool, str]:
@@ -297,6 +301,13 @@ class PythonEngine(Engine):
                 seas = [float(v) for v in np.asarray(job.seasonality, dtype=np.float64).reshape(-1)] or [1.0]
                 f, info = G.lightgbm_feat_forecast(job.train, lag, H, max(1, int(np.floor(max(seas)))), max_obs,
                                                    (job.params or {}).get("lightgbm"), job.workers)
+            elif job.method == "nhits":
+                f = DL.nhits_forecast(job.train, H, lag, (job.params or {}).get("nhits"), job.seed, job.workers)
+                return f, [], ["N-HiTS: one global network (neuralforecast); input window = lag."]
+            elif job.method == "chronos":
+                f = DL.chronos_forecast(job.train, H, (job.params or {}).get("chronos"), job.workers)
+                return f, [], ["Chronos-Bolt, zero-shot (no training); lag is not used. Its pretraining data include "
+                               "public benchmark sets (M4, Monash), so scores on them may be optimistic."]
             else:
                 f, info = G.catboost_forecast(job.train, lag, H, max_obs, (job.params or {}).get("catboost"), job.workers)
         except ValueError as exc:

@@ -62,6 +62,11 @@ REFS = {
     "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
                    "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
                    "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
+    "challu2023": _ref("Challu, C., Olivares, K. G., Oreshkin, B. N., Garza Ramirez, F., Mergenthaler Canseco, M., & Dubrawski, A. "
+                       "(2023). NHITS: Neural hierarchical interpolation for time series forecasting. Proceedings of the AAAI "
+                       "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854"),
+    "ansari2024": _ref("Ansari, A. F., Stella, L., Turkmen, C., Zhang, X., Mercado, P., Shen, H., et al. (2024). Chronos: Learning the "
+                       "language of time series. Transactions on Machine Learning Research.", "https://openreview.net/forum?id=gerNCVqqtR"),
     "montero2021": _ref("Montero-Manso, P., & Hyndman, R. J. (2021). Principles and algorithms for forecasting groups of time series: locality "
                         "and globality. International Journal of Forecasting, 37(4), 1632–1653.",
                         "https://econpapers.repec.org/RePEc:eee:intfor:v:37:y:2021:i:4:p:1632-1653", True),
@@ -564,6 +569,38 @@ MODELS: dict[str, dict] = {
         "engines": {PY: "Requires the lightgbm Python package. The C++ engine builds the same features and gives the same forecasts bit for bit. "
                         "This method does not exist in the R engine."},
         "params": LIGHTGBM_PARAMS, "refs": ["ke2017", "makridakis2022", "montero2021"], "cost": "About the cost of LightGBM; NN5 daily about 1 s in C++.",
+    },
+    "nhits": {
+        "name": "N-HiTS (deep learning)", "group": "kuresel", "task": "global",
+        "summary": "A global neural network (MLP stacks with multi-rate pooling) trained on all series at once.",
+        "how": "Windows of the last 'lag' observations of every series are robust-scaled and fed to N-HiTS, which forecasts the whole "
+               "horizon in one step (no recursion), with hierarchical interpolation across scales. Trained with Adam on MAE for a "
+               "fixed number of steps; the seed fixes the result on one machine.",
+        "use": "Many series with long horizons; a modern deep-learning baseline.",
+        "caution": "Takes tens of seconds to minutes on the CPU. Results can vary slightly between machines (floating point in PyTorch). "
+                   "Series shorter than the window are zero-padded at the start.",
+        "engines": {PY: "Requires torch and neuralforecast (optional extras; installed on this machine). Not in the R engine."},
+        "params": [P("nhits.max_steps", "Training steps", "int", 500, "Number of training steps (mini-batches).", min=10, max=20000,
+                     engines=("python",)),
+                   P("nhits.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1, step=0.0001,
+                     engines=("python",), advanced=True)],
+        "refs": ["challu2023"], "cost": "NN5 weekly, 111 series, 100 steps: about 25 s on the CPU.",
+    },
+    "chronos": {
+        "name": "Chronos-Bolt (foundation model)", "group": "kuresel", "task": "global",
+        "summary": "A pretrained time-series foundation model used zero-shot: no training on your data.",
+        "how": "Each series (its last 2048 values at most) is given as context to Chronos-Bolt, a T5-based model pretrained on a large "
+               "collection of real and synthetic series; it returns quantile forecasts for the whole horizon and the median is used.",
+        "use": "A strong reference without any model fitting; useful to check how far fitted models are from a foundation model.",
+        "caution": "Its pretraining corpus includes public benchmark data (M4 and Monash datasets among them), so scores on those "
+                   "datasets may be optimistic (leakage) and must be reported as such. The weights (about 200 MB for 'small') are "
+                   "downloaded once from Hugging Face. 'lag' is not used.",
+        "engines": {PY: "Requires torch and chronos-forecasting (optional extras; installed on this machine). Not in the R engine."},
+        "params": [P("chronos.model", "Model size", "choice", "amazon/chronos-bolt-small", "Larger models are slower and somewhat "
+                     "more accurate.", choices=[("amazon/chronos-bolt-tiny", "tiny (9M)"), ("amazon/chronos-bolt-mini", "mini (21M)"),
+                                                ("amazon/chronos-bolt-small", "small (48M)"), ("amazon/chronos-bolt-base", "base (205M)")],
+                     engines=("python",))],
+        "refs": ["ansari2024"], "cost": "NN5 weekly, 111 series: a few seconds after the first download.",
     },
 }
 
