@@ -9,6 +9,9 @@ in one call and are spread over CPU threads inside C++.
 winget install BrechtSanders.WinLibs.POSIX.UCRT     # portable GCC + CMake, no admin rights (once)
 powershell -ExecutionPolicy Bypass -File cpp\build.ps1
 ```
+Linux (clusters): `bash cpp/build.sh` builds `src/tsfstudio/native/tsfcore.so` with the same flags; see docs/HPC.md for
+batch runs and for the agreement checks on Linux.
+
 The DLL is copied to `src/tsfstudio/native/tsfcore.dll` (not in git). It links the GCC runtime statically and depends only on
 Windows system DLLs. GitHub Actions builds it with MSVC (`-Generator ""`) for the release package.
 
