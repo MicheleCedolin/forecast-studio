@@ -641,5 +641,10 @@
     refresh();
   };
   worker.onerror = (e) => { endRun(); status("The engine could not be loaded: " + (e.message || "unknown error"), true); };
+  if (location.protocol === "file:") {
+    // a browser does not start the engine for a page opened from a file
+    status("This page was opened as a file, so the engine cannot start. Open it from its web address instead.", true);
+    $("runWhy").textContent = "";
+  }
   learnReady.then(refresh);
 })();
