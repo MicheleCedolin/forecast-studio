@@ -20,8 +20,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(tsfcore PRIVATE $<$<COMPILE_LANGUAGE:C>:-O2 -std=gnu99 -w>)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # correctly rounded sin / cos for R's Fourier terms (autoarima.cpp)
-    find_library(QUADMATH_LIB quadmath)
-    if(QUADMATH_LIB)
+    # A link test, not find_library: on Linux libquadmath lives in GCC's own directory, which find_library does not
+    # search, while autoarima.cpp uses sinq / cosq whenever <quadmath.h> exists (unresolved symbol at load time).
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_LIBRARIES quadmath)
+    check_cxx_source_compiles("#include <quadmath.h>
+int main(int argc, char**) { return static_cast<int>(sinq(static_cast<__float128>(argc))); }" HAVE_QUADMATH)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    if(HAVE_QUADMATH)
       target_link_libraries(tsfcore PRIVATE quadmath)
     endif()
   endif()
