@@ -34,6 +34,7 @@
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 600; }
   .files a { display: inline-block; margin: 4px 12px 0 0; color: var(--accent); }
+  .note a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -43,9 +44,16 @@
 
   <section>
     <h2>1 Data</h2>
-    <label for="file">A Monash .tsf file</label>
+    <label for="example">A small example dataset</label>
+    <select id="example"><option value="">loading…</option></select>
+    <label for="file" style="margin-top:12px">or your own file in Monash .tsf format</label>
     <input id="file" type="file" accept=".tsf,text/plain">
-    <div class="row"><button id="example" class="plain" type="button">Use the example file</button><span id="dataInfo" class="note"></span></div>
+    <p id="dataInfo" class="note"></p>
+    <p class="note">More data: download any dataset of the
+      <a href="https://forecastingdata.org/" target="_blank" rel="noopener">Monash Time Series Forecasting Archive</a>
+      (<a href="https://zenodo.org/communities/forecasting" target="_blank" rel="noopener">files on Zenodo</a>), unzip it and choose
+      the .tsf file above. Large files need a lot of memory; on a phone stay with files of a few megabytes.
+      The examples are from this archive (CC BY 4.0).</p>
   </section>
 
   <section>
@@ -82,25 +90,53 @@
   function refresh() { $("run").disabled = !(engineReady && data && !running); }
   function status(text, isError) { $("status").textContent = text; $("status").className = "status " + (isError ? "error" : "note"); }
 
-  function setData(name, bytes) {
-    data = { name, bytes };
-    $("dataInfo").textContent = name + " (" + (bytes.byteLength / 1048576).toFixed(2) + " MB)";
+  // `info`: the catalogue entry of an example (horizon, rounding), or null for the user's own file
+  function setData(name, bytes, info) {
+    data = { name, bytes, id: info ? info.id : name.replace(/\.tsf$/i, ""), integer: !!(info && info.integer_conversion) };
+    $("dataInfo").textContent = (info ? info.title + ": " + info.n_series + " " + info.frequency + " series, " : name + ", ") +
+      (bytes.byteLength / 1048576).toFixed(2) + " MB" + (data.integer ? "; forecasts are rounded to whole numbers" : "");
+    $("horizon").value = info && info.horizon ? info.horizon : "";
     refresh();
   }
 
   $("file").addEventListener("change", async (e) => {
     const f = e.target.files[0];
-    if (f) setData(f.name, await f.arrayBuffer());
+    if (!f) return;
+    $("example").value = "";
+    setData(f.name, await f.arrayBuffer(), null);
   });
 
-  $("example").addEventListener("click", async () => {
+  let examples = [];
+  async function loadExample(id) {
+    const info = examples.find((x) => x.id === id);
+    if (!info) return;
+    $("dataInfo").textContent = "Loading " + info.id + "…";
     try {
-      const r = await fetch("sample.tsf");
-      if (!r.ok) throw new Error("not found");
-      setData("sample.tsf", await r.arrayBuffer());
+      const r = await fetch("data/" + info.file);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      $("file").value = "";
+      setData(info.file, await r.arrayBuffer(), info);
     } catch (err) {
-      $("dataInfo").textContent = "No example file is published with this page; choose a .tsf file.";
+      $("dataInfo").textContent = "The example could not be loaded (" + err.message + "); choose a .tsf file instead.";
     }
+  }
+  $("example").addEventListener("change", (e) => loadExample(e.target.value));
+
+  fetch("data/index.json").then((r) => (r.ok ? r.json() : [])).catch(() => []).then((list) => {
+    examples = list;
+    const sel = $("example");
+    sel.textContent = "";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = list.length ? "choose…" : "no examples are published with this page";
+    sel.appendChild(none);
+    for (const x of list) {
+      const o = document.createElement("option");
+      o.value = x.id;
+      o.textContent = x.id + " – " + x.title + " (" + x.n_series + " series)";
+      sel.appendChild(o);
+    }
+    if (list.length) { sel.value = list[0].id; loadExample(list[0].id); }
   });
 
   function parseCsv(text) {
@@ -176,7 +212,7 @@
         sel.appendChild(o);
       }
       sel.disabled = false;
-      status("Engine ready (" + msg.version + "). Choose a file.");
+      status("Engine ready (" + msg.version + ").");
     } else if (msg.type === "done") {
       running = false;
       status("Finished in " + msg.seconds.toFixed(1) + " s.");
@@ -191,7 +227,7 @@
 
   $("run").addEventListener("click", () => {
     const config = ["method=" + $("method").value, "missing_policy=" + $("missing").value, "threads=1", "eol=lf",
-                    "dataset_id=" + data.name.replace(/\.tsf$/i, "")];
+                    "dataset_id=" + data.id, "integer_conversion=" + (data.integer ? 1 : 0)];
     if ($("horizon").value) config.push("horizon=" + parseInt($("horizon").value, 10));
     if ($("maxSeries").value) config.push("max_series=" + parseInt($("maxSeries").value, 10));
     running = true;

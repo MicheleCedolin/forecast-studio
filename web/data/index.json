@@ -1,0 +1,92 @@
+[
+ {
+  "id": "nn5_weekly",
+  "title": "ATM cash withdrawals (NN5)",
+  "file": "nn5_weekly_dataset.tsf",
+  "bytes": 215630,
+  "frequency": "weekly",
+  "n_series": 111,
+  "horizon": 8,
+  "integer_conversion": false
+ },
+ {
+  "id": "nn5_daily",
+  "title": "ATM cash withdrawals (NN5)",
+  "file": "nn5_daily_dataset_without_missing_values.tsf",
+  "bytes": 1479606,
+  "frequency": "daily",
+  "n_series": 111,
+  "horizon": 56,
+  "integer_conversion": false
+ },
+ {
+  "id": "m1_yearly",
+  "title": "M1 competition (mixed)",
+  "file": "m1_yearly_dataset.tsf",
+  "bytes": 30557,
+  "frequency": "yearly",
+  "n_series": 181,
+  "horizon": 6,
+  "integer_conversion": false
+ },
+ {
+  "id": "m1_quarterly",
+  "title": "M1 competition (mixed)",
+  "file": "m1_quarterly_dataset.tsf",
+  "bytes": 53754,
+  "frequency": "quarterly",
+  "n_series": 203,
+  "horizon": 8,
+  "integer_conversion": false
+ },
+ {
+  "id": "m1_monthly",
+  "title": "M1 competition (mixed)",
+  "file": "m1_monthly_dataset.tsf",
+  "bytes": 313600,
+  "frequency": "monthly",
+  "n_series": 617,
+  "horizon": 18,
+  "integer_conversion": false
+ },
+ {
+  "id": "tourism_quarterly",
+  "title": "Tourism",
+  "file": "tourism_quarterly_dataset.tsf",
+  "bytes": 226526,
+  "frequency": "quarterly",
+  "n_series": 427,
+  "horizon": 8,
+  "integer_conversion": false
+ },
+ {
+  "id": "hospital",
+  "title": "Hospital patient counts",
+  "file": "hospital_dataset.tsf",
+  "bytes": 233355,
+  "frequency": "monthly",
+  "n_series": 767,
+  "horizon": 12,
+  "integer_conversion": true
+ },
+ {
+  "id": "car_parts",
+  "title": "Spare-parts demand (intermittent)",
+  "file": "car_parts_dataset_without_missing_values.tsf",
+  "bytes": 344870,
+  "frequency": "monthly",
+  "n_series": 2674,
+  "horizon": 12,
+  "integer_conversion": true
+ },
+ {
+  "id": "covid_deaths",
+  "title": "COVID-19 deaths",
+  "file": "covid_deaths_dataset.tsf",
+  "bytes": 158234,
+  "frequency": "daily",
+  "n_series": 266,
+  "horizon": 30,
+  "integer_conversion": true
+ }
+]

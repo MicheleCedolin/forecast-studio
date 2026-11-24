@@ -1,0 +1,64 @@
+# Builds tsfcore for the browser (WebAssembly) and publishes the trial page in web/ on GitHub Pages.
+# One-time setup in the repository: Settings -> Pages -> Source: "GitHub Actions".
+# The same build on Windows: cpp\build_wasm.ps1.
+name: Browser page
+
+on:
+  push:
+    branches: [main]
+    paths: ["cpp/**", "web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 7.0.1
+      - name: Build tsfcore.wasm
+        run: |
+          set -euo pipefail
+          mkdir -p build_wasm
+          objects=""
+          for f in cpp/src/*.cpp; do
+            o="build_wasm/$(basename "$f" .cpp).o"
+            # -O3 without -ffast-math, as the native build: IEEE semantics
+            em++ -std=c++17 -O3 -fexceptions -Icpp/src -c "$f" -o "$o"
+            objects="$objects $o"
+          done
+          for f in cpp/src/catch22/*.c; do
+            o="build_wasm/catch22_$(basename "$f" .c).o"
+            emcc -O2 -std=gnu99 -w -c "$f" -o "$o"
+            objects="$objects $o"
+          done
+          em++ -O3 -fexceptions $objects -o web/tsfcore.js \
+            -sMODULARIZE=1 -sEXPORT_NAME=createTsfCore -sENVIRONMENT=web,worker,node \
+            -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=8MB \
+            -sEXPORTED_FUNCTIONS=_malloc,_free,_tsf_version,_tsf_methods,_tsf_run,_tsf_forecast_batch,_tsf_io_open_buffer,_tsf_io_close,_tsf_io_n_series,_tsf_io_n_attributes,_tsf_io_series,_tsf_io_attr,_tsf_io_header_json,_tsf_io_stats_json,_tsf_metrics_names,_tsf_metrics_table,_tsf_metrics_summary,_tsf_primary_period \
+            -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAPF64,HEAP64,HEAP32
+          ls -l web
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
