@@ -5,6 +5,7 @@
 //   horizons       : per-series horizon (<= h) or NULL; out is n_series x h, row-major, NaN beyond a series' horizon
 //   flags          : per series, 0 = model forecast, 1 = fallback (seasonal naive, or naive) after an error or non-finite output
 //   msg            : first fallback reason (truncated to msg_len - 1)
+//   method         : a name, or "name?key=value&key=value" for the methods that take settings (PMETHODS below)
 //   returns 0 on success, -1 unknown method, -2 bad arguments.
 #include <algorithm>
 #include <atomic>
@@ -37,6 +38,7 @@
 #include "simple_sf.hpp"
 #include "catch22/catch22.h"
 #include "fracdiff.hpp"
+#include "lapack_svd.hpp"
 #include "supsmu.hpp"
 
 #if defined(_WIN32)
@@ -91,7 +93,7 @@ Vec m_mapa(const Vec& y, int h, int, const Vec& per) { return tsf::mapa_ets(y, p
 // forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
 // ets and arima reproduce R (the Python engine uses statsforecast's), auto_ces and dotm reproduce statsforecast.
 // ARIMA uses the Python engine's arima_max_season = 200 rule (non-seasonal above it).
-Vec m_scum(const Vec& y, int h, int m, const Vec&) {
+Vec scum(const Vec& y, int h, int m, int arima_max_season) {
     std::vector<Vec> fcs;
     std::string failed;
     auto add = [&](const char* name, auto&& fn) {
@@ -107,7 +109,7 @@ Vec m_scum(const Vec& y, int h, int m, const Vec&) {
     };
     add("ets", [&] { return tsf::ets_auto(y, m, h).forecast; });
     add("auto_ces", [&] { return tsf::ces_forecast(y, m, h); });
-    add("arima", [&] { return tsf::auto_arima_study(y, m <= 200 ? m : 1, h).forecast; });
+    add("arima", [&] { return tsf::auto_arima_study(y, m <= arima_max_season ? m : 1, h).forecast; });
     add("dotm", [&] { return tsf::dotm_forecast(y, m, h, true); });
     if (fcs.size() < 2) throw std::runtime_error("scum: fewer than two components succeeded (" + failed + ")");
     Vec out(h);
@@ -120,6 +122,46 @@ Vec m_scum(const Vec& y, int h, int m, const Vec&) {
     }
     return out;
 }
+Vec m_scum(const Vec& y, int h, int m, const Vec&) { return scum(y, h, m, 200); }
+
+// ETS + ARIMA + Theta combinations (Python engine: py_sf.forecast_comb_eat): the equal-weight mean, or the pointwise
+// median, of the C++ ets, arima (arima_max_season = 200 rule) and theta. A failing or non-finite component is left out
+// (the mean / median of the others); fewer than two -> error.
+Vec comb_eat(const Vec& y, int h, int m, bool median) {
+    std::vector<Vec> fcs;
+    std::string failed;
+    auto add = [&](const char* name, auto&& fn) {
+        try {
+            Vec f = fn();
+            bool ok = static_cast<int>(f.size()) >= h;
+            for (int k = 0; ok && k < h; ++k) ok = std::isfinite(f[k]);
+            if (ok) { f.resize(h); fcs.push_back(std::move(f)); return; }
+            failed += std::string(failed.empty() ? "" : "; ") + name + ": non-finite";
+        } catch (const std::exception& ex) {
+            failed += std::string(failed.empty() ? "" : "; ") + name + ": " + ex.what();
+        }
+    };
+    add("ets", [&] { return tsf::ets_auto(y, m, h).forecast; });
+    add("arima", [&] { return tsf::auto_arima_study(y, m <= 200 ? m : 1, h).forecast; });
+    add("theta", [&] { return tsf::theta_forecast(y, h, m); });
+    if (fcs.size() < 2) throw std::runtime_error("comb_eat: fewer than two components succeeded (" + failed + ")");
+    const size_t k = fcs.size();
+    Vec out(h), col(k);
+    for (int j = 0; j < h; ++j) {
+        for (size_t c = 0; c < k; ++c) col[c] = fcs[c][j];
+        if (median) {
+            std::sort(col.begin(), col.end());
+            out[j] = (k % 2) ? col[k / 2] : (col[k / 2 - 1] + col[k / 2]) / 2.0;
+        } else {
+            double s = 0.0;                             // numpy mean of 2-3 values: sequential sum / k
+            for (size_t c = 0; c < k; ++c) s += col[c];
+            out[j] = s / static_cast<double>(k);
+        }
+    }
+    return out;
+}
+Vec m_comb_eat(const Vec& y, int h, int m, const Vec&) { return comb_eat(y, h, m, false); }
+Vec m_comb_eat_med(const Vec& y, int h, int m, const Vec&) { return comb_eat(y, h, m, true); }
 
 struct Entry { const char* name; Fn fn; };
 const Entry METHODS[] = {
@@ -129,12 +171,98 @@ const Entry METHODS[] = {
     {"croston_optimized", m_cro}, {"tsb", m_tsb}, {"adida", m_adida}, {"imapa", m_imapa}, {"dotm", m_dotm}, {"auto_ces", m_ces}, {"scum", m_scum}, {"auto_theta", m_atheta}, {"mstl", m_mstl}, {"auto_mfles", m_mfles}, {"tbats", m_tbats},
     {"holt_ets", m_holt_ets}, {"historic_average", m_hist}, {"window_average", m_wavg},
     {"seasonal_window_average", m_swavg}, {"seasonal_es", m_ses_seas}, {"zero_model", m_zero},
-    {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets}, {"thief", m_thief}, {"mapa", m_mapa},
+    {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets}, {"thief", m_thief}, {"mapa", m_mapa}, {"comb_eat", m_comb_eat}, {"comb_eat_median", m_comb_eat_med},
 };
 
 Fn find_method(const char* name) {
     for (const auto& e : METHODS)
         if (std::strcmp(e.name, name) == 0) return e.fn;
+    return nullptr;
+}
+
+// Method settings, passed as "method?key=value&key=value" (values are validated by the Python engine first; a key
+// that is not given takes the default of the Python engine).
+struct Params {
+    std::vector<std::pair<std::string, std::string>> kv;
+    const std::string* find(const char* key) const {
+        for (const auto& p : kv) if (p.first == key) return &p.second;
+        return nullptr;
+    }
+    std::string str(const char* key, const char* def) const { const auto* v = find(key); return v ? *v : std::string(def); }
+    int i(const char* key, int def) const { const auto* v = find(key); return v ? std::stoi(*v) : def; }
+    double d(const char* key, double def) const { const auto* v = find(key); return v ? std::stod(*v) : def; }
+};
+
+Params parse_params(const std::string& q) {
+    Params p;
+    size_t a = 0;
+    while (a < q.size()) {
+        size_t b = q.find('&', a);
+        if (b == std::string::npos) b = q.size();
+        const std::string item = q.substr(a, b - a);
+        const size_t eq = item.find('=');
+        if (eq != std::string::npos) p.kv.emplace_back(item.substr(0, eq), item.substr(eq + 1));
+        a = b + 1;
+    }
+    return p;
+}
+
+bool is_mult(const Params& p, const char* key) {
+    const std::string e = p.str(key, "A");
+    if (e == "A" || e == "a") return false;
+    if (e == "M" || e == "m") return true;
+    throw std::invalid_argument(std::string(key) + " must be 'A' or 'M'");
+}
+
+bool is_multiplicative_decomposition(const Params& p) {
+    const std::string d = p.str("decomposition_type", "multiplicative");
+    if (d == "multiplicative") return true;
+    if (d == "additive") return false;
+    throw std::invalid_argument("decomposition_type must be 'multiplicative' or 'additive'");
+}
+
+using PFn = Vec (*)(const Vec&, int, int, const Vec&, const Params&);
+Vec p_hw(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    return tsf::ets_holt_winters(y, m, h, is_mult(p, "error_type"), p.i("max_season", 24)).forecast;
+}
+Vec p_holt_ets(const Vec& y, int h, int, const Vec&, const Params& p) { return tsf::ets_holt(y, h, is_mult(p, "error_type")).forecast; }
+Vec p_dhr(const Vec& y, int h, int m, const Vec& per, const Params& p) {
+    return tsf::dhr_arima(y, m, static_cast<int>(per.size()), p.i("fourier_k", 1), h).forecast;
+}
+Vec p_tsb(const Vec& y, int h, int, const Vec&, const Params& p) { return tsf::tsb(y, h, p.d("alpha_d", 0.1), p.d("alpha_p", 0.1)); }
+Vec p_dotm(const Vec& y, int h, int m, const Vec&, const Params& p) { return tsf::dotm_forecast(y, m, h, is_multiplicative_decomposition(p)); }
+Vec p_atheta(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    return tsf::auto_theta_forecast(y, m, h, is_multiplicative_decomposition(p));
+}
+Vec p_ces(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    const std::string mod = p.str("model", "Z");
+    if (mod.size() != 1) throw std::invalid_argument("auto_ces: model must be Z, N, S, P or F");
+    return tsf::ces_forecast(y, m, h, mod[0], p.i("max_season", 24));
+}
+Vec p_mfles(const Vec& y, int h, int, const Vec& per, const Params& p) {
+    return tsf::mfles_forecast(y, per, h, p.i("n_windows", 2), p.str("metric", "smape"));
+}
+Vec p_wavg(const Vec& y, int h, int, const Vec&, const Params& p) { return tsf::window_average(y, h, p.i("window_size", 4)); }
+Vec p_swavg(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    return tsf::seasonal_window_average(y, h, m, p.i("window_size", 2));
+}
+Vec p_bagged(const Vec& y, int h, int, const Vec& per, const Params& p) {
+    return tsf::bagged_ets(y, per, h, p.i("n_boot", 100), static_cast<uint32_t>(p.i("seed", 0)));
+}
+Vec p_scum(const Vec& y, int h, int m, const Vec& per, const Params& p);
+
+struct PEntry { const char* name; PFn fn; };
+const PEntry PMETHODS[] = {
+    {"holt_winters", p_hw}, {"holt_ets", p_holt_ets}, {"dhr_arima", p_dhr}, {"tsb", p_tsb}, {"dotm", p_dotm},
+    {"auto_theta", p_atheta}, {"auto_ces", p_ces}, {"auto_mfles", p_mfles}, {"window_average", p_wavg},
+    {"seasonal_window_average", p_swavg}, {"bagged_ets", p_bagged}, {"scum", p_scum},
+};
+
+Vec p_scum(const Vec& y, int h, int m, const Vec&, const Params& p) { return scum(y, h, m, p.i("arima_max_season", 200)); }
+
+PFn find_pmethod(const std::string& name) {
+    for (const auto& e : PMETHODS)
+        if (name == e.name) return e.fn;
     return nullptr;
 }
 
@@ -176,6 +304,55 @@ TSF_API int tsf_arima_q0(const double* phi, int32_t p, const double* theta, int3
         std::copy(Q.begin(), Q.end(), out);
         return 0;
     } catch (...) { return 1; }
+}
+
+// Test hook: tsf_arima_fixed with user regressors (xreg: n x k column-major); coef gets up to 32 values.
+TSF_API int tsf_arima_xreg(const double* y, int32_t n, const int32_t* ord, const int32_t* flags, const double* xreg,
+                           int32_t k, double* coef, double* info, char* msg, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
+    try {
+        tsf::ArimaSpec s;
+        s.p = ord[0]; s.d = ord[1]; s.q = ord[2]; s.P = ord[3]; s.D = ord[4]; s.Q = ord[5]; s.period = ord[6];
+        s.include_mean = flags[0] != 0; s.drift = flags[1] != 0;
+        s.method = flags[2] == 0 ? tsf::ArimaMethod::CSS : (flags[2] == 1 ? tsf::ArimaMethod::CSS_ML : tsf::ArimaMethod::ML);
+        for (int j = 0; j < k; ++j) s.xreg.emplace_back(xreg + static_cast<int64_t>(j) * n, xreg + static_cast<int64_t>(j + 1) * n);
+        const tsf::ArimaFit f = tsf::arima_fit(Vec(y, y + n), s);
+        const size_t nc = std::min<size_t>(f.coef.size(), 32);
+        std::copy(f.coef.begin(), f.coef.begin() + nc, coef);
+        info[0] = f.loglik; info[1] = f.aic; info[2] = f.sigma2; info[3] = f.convergence; info[4] = static_cast<double>(nc);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
+// Test hook: forecast::fourier terms (period, K) for times t0 + 1 .. t0 + len; out: len x ncol column-major (ncol <= 2K
+// returned).
+TSF_API int tsf_fourier(double period, int32_t K, int32_t t0, int32_t len, double* out) {
+    try {
+        const std::vector<Vec> X = tsf::fourier_terms(period, K, t0, len);
+        for (size_t j = 0; j < X.size(); ++j) std::copy(X[j].begin(), X[j].end(), out + j * len);
+        return static_cast<int>(X.size());
+    } catch (...) { return -1; }
+}
+
+// Test hook: R's svd(X)$v and $d (lapack_svd.cpp). X is n x k column-major; v gets k x k column-major (as R's matrix).
+// new_dnrm2: which reference dnrm2 the port uses (1 = LAPACK >= 3.10, R's). Returns 0, or 1 outside the ported paths.
+TSF_API int tsf_r_svd(const double* X, int32_t n, int32_t k, int32_t new_dnrm2, double* v, double* d) {
+    std::vector<Vec> cols(k);
+    for (int j = 0; j < k; ++j) cols[j].assign(X + static_cast<int64_t>(j) * n, X + static_cast<int64_t>(j + 1) * n);
+    tsf::r_svd_set_new_dnrm2(new_dnrm2 != 0);
+    std::vector<Vec> V;
+    Vec dv;
+    const bool ok = tsf::r_svd_v(cols, V, &dv);
+    tsf::r_svd_set_new_dnrm2(true);
+    if (!ok) return 1;
+    for (int j = 0; j < k; ++j)
+        for (int i = 0; i < k; ++i) v[i + j * k] = V[i][j];
+    std::copy(dv.begin(), dv.end(), d);
+    return 0;
 }
 
 // Test hook for dhr_arima (K Fourier terms, one period): info as tsf_auto_arima. Returns 0, or 1 on error.
@@ -459,6 +636,27 @@ TSF_API int tsf_lightgbm_feat(const double* values, const int64_t* offsets, int3
     }
 }
 
+// Direct multi-horizon LightGBM (lightgbm_direct_forecast): one booster per forecast step. Same arguments as
+// tsf_lightgbm_feat. Returns 0 / 1 (msg).
+TSF_API int tsf_lightgbm_direct(const double* values, const int64_t* offsets, int32_t n_series, int32_t lag, int32_t h,
+                                int32_t m, int32_t max_obs, const char* lib_path, const char* params, int32_t rounds,
+                                double* out, char* msg, int32_t len) {
+    tsf::rs::X87Extended fpu_guard;
+    try {
+        std::vector<Vec> series(n_series);
+        for (int32_t i = 0; i < n_series; ++i) series[i] = Vec(values + offsets[i], values + offsets[i + 1]);
+        tsf::LightgbmSetup s;
+        s.lib = lib_path; s.params = params; s.rounds = rounds;
+        const std::vector<Vec> f = tsf::lightgbm_direct_forecast(series, lag, h, m, max_obs, s);
+        for (int32_t i = 0; i < n_series; ++i) std::copy(f[i].begin(), f[i].end(), out + static_cast<int64_t>(i) * h);
+        if (msg && len > 0) msg[0] = '\0';
+        return 0;
+    } catch (const std::exception& ex) {
+        if (msg && len > 0) { std::strncpy(msg, ex.what(), static_cast<size_t>(len - 1)); msg[len - 1] = '\0'; }
+        return 1;
+    }
+}
+
 // Diagnostic hook for auto.arima's differencing tests: out = {seas.heuristic, nsdiffs, ndiffs(after D), kpss stat
 // of the level series}.
 TSF_API void tsf_arima_tests(const double* y, int32_t n, int32_t freq, double* out) {
@@ -539,8 +737,20 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
                                double* out, int32_t* flags, char* msg, int32_t msg_len) {
     tsf::rs::X87Extended fpu_guard;              // R runs with 64-bit x87 precision
     if (!method || !values || !offsets || !out || !flags || n_series < 0 || h < 1) return -2;
-    const Fn fn = find_method(method);
-    if (!fn) return -1;
+    const std::string full(method);
+    const size_t qpos = full.find('?');
+    const std::string name = full.substr(0, qpos);
+    Params params;
+    PFn pfn = nullptr;
+    Fn fn = nullptr;
+    if (qpos != std::string::npos) {                 // settings given: only the methods that take them
+        pfn = find_pmethod(name);
+        if (!pfn) return -1;
+        try { params = parse_params(full.substr(qpos + 1)); } catch (...) { return -2; }
+    } else {
+        fn = find_method(name.c_str());
+        if (!fn) return -1;
+    }
     const int m = tsf::r_frequency(periods, n_periods);
     const Vec pervec = (periods && n_periods > 0) ? Vec(periods, periods + n_periods) : Vec{};
     if (msg && msg_len > 0) msg[0] = '\0';
@@ -563,14 +773,14 @@ TSF_API int tsf_forecast_batch(const char* method, const double* values, const i
             std::string why;
             Vec f;
             try {
-                f = fn(y, hi, m, pervec);
+                f = pfn ? pfn(y, hi, m, pervec, params) : fn(y, hi, m, pervec);
                 if (static_cast<int>(f.size()) < hi) throw std::runtime_error("the model produced an incomplete horizon");
                 for (int k = 0; k < hi; ++k)
                     if (!std::isfinite(f[k])) throw std::runtime_error("the model produced a non-finite value");
             } catch (const std::exception& ex) {
-                why = std::string(method) + ": " + ex.what();
+                why = name + ": " + ex.what();
             } catch (...) {
-                why = std::string(method) + ": unknown error";
+                why = name + ": unknown error";
             }
             if (!why.empty()) {
                 flags[i] = 1;

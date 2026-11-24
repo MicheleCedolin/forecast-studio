@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "lapack_svd.hpp"
+
 namespace tsf {
 
 using C = std::complex<double>;
@@ -868,7 +870,7 @@ ArimaFit arima_fit(const Vec& x0, const ArimaSpec& s) {
     const bool orig_xreg = ncxreg <= 1;
     std::vector<Vec> Vs;                                // S$v (row-major k x k) when rotated
     if (!orig_xreg) {
-        Vs = svd_v(X);
+        if (!r_svd_v(X, Vs)) Vs = svd_v(X);            // R's LAPACK basis; Jacobi outside the ported paths
         std::vector<Vec> R(ncxreg, Vec(n, 0.0));        // xreg %*% S$v
         for (int j = 0; j < ncxreg; ++j)
             for (int k = 0; k < ncxreg; ++k) {

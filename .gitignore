@@ -12,12 +12,16 @@ dist/
 # Data and outputs (large / user-specific; see README "Veri paketi")
 data/tsf/*
 !data/tsf/.gitkeep
+# M5 price/calendar files for the official WRMSSE weights (not redistributed)
+data/m5/
 runs/
 uploads/*
 !uploads/.gitkeep
 setup_log.txt
 build_log.txt
 cpp/build/
+cpp/build_wasm/
+web/sample.tsf
 src/tsfstudio/native/
 cache/
 golden_hizli.csv
@@ -36,3 +40,5 @@ data/ranking_study/
 
 # downloaded third-party binaries (CatBoost CLI and model library; see cpp/README.md)
 third_party/
+web/tsfcore.js
+web/tsfcore.wasm

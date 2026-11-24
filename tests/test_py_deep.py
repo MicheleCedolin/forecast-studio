@@ -37,3 +37,13 @@ def test_chronos_zero_shot_follows_a_seasonal_pattern():
     assert np.mean(np.abs(f - truth)) < 4                       # a flat forecast would be about 6.4 off
     with pytest.raises(ValueError):
         D.chronos_forecast(train, 3, {"model": "nope"}, 1)
+
+
+@pytest.mark.skipif(not D.nhits_available(), reason="torch / neuralforecast not installed")
+def test_nbeats_global_forecast():
+    eng = get_engine("python")
+    assert "nbeats" in eng.methods()["global"]
+    job = EngineJob(task="global", method="nbeats", train=_series(), horizon=6, seasonality=(12.0,), lag=24,
+                    params={"nbeats": {"max_steps": 30}}, seed=3)
+    f = eng.run(job).forecasts
+    assert f.shape == (20, 6) and np.isfinite(f).all()

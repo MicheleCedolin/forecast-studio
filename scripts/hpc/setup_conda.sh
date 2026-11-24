@@ -41,6 +41,10 @@ pip install --no-deps -e .
 # conda's compiler ($CXX) is newer than the system's: keep its runtime inside tsfcore.so.
 rm -rf cpp/build
 TSF_STATIC_RUNTIME=ON bash cpp/build.sh
+if ldd src/tsfstudio/native/tsfcore.so | grep -q "not found"; then
+  echo "WARNING: tsfcore.so needs libraries the system cannot find:"; ldd src/tsfstudio/native/tsfcore.so | grep "not found"
+  echo "Install them into the environment (for libquadmath: conda install -n $env_name -c conda-forge libgfortran) and run this script again."
+fi
 
 echo
 source scripts/hpc/activate.sh

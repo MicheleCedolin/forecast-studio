@@ -22,51 +22,87 @@ def _ref(text: str, url: str | None = None, verified: bool = False) -> dict:
 
 
 REFS = {
-    "fpp3": _ref("Hyndman, R. J., & Athanasopoulos, G. (2021). Forecasting: Principles and Practice (3rd ed.). OTexts.", "https://otexts.com/fpp3/"),
+    "fpp3": _ref("Hyndman, R. J., & Athanasopoulos, G. (2021). Forecasting: Principles and Practice (3rd ed.). OTexts.",
+                 "https://otexts.com/fpp3/", True),
     "hyndman2002": _ref("Hyndman, R. J., Koehler, A. B., Snyder, R. D., & Grose, S. (2002). A state space framework for automatic forecasting "
                         "using exponential smoothing methods. International Journal of Forecasting, 18(3), 439–454.",
                         "https://econpapers.repec.org/RePEc:eee:intfor:v:18:y:2002:i:3:p:439-454", True),
     "hyndman2008": _ref("Hyndman, R. J., & Khandakar, Y. (2008). Automatic time series forecasting: the forecast package for R. "
                         "Journal of Statistical Software, 27(3), 1–22.", "https://www.jstatsoft.org/v27/i03", True),
-    "delivera2011": _ref("De Livera, A. M., Hyndman, R. J., & Snyder, R. D. (2011). Forecasting time series with complex seasonal patterns "
-                         "using exponential smoothing. Journal of the American Statistical Association, 106(496), 1513–1527."),
-    "assimakopoulos2000": _ref("Assimakopoulos, V., & Nikolopoulos, K. (2000). The theta model: a decomposition approach to forecasting. "
-                               "International Journal of Forecasting, 16(4), 521–530."),
-    "hyndmanbillah2003": _ref("Hyndman, R. J., & Billah, B. (2003). Unmasking the Theta method. International Journal of Forecasting, 19(2), 287–290."),
-    "croston1972": _ref("Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Operational Research Quarterly, 23(3), 289–303."),
+    "delivera2011": _ref("De Livera, A. M., Hyndman, R. J., & Snyder, R. D. (2011). Forecasting time series with "
+                         "complex seasonal patterns using exponential smoothing. Journal of the American Statistical "
+                         "Association, 106(496), 1513–1527.",
+                         "https://doi.org/10.1198/jasa.2011.tm09771", True),
+    "assimakopoulos2000": _ref("Assimakopoulos, V., & Nikolopoulos, K. (2000). The theta model: a decomposition "
+                               "approach to forecasting. International Journal of Forecasting, 16(4), 521–530.",
+                               "https://doi.org/10.1016/S0169-2070(00)00066-2", True),
+    "hyndmanbillah2003": _ref("Hyndman, R. J., & Billah, B. (2003). Unmasking the Theta method. International Journal "
+                              "of Forecasting, 19(2), 287–290.",
+                              "https://doi.org/10.1016/S0169-2070(01)00143-1", True),
+    "croston1972": _ref("Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Operational "
+                        "Research Quarterly, 23(3), 289–303.",
+                        "https://doi.org/10.1057/jors.1972.50", True),
     "syntetos2005": _ref("Syntetos, A. A., & Boylan, J. E. (2005). The accuracy of intermittent demand estimates. "
-                         "International Journal of Forecasting, 21(2), 303–314."),
-    "teunter2011": _ref("Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: linking forecasting to inventory obsolescence. "
-                        "European Journal of Operational Research, 214(3), 606–615."),
-    "nikolopoulos2011": _ref("Nikolopoulos, K., Syntetos, A. A., Boylan, J. E., Petropoulos, F., & Assimakopoulos, V. (2011). An aggregate–disaggregate "
-                             "intermittent demand approach (ADIDA) to forecasting. Journal of the Operational Research Society, 62(3), 544–554."),
+                         "International Journal of Forecasting, 21(2), 303–314.",
+                         "https://doi.org/10.1016/j.ijforecast.2004.10.001", True),
+    "teunter2011": _ref("Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: linking "
+                        "forecasting to inventory obsolescence. European Journal of Operational Research, 214(3), "
+                        "606–615.",
+                        "https://doi.org/10.1016/j.ejor.2011.05.018", True),
+    "nikolopoulos2011": _ref("Nikolopoulos, K., Syntetos, A. A., Boylan, J. E., Petropoulos, F., & Assimakopoulos, V. "
+                             "(2011). An aggregate–disaggregate intermittent demand approach (ADIDA) to forecasting: an "
+                             "empirical proposition and analysis. Journal of the Operational Research Society, 62(3), "
+                             "544–554.",
+                             "https://doi.org/10.1057/jors.2010.32", True),
     "petropoulos2015": _ref("Petropoulos, F., & Kourentzes, N. (2015). Forecast combinations for intermittent demand. "
-                            "Journal of the Operational Research Society, 66(6), 914–924."),
-    "svetunkov2022": _ref("Svetunkov, I., Kourentzes, N., & Ord, J. K. (2022). Complex exponential smoothing. Naval Research Logistics, 69(8), 1108–1123."),
-    "winters1960": _ref("Winters, P. R. (1960). Forecasting sales by exponentially weighted moving averages. Management Science, 6(3), 324–342."),
-    "bandara2021": _ref("Bandara, K., Hyndman, R. J., & Bergmeir, C. (2021). MSTL: a seasonal-trend decomposition algorithm for time series with "
-                        "multiple seasonal patterns. arXiv:2107.13462.", "https://arxiv.org/abs/2107.13462"),
-    "cleveland1990": _ref("Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990). STL: a seasonal-trend decomposition procedure "
-                          "based on loess. Journal of Official Statistics, 6(1), 3–73."),
+                            "Journal of the Operational Research Society, 66(6), 914–924.",
+                            "https://doi.org/10.1057/jors.2014.62", True),
+    "svetunkov2022": _ref("Svetunkov, I., Kourentzes, N., & Ord, J. K. (2022). Complex exponential smoothing. Naval "
+                          "Research Logistics, 69(8), 1108–1123.",
+                          "https://doi.org/10.1002/nav.22074", True),
+    "winters1960": _ref("Winters, P. R. (1960). Forecasting sales by exponentially weighted moving averages. Management "
+                        "Science, 6(3), 324–342.",
+                        "https://doi.org/10.1287/mnsc.6.3.324", True),
+    "bandara2021": _ref("Bandara, K., Hyndman, R. J., & Bergmeir, C. (2025). MSTL: a seasonal-trend decomposition "
+                        "algorithm for time series with multiple seasonal patterns. International Journal of "
+                        "Operational Research, 52(1), 79–98. (Preprint, 2021: arXiv:2107.13462.)",
+                        "https://doi.org/10.1504/IJOR.2025.143957", True),
+    "cleveland1990": _ref("Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990). STL: a "
+                          "seasonal-trend decomposition procedure based on loess. Journal of Official Statistics, 6(1), "
+                          "3–73.",
+                          None, True),
     "prokhorenkova2018": _ref("Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A. V., & Gulin, A. (2018). CatBoost: unbiased boosting with "
-                              "categorical features. Advances in Neural Information Processing Systems 31.", "https://arxiv.org/abs/1706.09516"),
-    "athanasopoulos2017": _ref("Athanasopoulos, G., Hyndman, R. J., Kourentzes, N., & Petropoulos, F. (2017). Forecasting with temporal "
-                               "hierarchies. European Journal of Operational Research, 262(1), 60–74.",
-                               "https://doi.org/10.1016/j.ejor.2017.02.046"),
-    "kourentzes2014": _ref("Kourentzes, N., Petropoulos, F., & Trapero, J. R. (2014). Improving forecasting by estimating time series "
-                           "structural components across multiple frequencies. International Journal of Forecasting, 30(2), 291–302.",
-                           "https://doi.org/10.1016/j.ijforecast.2013.09.006"),
-    "bergmeir2016": _ref("Bergmeir, C., Hyndman, R. J., & Benítez, J. M. (2016). Bagging exponential smoothing methods using STL "
-                         "decomposition and Box–Cox transformation. International Journal of Forecasting, 32(2), 303–312.",
-                         "https://doi.org/10.1016/j.ijforecast.2015.07.002"),
+                              "categorical features. Advances in Neural Information Processing Systems 31.", "https://proceedings.neurips.cc/paper/2018/hash/14491b756b3a51daac41c24863285549-Abstract.html", True),
+    "athanasopoulos2017": _ref("Athanasopoulos, G., Hyndman, R. J., Kourentzes, N., & Petropoulos, F. (2017). "
+                               "Forecasting with temporal hierarchies. European Journal of Operational Research, "
+                               "262(1), 60–74.",
+                               "https://doi.org/10.1016/j.ejor.2017.02.046", True),
+    "kourentzes2014": _ref("Kourentzes, N., Petropoulos, F., & Trapero, J. R. (2014). Improving forecasting by "
+                           "estimating time series structural components across multiple frequencies. International "
+                           "Journal of Forecasting, 30(2), 291–302.",
+                           "https://doi.org/10.1016/j.ijforecast.2013.09.006", True),
+    "bergmeir2016": _ref("Bergmeir, C., Hyndman, R. J., & Benítez, J. M. (2016). Bagging exponential smoothing methods "
+                         "using STL decomposition and Box–Cox transformation. International Journal of Forecasting, "
+                         "32(2), 303–312.",
+                         "https://doi.org/10.1016/j.ijforecast.2015.07.002", True),
     "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
                    "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
-                   "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
+                   "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree", True),
+    "taieb2012": _ref("Ben Taieb, S., Bontempi, G., Atiya, A. F., & Sorjamaa, A. (2012). A review and comparison of strategies for multi-step "
+                      "ahead time series forecasting based on the NN5 forecasting competition. Expert Systems with Applications, 39(8), "
+                      "7067–7083.", "https://doi.org/10.1016/j.eswa.2012.01.039", True),
+    "makridakis2000": _ref("Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and "
+                           "implications. International Journal of Forecasting, 16(4), 451–476.",
+                           "https://doi.org/10.1016/S0169-2070(00)00057-1", True),
+    "oreshkin2020": _ref("Oreshkin, B. N., Carpov, D., Chapados, N., & Bengio, Y. (2020). N-BEATS: Neural basis expansion analysis for "
+                         "interpretable time series forecasting. International Conference on Learning Representations.",
+                         "https://openreview.net/forum?id=r1ecqn4YwB", True),
     "challu2023": _ref("Challu, C., Olivares, K. G., Oreshkin, B. N., Garza Ramirez, F., Mergenthaler Canseco, M., & Dubrawski, A. "
                        "(2023). NHITS: Neural hierarchical interpolation for time series forecasting. Proceedings of the AAAI "
-                       "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854"),
-    "ansari2024": _ref("Ansari, A. F., Stella, L., Turkmen, C., Zhang, X., Mercado, P., Shen, H., et al. (2024). Chronos: Learning the "
-                       "language of time series. Transactions on Machine Learning Research.", "https://openreview.net/forum?id=gerNCVqqtR"),
+                       "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854", True),
+    "ansari2024": _ref("Ansari, A. F., Stella, L., Turkmen, A. C., Zhang, X., Mercado, P., Shen, H., et al. (2024). Chronos: Learning the "
+                       "language of time series. Transactions on Machine Learning Research.", "https://openreview.net/forum?id=gerNCVqqtR",
+                       True),
     "montero2021": _ref("Montero-Manso, P., & Hyndman, R. J. (2021). Principles and algorithms for forecasting groups of time series: locality "
                         "and globality. International Journal of Forecasting, 37(4), 1632–1653.",
                         "https://econpapers.repec.org/RePEc:eee:intfor:v:37:y:2021:i:4:p:1632-1653", True),
@@ -77,23 +113,59 @@ REFS = {
     "hyndman2006": _ref("Hyndman, R. J. (2006). Another look at forecast-accuracy metrics for intermittent demand. Foresight, 4(4), 43–46.",
                         "https://econpapers.repec.org/RePEc:for:ijafaa:y:2006:i:4:p:43-46", True),
     "hyndmankoehler2006": _ref("Hyndman, R. J., & Koehler, A. B. (2006). Another look at measures of forecast accuracy. "
-                               "International Journal of Forecasting, 22(4), 679–688."),
-    "makridakis2020": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2020). The M4 Competition: 100,000 time series and 61 "
-                           "forecasting methods. International Journal of Forecasting, 36(1), 54–74."),
-    "makridakis2022": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2022). M5 accuracy competition: Results, findings, and "
-                           "conclusions. International Journal of Forecasting, 38(4), 1346–1364."),
+                               "International Journal of Forecasting, 22(4), 679–688.",
+                               "https://doi.org/10.1016/j.ijforecast.2006.03.001", True),
+    "makridakis2020": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2020). The M4 Competition: 100,000 "
+                           "time series and 61 forecasting methods. International Journal of Forecasting, 36(1), 54–74.",
+                           "https://doi.org/10.1016/j.ijforecast.2019.04.014", True),
+    "makridakis2022": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2022). M5 accuracy competition: "
+                           "Results, findings, and conclusions. International Journal of Forecasting, 38(4), 1346–1364.",
+                           "https://doi.org/10.1016/j.ijforecast.2021.11.013", True),
     "petropoulos2020": _ref("Petropoulos, F., & Svetunkov, I. (2020). A simple combination of univariate models. "
-                            "International Journal of Forecasting, 36(1), 110–115."),
-    "fiorucci2016": _ref("Fiorucci, J. A., Pellegrini, T. R., Louzada, F., Petropoulos, F., & Koehler, A. B. (2016). Models for optimising "
-                         "the theta method and their relationship to state space models. International Journal of Forecasting, 32(4), 1151–1161."),
-    "holt2004": _ref("Holt, C. C. (2004). Forecasting seasonals and trends by exponentially weighted moving averages. International Journal of Forecasting, 20(1), 5-10 (reprint of the 1957 ONR memorandum).", "https://doi.org/10.1016/j.ijforecast.2003.09.015"),
-    "gardner1985": _ref("Gardner, E. S., Jr., & McKenzie, E. (1985). Forecasting trends in time series. Management Science, 31(10), 1237–1246."),
-    "kim2016": _ref("Kim, S., & Kim, H. (2016). A new metric of absolute percentage error for intermittent demand forecasts. "
-                    "International Journal of Forecasting, 32(3), 669–679."),
-    "davydenko2013": _ref("Davydenko, A., & Fildes, R. (2013). Measuring forecasting accuracy: The case of judgmental adjustments to SKU-level "
-                          "demand forecasts. International Journal of Forecasting, 29(3), 510–522."),
-    "nixtla": _ref("Nixtla StatsForecast (open source, Apache-2.0) documentation: in the Python engine this model is the library's own implementation.",
-                   "https://nixtlaverse.nixtla.io/statsforecast/"),
+                            "International Journal of Forecasting, 36(1), 110–115.",
+                            "https://doi.org/10.1016/j.ijforecast.2019.01.006", True),
+    "fiorucci2016": _ref("Fiorucci, J. A., Pellegrini, T. R., Louzada, F., Petropoulos, F., & Koehler, A. B. (2016). "
+                         "Models for optimising the theta method and their relationship to state space models. "
+                         "International Journal of Forecasting, 32(4), 1151–1161.",
+                         "https://doi.org/10.1016/j.ijforecast.2016.02.005", True),
+    "holt2004": _ref("Holt, C. C. (2004). Forecasting seasonals and trends by exponentially weighted moving averages. "
+                     "International Journal of Forecasting, 20(1), 5-10 (reprint of the 1957 ONR memorandum).",
+                     "https://doi.org/10.1016/j.ijforecast.2003.09.015", True),
+    "gardner1985": _ref("Gardner, E. S., Jr., & McKenzie, E. (1985). Forecasting trends in time series. Management "
+                        "Science, 31(10), 1237–1246.",
+                        "https://doi.org/10.1287/mnsc.31.10.1237", True),
+    "kim2016": _ref("Kim, S., & Kim, H. (2016). A new metric of absolute percentage error for intermittent demand "
+                    "forecasts. International Journal of Forecasting, 32(3), 669–679.",
+                    "https://doi.org/10.1016/j.ijforecast.2015.12.003", True),
+    "davydenko2013": _ref("Davydenko, A., & Fildes, R. (2013). Measuring forecasting accuracy: The case of judgmental "
+                          "adjustments to SKU-level demand forecasts. International Journal of Forecasting, 29(3), "
+                          "510–522.",
+                          "https://doi.org/10.1016/j.ijforecast.2012.09.002", True),
+    "nixtla": _ref("Nixtla StatsForecast (open source, Apache-2.0) documentation: in the Python engine this model is "
+                   "the library's own implementation.",
+                   "https://nixtlaverse.nixtla.io/statsforecast", True),
+    "lubba2019": _ref("Lubba, C. H., Sethi, S. S., Knaute, P., Schultz, S. R., Fulcher, B. D., & Jones, N. S. (2019). "
+                      "catch22: CAnonical Time-series CHaracteristics. Data Mining and Knowledge Discovery, 33(6), "
+                      "1821–1852.",
+                      "https://doi.org/10.1007/s10618-019-00647-x", True),
+    "guerrero1993": _ref("Guerrero, V. M. (1993). Time-series analysis supported by power transformations. Journal of "
+                         "Forecasting, 12(1), 37–48.",
+                         "https://doi.org/10.1002/for.3980120104", True),
+    "kang2017": _ref("Kang, Y., Hyndman, R. J., & Smith-Miles, K. (2017). Visualising forecasting algorithm performance "
+                     "using time series instance spaces. International Journal of Forecasting, 33(2), 345–358.",
+                     "https://doi.org/10.1016/j.ijforecast.2016.09.004", True),
+    "jolliffe2016": _ref("Jolliffe, I. T., & Cadima, J. (2016). Principal component analysis: a review and recent "
+                         "developments. Philosophical Transactions of the Royal Society A, 374(2065), 20150202.",
+                         "https://doi.org/10.1098/rsta.2015.0202", True),
+    "tsfeatures2023": _ref("Hyndman, R., Kang, Y., Montero-Manso, P., O'Hara-Wild, M., Talagala, T., Wang, E., & Yang, Y. "
+                           "(2023). tsfeatures: Time series feature extraction. R package version 1.1.1.",
+                           "https://CRAN.R-project.org/package=tsfeatures", True),
+    "hyndman2015": _ref("Hyndman, R. J., Wang, E., & Laptev, N. (2015). Large-scale unusual time series detection. 2015 "
+                        "IEEE International Conference on Data Mining Workshop (ICDMW), 1616–1619.",
+                        "https://doi.org/10.1109/ICDMW.2015.104", True),
+    "wang2006": _ref("Wang, X., Smith, K., & Hyndman, R. (2006). Characteristic-based clustering for time series data. "
+                     "Data Mining and Knowledge Discovery, 13(3), 335–364.",
+                     "https://doi.org/10.1007/s10618-005-0039-x", True),
 }
 
 
@@ -241,7 +313,31 @@ MODELS: dict[str, dict] = {
         "use": "A simple combination that ranked among the best statistical benchmarks in M4; useful to test whether combinations change rankings.",
         "caution": "As slow as its slowest component (ARIMA); measure with a short trial first.",
         "engines": {PY: "Built from statsforecast AutoETS, AutoCES, AutoARIMA and DynamicOptimizedTheta."},
-        "params": [], "refs": ["petropoulos2020"], "cost": "Slow (sum of the four components).",
+        "params": [P("arima_max_season", "Largest seasonal period (ARIMA)", "int", 200,
+                     "If the period exceeds this value the ARIMA component is non-seasonal.", min=2, max=2000, engines=(PY,),
+                     advanced=True)],
+        "refs": ["petropoulos2020"], "cost": "Slow (sum of the four components).",
+    },
+    "comb_eat": {
+        "name": "Combination: mean of ETS, ARIMA, Theta", "group": "yerel", "task": "local",
+        "summary": "Equal-weight average of the automatic ETS, ARIMA and Theta forecasts.",
+        "how": "ETS, ARIMA and Theta are fitted with this engine's settings and their forecasts are averaged at each horizon step. "
+               "If a component fails the mean of the other two is used (a note is recorded); with fewer than two the series falls back.",
+        "use": "The classic simple combination: it is often more accurate than each of its parts (Makridakis & Hibon 2000; "
+               "Hyndman's ETS-ARIMA-Theta average was a strong M4 benchmark). Good for testing whether combining changes rankings.",
+        "caution": "As slow as its slowest component (ARIMA). One badly wrong component pulls the mean; the median variant is more robust.",
+        "engines": {PY: "statsforecast AutoETS and AutoARIMA with the built-in Theta (R thetaf)."},
+        "params": [], "refs": ["makridakis2000", "petropoulos2020"], "cost": "Slow (sum of the three components).",
+    },
+    "comb_eat_median": {
+        "name": "Combination: median of ETS, ARIMA, Theta", "group": "yerel", "task": "local",
+        "summary": "Pointwise median of the automatic ETS, ARIMA and Theta forecasts.",
+        "how": "The same three components as the mean combination; at each horizon step the middle value is taken, so a single "
+               "badly wrong component has no effect. With one component failed it is the mean of the other two.",
+        "use": "A robust alternative to the mean combination (the idea behind SCUM, with three components).",
+        "caution": "As slow as its slowest component (ARIMA).",
+        "engines": {PY: "statsforecast AutoETS and AutoARIMA with the built-in Theta (R thetaf)."},
+        "params": [], "refs": ["petropoulos2020"], "cost": "Slow (sum of the three components).",
     },
     "tbats": {
         "name": "TBATS", "group": "yerel", "task": "local",
@@ -425,9 +521,9 @@ MODELS: dict[str, dict] = {
                    "trend instead of STL, as R does.",
         "engines": {PY: "The bootstrap equals R's (and the C++ engine's); each copy is forecast with statsforecast AutoETS, so the result is close to, "
                         "not equal to, R. Slow: about 100 AutoETS fits per series."},
-        "params": [P("n_boot", "Number of bootstrap series", "int", 100, "Including the original series (R's default 100). C++ engine: 100 only.",
+        "params": [P("n_boot", "Number of bootstrap series", "int", 100, "Including the original series (R's default 100).",
                      min=1, max=1000),
-                   P("seed", "Random seed", "int", 0, "set.seed() value used before each series (C++ engine: 0 only).", min=0, advanced=True)],
+                   P("seed", "Random seed", "int", 0, "set.seed() value used before each series.", min=0, advanced=True)],
         "refs": ["bergmeir2016", "hyndman2008"], "cost": "C++: NN5 weekly 111 series 4 s (R: 200 s). Python: minutes.",
     },
     "thief": {
@@ -570,6 +666,21 @@ MODELS: dict[str, dict] = {
                         "This method does not exist in the R engine."},
         "params": LIGHTGBM_PARAMS, "refs": ["ke2017", "makridakis2022", "montero2021"], "cost": "About the cost of LightGBM; NN5 daily about 1 s in C++.",
     },
+    "lightgbm_direct": {
+        "name": "LightGBM, direct multi-horizon (M5-style features)", "group": "kuresel", "task": "global",
+        "summary": "One global LightGBM model per forecast step, each predicting its own step directly from the same features.",
+        "how": "The features of the M5-style LightGBM (lags, seasonal lags, rolling mean and standard deviation, position in the "
+               "season) are taken at the forecast origin. For step k a separate model learns the value k steps after the origin, "
+               "from every origin in the training data. No forecast is fed back as an input, so errors do not compound along the "
+               "horizon (direct strategy; Taieb et al. 2012).",
+        "use": "Long horizons, where recursive forecasts drift; compare it with the recursive M5-style LightGBM on the same data.",
+        "caution": "Trains as many models as the horizon is long (56 for NN5 daily), so it is that many times slower than the "
+                   "recursive version. Later steps learn from fewer rows. Every series needs more than max(lag, 2m, 2·max(4, m)) observations.",
+        "engines": {PY: "Requires the lightgbm Python package. The C++ engine builds the same features and gives the same forecasts. "
+                        "This method does not exist in the R engine."},
+        "params": LIGHTGBM_PARAMS, "refs": ["taieb2012", "ke2017", "makridakis2022"],
+        "cost": "About horizon × the cost of the recursive LightGBM.",
+    },
     "nhits": {
         "name": "N-HiTS (deep learning)", "group": "kuresel", "task": "global",
         "summary": "A global neural network (MLP stacks with multi-rate pooling) trained on all series at once.",
@@ -585,6 +696,22 @@ MODELS: dict[str, dict] = {
                    P("nhits.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1, step=0.0001,
                      engines=("python",), advanced=True)],
         "refs": ["challu2023"], "cost": "NN5 weekly, 111 series, 100 steps: about 25 s on the CPU.",
+    },
+    "nbeats": {
+        "name": "N-BEATS (deep learning)", "group": "kuresel", "task": "global",
+        "summary": "A global neural network of fully connected blocks with backward and forward residual links, trained on all series.",
+        "how": "Windows of the last 'lag' observations of every series are robust-scaled; stacks of blocks (trend, seasonality and "
+               "generic) each remove what they explain from the input and add their part to the forecast of the whole horizon. "
+               "Trained with Adam on MAE for a fixed number of steps; the seed fixes the result on one machine.",
+        "use": "The deep-learning model that beat the statistical benchmarks in M4; compare it with N-HiTS (its successor).",
+        "caution": "Takes tens of seconds to minutes on the CPU. Results can vary slightly between machines (floating point in PyTorch). "
+                   "Series shorter than the window are zero-padded at the start.",
+        "engines": {PY: "Requires torch and neuralforecast (optional extras; installed on this machine). Not in the R engine."},
+        "params": [P("nbeats.max_steps", "Training steps", "int", 500, "Number of training steps (mini-batches).", min=10, max=20000,
+                     engines=("python",)),
+                   P("nbeats.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1, step=0.0001,
+                     engines=("python",), advanced=True)],
+        "refs": ["oreshkin2020"], "cost": "Similar to N-HiTS; NN5 weekly, 111 series, 200 steps: tens of seconds on the CPU.",
     },
     "chronos": {
         "name": "Chronos-Bolt (foundation model)", "group": "kuresel", "task": "global",
@@ -669,21 +796,28 @@ CPP_NOTES = {
     "naive": "Native C++; same rule as the Python engine.", "snaive": _CPP_R, "drift": "Native C++; same rule as the Python engine.",
     "ses": _CPP_R, "theta": _CPP_R, "naive2": _CPP_R, "comb_shd": _CPP_R,
     "ets": "Native C++ port of R forecast::ets (incl. its small-sample branch and class-3 mean forecasts); equals R to rounding.",
-    "holt_winters": _CPP_R + " Additive errors only (the default).", "holt_ets": _CPP_R,
+    "holt_winters": _CPP_R + " error_type M runs R ets(model = \"MAM\").", "holt_ets": _CPP_R + " error_type M runs R ets(model = \"MAN\").",
     "arima": "Native C++ port of R auto.arima with the study's call chain; equals R to rounding.",
-    "dhr_arima": _CPP_R + " K = 1 Fourier terms (the study's setting).",
+    "dhr_arima": _CPP_R + " Any K (NN5 weekly, 111 series, K = 1, 2, 3, 5: all within 1e-6 of R): the Fourier terms and "
+                 "R's SVD rotation of them are reproduced bit for bit. K per period (several periods) needs the R engine.",
     "tbats": "Native C++ port of R forecast::tbats; equals the study's R forecasts to rounding.",
     "stl_ets": _CPP_R, "stl_arima": _CPP_R,
-    "bagged_ets": _CPP_R + " Runs n_boot = 100 and seed 0 (the defaults); other values need the Python engine.",
+    "bagged_ets": _CPP_R + " Any n_boot and seed (R's random number generator is reproduced).",
     "thief": _CPP_R, "mapa": _CPP_R,
+    "comb_eat": "Native C++: mean of the C++ ets and arima (both reproduce R, so the result differs slightly from the Python engine, which uses statsforecast) and theta.",
+    "comb_eat_median": "Native C++: median of the C++ ets, arima and theta (R-based ETS / ARIMA, so it differs slightly from the Python engine).",
     "scum": "Native C++: median of the C++ ets, auto_ces, arima and dotm (R-based ETS / ARIMA, so it differs slightly from the Python SCUM).",
     "mstl": _CPP_PY + " The trend forecaster is the C++ (R) ETS.",
     "pooled_regression": "Native C++ least squares (streamed QR); equals R glm to rounding.",
     "catboost": "C++ drives the official CatBoost 1.2.10 programs (CatBoost's defaults); the same forecasts as the Python engine.",
     "lightgbm": "C++ drives LightGBM's C library with the Python engine's parameters; the same forecasts bit for bit.",
     "lightgbm_feat": "C++ builds the same features and drives LightGBM's C library; the same forecasts bit for bit.",
+    "lightgbm_direct": "C++ builds the same features and trains one booster per step through LightGBM's C library; the same forecasts as Python.",
 }
-CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None}  # None: all
+CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None, "lightgbm_direct": None,
+              "holt_winters": None, "holt_ets": None, "dhr_arima": {"fourier_k"}, "tsb": None, "dotm": None, "auto_theta": None,
+              "auto_ces": None, "auto_mfles": None, "window_average": None, "seasonal_window_average": None, "bagged_ets": None,
+              "scum": None}  # None: all (each key must be in cpp_engine.CPP_METHOD_PARAMS; checked by a test)
 
 
 def _wire_cpp() -> None:

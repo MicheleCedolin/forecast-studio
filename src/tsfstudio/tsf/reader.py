@@ -143,6 +143,14 @@ def _iter_lines(path: Path, encoding: str) -> Iterator[tuple[int, str]]:
 def read_tsf_header(path: str | Path, encoding: str = "cp1252") -> TSFHeader:
     """Yalnızca üstbilgiyi okur (büyük dosyalarda hızlı)."""
     path = Path(path)
+    try:
+        return _read_header(path, encoding)
+    except UnicodeDecodeError:
+        # same fallback as read_tsf, for bytes that cp1252 does not define
+        return _read_header(path, "utf-8-sig")
+
+
+def _read_header(path: Path, encoding: str) -> TSFHeader:
     header = TSFHeader()
     found_data = False
     for lineno, line in _iter_lines(path, encoding):

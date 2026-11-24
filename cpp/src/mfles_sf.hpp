@@ -4,6 +4,7 @@
 // Lasso coordinate descent (_cd_fast.pyx, gap-safe screening) and coreforecast's EWM / rolling mean.
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "util.hpp"
@@ -11,8 +12,8 @@
 namespace tsf {
 
 // periods: the Python engine's valid_periods(n, periods) (sorted unique round(p) with p >= 2 and 2p <= n), applied
-// here; none -> season_length None.
-Vec mfles_forecast(const Vec& y, const Vec& periods, int h);
+// here; none -> season_length None. n_windows / metric ("smape", "mape", "mse", "mae") as AutoMFLES's.
+Vec mfles_forecast(const Vec& y, const Vec& periods, int h, int n_windows = 2, const std::string& metric = "smape");
 
 // sklearn Lasso(alpha, fit_intercept = False, tol, max_iter).fit(X, y).coef_ for the columns X (exposed for tests).
 Vec sk_lasso(const std::vector<Vec>& cols, const Vec& y, double alpha, double tol = 1e-3, int max_iter = 10000);

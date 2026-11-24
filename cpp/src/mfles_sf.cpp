@@ -496,16 +496,35 @@ Vec sk_lasso(const std::vector<Vec>& X, const Vec& y, double alpha_in, double to
     return w;
 }
 
-Vec mfles_forecast(const Vec& y, const Vec& periods, int h) {
+Vec mfles_forecast(const Vec& y, const Vec& periods, int h, int n_windows, const std::string& metric) {
+    double (*metric_fn)(const Vec&, const Vec&) = nullptr;      // statsforecast mfles._metric2fn
+    if (metric == "smape") metric_fn = calc_smape;
+    else if (metric == "mape") metric_fn = [](const Vec& t, const Vec& p) {
+        Vec d(t.size());
+        for (size_t i = 0; i < t.size(); ++i) d[i] = std::fabs((t[i] - p[i]) / (p[i] + 1e-6));
+        return npmean(d);
+    };
+    else if (metric == "mse") metric_fn = [](const Vec& t, const Vec& p) {
+        Vec d(t.size());
+        for (size_t i = 0; i < t.size(); ++i) d[i] = (t[i] - p[i]) * (t[i] - p[i]);
+        return npmean(d);
+    };
+    else if (metric == "mae") metric_fn = [](const Vec& t, const Vec& p) {
+        Vec d(t.size());
+        for (size_t i = 0; i < t.size(); ++i) d[i] = std::fabs(t[i] - p[i]);
+        return npmean(d);
+    };
+    else throw std::invalid_argument("auto_mfles: metric must be smape, mape, mse or mae");
+    if (n_windows < 1) throw std::invalid_argument("auto_mfles: n_windows must be >= 1");
     const int n = static_cast<int>(y.size());
     std::set<int> ps;
     for (double p : periods) ps.insert(static_cast<int>(std::nearbyint(p)));
     std::vector<int> sp;
     for (int p : ps) if (p >= 2 && 2 * p <= n) sp.push_back(p);
     const std::vector<Config> configs = default_configs(sp);
-    // optimize(): rolling origin, test_size = step = h, n_windows = 2, smape
+    // optimize(): rolling origin, test_size = step = h, n_windows windows, the chosen metric
     const int test = h, step = h;
-    int n_steps = 2;
+    int n_steps = n_windows;
     const int max_steps = static_cast<int>(std::floor(static_cast<double>(n - test - 4) / step)) + 1;   // Python //
     Config best = configs[0];
     if (max_steps >= 1) {
@@ -518,7 +537,7 @@ Vec mfles_forecast(const Vec& y, const Vec& periods, int h) {
                 const int ntr = n - (split * step + test);
                 const Vec tr(y.begin(), y.begin() + ntr), te(y.begin() + ntr, y.begin() + ntr + test);
                 m.fit(tr, c);
-                mets.push_back(calc_smape(te, m.predict(test)));
+                mets.push_back(metric_fn(te, m.predict(test)));
             }
             metrics.push_back(npmean(mets));
         }

@@ -204,17 +204,30 @@ Fit cesmodel(const Vec& y, int m, int season) {
 
 }  // namespace
 
-Vec ces_forecast(const Vec& y, int m, int h) {
+Vec ces_forecast(const Vec& y, int m, int h, char model, int max_season) {
     const int n = static_cast<int>(y.size());
-    if (m <= 1 || m > 24 || n < 2 * m) m = 1;          // usable_season(n, m, 24)
-    const bool seasonal = !(m < 1 || n < 2 * m || m == 1);
-    const int npars = seasonal ? 4 : 2;                 // "Z" -> 2 + 2; "N" -> 2
+    if (m <= 1 || m > max_season || n < 2 * m) m = 1;  // usable_season(n, m, max_season)
+    // statsforecast auto_ces(model): "Z" tries N, S, P, F; another letter fits that type only; "N" without a season
+    std::vector<int> types;
+    char st = (m < 1 || n < 2 * m || m == 1) ? 'N' : model;
+    switch (st) {
+        case 'Z': types = {NONE, SIMPLE, PARTIAL, FULL}; break;
+        case 'N': types = {NONE}; break;
+        case 'S': types = {SIMPLE}; break;
+        case 'P': types = {PARTIAL}; break;
+        case 'F': types = {FULL}; break;
+        default: throw std::invalid_argument("auto_ces: model must be Z, N, S, P or F");
+    }
+    if (model != 'Z' && model != 'N' && model != 'S' && model != 'P' && model != 'F')
+        throw std::invalid_argument("auto_ces: model must be Z, N, S, P or F");
+    int npars = 2;                                      // "P" -> 3; "F" / "Z" -> 4
+    if (st == 'P') npars += 1;
+    if (st == 'F' || st == 'Z') npars += 2;
     if (n <= npars) throw std::runtime_error("tiny datasets");
     Fit best;
     double best_ic = INFINITY;
-    const int types_all[4] = {NONE, SIMPLE, PARTIAL, FULL};
-    for (int k = 0; k < (seasonal ? 4 : 1); ++k) {
-        Fit f = cesmodel(y, m, types_all[k]);
+    for (int type : types) {
+        Fit f = cesmodel(y, m, type);
         if (!std::isnan(f.aicc) && f.aicc < best_ic) { best_ic = f.aicc; best = std::move(f); }
     }
     if (std::isinf(best_ic)) throw std::runtime_error("no model able to be fitted");

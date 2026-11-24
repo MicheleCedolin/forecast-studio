@@ -68,3 +68,21 @@ def test_runner_writes_wrmsse_for_hierarchical_data(tmp_path):
                                                     write_xlsx=False))
     assert r.manifest["wrmsse"]["complete"] and np.isfinite(r.manifest["wrmsse"]["value"])
     assert len(pd.read_csv(r.run_dir / "wrmsse.csv")) == 12
+
+
+def test_official_m5_seasonal_naive_benchmark():
+    """With M5's prices (data/m5) the seasonal naive scores the published sNaive WRMSSE, 0.847 (evaluation phase)."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    tsf, m5 = root / "data" / "tsf" / "m5_daily_dataset.tsf", root / "data" / "m5"
+    prices = W.dollar_weights_source(m5)
+    if prices is None or not tsf.is_file():
+        pytest.skip("M5 data or price files not present")
+    from tsfstudio.tsf.reader import read_tsf
+    ds = read_tsf(tsf)
+    train = [np.asarray(v[:-28], float) for v in ds.values]
+    test = np.array([v[-28:] for v in ds.values])
+    fc = np.array([np.tile(t[-7:], 4) for t in train])
+    last = (pd.Timestamp(ds.attrs["start_timestamp"].iloc[0]) + pd.Timedelta(days=len(train[0]) - 1)).strftime("%Y-%m-%d")
+    r = W.wrmsse(train, test, fc, ds.attrs, prices, last)
+    assert r["weights"].startswith("dollar") and r["WRMSSE"] == pytest.approx(0.847, abs=5e-4)

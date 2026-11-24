@@ -7,6 +7,9 @@
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
+#if defined(__GNUC__) && !defined(__clang__) && __has_include(<quadmath.h>)
+#include <quadmath.h>
+#endif
 
 namespace tsf {
 
@@ -748,13 +751,25 @@ AutoArimaResult auto_arima(const Vec& y, int freq, bool seasonal, bool log_trans
 
 namespace {
 
+// R's sin / cos give the correctly rounded value (checked against 200-bit mpmath on all Fourier arguments of NN5 and
+// M4-style periods), while the Windows C runtime's are 1 ulp off for ~5% of them. Fourier columns of one harmonic
+// have equal singular values, so stats::arima's SVD basis -- and with it the optimiser's path -- depends on every bit:
+// evaluate in quad precision and round once.
+#if defined(__GNUC__) && !defined(__clang__) && __has_include(<quadmath.h>)
+double cr_sin(double a) { return static_cast<double>(sinq(static_cast<__float128>(a))); }
+double cr_cos(double a) { return static_cast<double>(cosq(static_cast<__float128>(a))); }
+#else
+double cr_sin(double a) { return std::sin(a); }
+double cr_cos(double a) { return std::cos(a); }
+#endif
+
 double r_sinpi(double x) {                              // R's sinpi / cospi (nmath/cospi.c)
     x = std::fmod(x, 2.0);
     if (x <= -1) x += 2.0; else if (x > 1.0) x -= 2.0;
     if (x == 0.0 || x == 1.0) return 0.0;
     if (x == 0.5) return 1.0;
     if (x == -0.5) return -1.0;
-    return std::sin(3.14159265358979323846 * x);
+    return cr_sin(3.14159265358979323846 * x);
 }
 
 double r_cospi(double x) {
@@ -762,7 +777,7 @@ double r_cospi(double x) {
     if (std::fmod(x, 1.0) == 0.5) return 0.0;
     if (x == 1.0) return -1.0;
     if (x == 0.0) return 1.0;
-    return std::cos(3.14159265358979323846 * x);
+    return cr_cos(3.14159265358979323846 * x);
 }
 
 }  // namespace
