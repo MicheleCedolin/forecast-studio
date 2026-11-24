@@ -22,51 +22,78 @@ def _ref(text: str, url: str | None = None, verified: bool = False) -> dict:
 
 
 REFS = {
-    "fpp3": _ref("Hyndman, R. J., & Athanasopoulos, G. (2021). Forecasting: Principles and Practice (3rd ed.). OTexts.", "https://otexts.com/fpp3/"),
+    "fpp3": _ref("Hyndman, R. J., & Athanasopoulos, G. (2021). Forecasting: Principles and Practice (3rd ed.). OTexts.",
+                 "https://otexts.com/fpp3/", True),
     "hyndman2002": _ref("Hyndman, R. J., Koehler, A. B., Snyder, R. D., & Grose, S. (2002). A state space framework for automatic forecasting "
                         "using exponential smoothing methods. International Journal of Forecasting, 18(3), 439–454.",
                         "https://econpapers.repec.org/RePEc:eee:intfor:v:18:y:2002:i:3:p:439-454", True),
     "hyndman2008": _ref("Hyndman, R. J., & Khandakar, Y. (2008). Automatic time series forecasting: the forecast package for R. "
                         "Journal of Statistical Software, 27(3), 1–22.", "https://www.jstatsoft.org/v27/i03", True),
-    "delivera2011": _ref("De Livera, A. M., Hyndman, R. J., & Snyder, R. D. (2011). Forecasting time series with complex seasonal patterns "
-                         "using exponential smoothing. Journal of the American Statistical Association, 106(496), 1513–1527."),
-    "assimakopoulos2000": _ref("Assimakopoulos, V., & Nikolopoulos, K. (2000). The theta model: a decomposition approach to forecasting. "
-                               "International Journal of Forecasting, 16(4), 521–530."),
-    "hyndmanbillah2003": _ref("Hyndman, R. J., & Billah, B. (2003). Unmasking the Theta method. International Journal of Forecasting, 19(2), 287–290."),
-    "croston1972": _ref("Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Operational Research Quarterly, 23(3), 289–303."),
+    "delivera2011": _ref("De Livera, A. M., Hyndman, R. J., & Snyder, R. D. (2011). Forecasting time series with "
+                         "complex seasonal patterns using exponential smoothing. Journal of the American Statistical "
+                         "Association, 106(496), 1513–1527.",
+                         "https://doi.org/10.1198/jasa.2011.tm09771", True),
+    "assimakopoulos2000": _ref("Assimakopoulos, V., & Nikolopoulos, K. (2000). The theta model: a decomposition "
+                               "approach to forecasting. International Journal of Forecasting, 16(4), 521–530.",
+                               "https://doi.org/10.1016/S0169-2070(00)00066-2", True),
+    "hyndmanbillah2003": _ref("Hyndman, R. J., & Billah, B. (2003). Unmasking the Theta method. International Journal "
+                              "of Forecasting, 19(2), 287–290.",
+                              "https://doi.org/10.1016/S0169-2070(01)00143-1", True),
+    "croston1972": _ref("Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Operational "
+                        "Research Quarterly, 23(3), 289–303.",
+                        "https://doi.org/10.1057/jors.1972.50", True),
     "syntetos2005": _ref("Syntetos, A. A., & Boylan, J. E. (2005). The accuracy of intermittent demand estimates. "
-                         "International Journal of Forecasting, 21(2), 303–314."),
-    "teunter2011": _ref("Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: linking forecasting to inventory obsolescence. "
-                        "European Journal of Operational Research, 214(3), 606–615."),
-    "nikolopoulos2011": _ref("Nikolopoulos, K., Syntetos, A. A., Boylan, J. E., Petropoulos, F., & Assimakopoulos, V. (2011). An aggregate–disaggregate "
-                             "intermittent demand approach (ADIDA) to forecasting. Journal of the Operational Research Society, 62(3), 544–554."),
+                         "International Journal of Forecasting, 21(2), 303–314.",
+                         "https://doi.org/10.1016/j.ijforecast.2004.10.001", True),
+    "teunter2011": _ref("Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: linking "
+                        "forecasting to inventory obsolescence. European Journal of Operational Research, 214(3), "
+                        "606–615.",
+                        "https://doi.org/10.1016/j.ejor.2011.05.018", True),
+    "nikolopoulos2011": _ref("Nikolopoulos, K., Syntetos, A. A., Boylan, J. E., Petropoulos, F., & Assimakopoulos, V. "
+                             "(2011). An aggregate–disaggregate intermittent demand approach (ADIDA) to forecasting: an "
+                             "empirical proposition and analysis. Journal of the Operational Research Society, 62(3), "
+                             "544–554.",
+                             "https://doi.org/10.1057/jors.2010.32", True),
     "petropoulos2015": _ref("Petropoulos, F., & Kourentzes, N. (2015). Forecast combinations for intermittent demand. "
-                            "Journal of the Operational Research Society, 66(6), 914–924."),
-    "svetunkov2022": _ref("Svetunkov, I., Kourentzes, N., & Ord, J. K. (2022). Complex exponential smoothing. Naval Research Logistics, 69(8), 1108–1123."),
-    "winters1960": _ref("Winters, P. R. (1960). Forecasting sales by exponentially weighted moving averages. Management Science, 6(3), 324–342."),
-    "bandara2021": _ref("Bandara, K., Hyndman, R. J., & Bergmeir, C. (2021). MSTL: a seasonal-trend decomposition algorithm for time series with "
-                        "multiple seasonal patterns. arXiv:2107.13462.", "https://arxiv.org/abs/2107.13462"),
-    "cleveland1990": _ref("Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990). STL: a seasonal-trend decomposition procedure "
-                          "based on loess. Journal of Official Statistics, 6(1), 3–73."),
+                            "Journal of the Operational Research Society, 66(6), 914–924.",
+                            "https://doi.org/10.1057/jors.2014.62", True),
+    "svetunkov2022": _ref("Svetunkov, I., Kourentzes, N., & Ord, J. K. (2022). Complex exponential smoothing. Naval "
+                          "Research Logistics, 69(8), 1108–1123.",
+                          "https://doi.org/10.1002/nav.22074", True),
+    "winters1960": _ref("Winters, P. R. (1960). Forecasting sales by exponentially weighted moving averages. Management "
+                        "Science, 6(3), 324–342.",
+                        "https://doi.org/10.1287/mnsc.6.3.324", True),
+    "bandara2021": _ref("Bandara, K., Hyndman, R. J., & Bergmeir, C. (2025). MSTL: a seasonal-trend decomposition "
+                        "algorithm for time series with multiple seasonal patterns. International Journal of "
+                        "Operational Research, 52(1), 79–98. (Preprint, 2021: arXiv:2107.13462.)",
+                        "https://doi.org/10.1504/IJOR.2025.143957", True),
+    "cleveland1990": _ref("Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990). STL: a "
+                          "seasonal-trend decomposition procedure based on loess. Journal of Official Statistics, 6(1), "
+                          "3–73.",
+                          None, True),
     "prokhorenkova2018": _ref("Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A. V., & Gulin, A. (2018). CatBoost: unbiased boosting with "
                               "categorical features. Advances in Neural Information Processing Systems 31.", "https://arxiv.org/abs/1706.09516"),
-    "athanasopoulos2017": _ref("Athanasopoulos, G., Hyndman, R. J., Kourentzes, N., & Petropoulos, F. (2017). Forecasting with temporal "
-                               "hierarchies. European Journal of Operational Research, 262(1), 60–74.",
-                               "https://doi.org/10.1016/j.ejor.2017.02.046"),
-    "kourentzes2014": _ref("Kourentzes, N., Petropoulos, F., & Trapero, J. R. (2014). Improving forecasting by estimating time series "
-                           "structural components across multiple frequencies. International Journal of Forecasting, 30(2), 291–302.",
-                           "https://doi.org/10.1016/j.ijforecast.2013.09.006"),
-    "bergmeir2016": _ref("Bergmeir, C., Hyndman, R. J., & Benítez, J. M. (2016). Bagging exponential smoothing methods using STL "
-                         "decomposition and Box–Cox transformation. International Journal of Forecasting, 32(2), 303–312.",
-                         "https://doi.org/10.1016/j.ijforecast.2015.07.002"),
+    "athanasopoulos2017": _ref("Athanasopoulos, G., Hyndman, R. J., Kourentzes, N., & Petropoulos, F. (2017). "
+                               "Forecasting with temporal hierarchies. European Journal of Operational Research, "
+                               "262(1), 60–74.",
+                               "https://doi.org/10.1016/j.ejor.2017.02.046", True),
+    "kourentzes2014": _ref("Kourentzes, N., Petropoulos, F., & Trapero, J. R. (2014). Improving forecasting by "
+                           "estimating time series structural components across multiple frequencies. International "
+                           "Journal of Forecasting, 30(2), 291–302.",
+                           "https://doi.org/10.1016/j.ijforecast.2013.09.006", True),
+    "bergmeir2016": _ref("Bergmeir, C., Hyndman, R. J., & Benítez, J. M. (2016). Bagging exponential smoothing methods "
+                         "using STL decomposition and Box–Cox transformation. International Journal of Forecasting, "
+                         "32(2), 303–312.",
+                         "https://doi.org/10.1016/j.ijforecast.2015.07.002", True),
     "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
                    "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
                    "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
     "taieb2012": _ref("Ben Taieb, S., Bontempi, G., Atiya, A. F., & Sorjamaa, A. (2012). A review and comparison of strategies for multi-step "
                       "ahead time series forecasting based on the NN5 forecasting competition. Expert Systems with Applications, 39(8), "
                       "7067–7083.", "https://doi.org/10.1016/j.eswa.2012.01.039"),
-    "makridakis2000": _ref("Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and implications. International "
-                           "Journal of Forecasting, 16(4), 451–476.", "https://doi.org/10.1016/S0169-2070(00)00057-1"),
+    "makridakis2000": _ref("Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and "
+                           "implications. International Journal of Forecasting, 16(4), 451–476.",
+                           "https://doi.org/10.1016/S0169-2070(00)00057-1", True),
     "oreshkin2020": _ref("Oreshkin, B. N., Carpov, D., Chapados, N., & Bengio, Y. (2020). N-BEATS: Neural basis expansion analysis for "
                          "interpretable time series forecasting. International Conference on Learning Representations.",
                          "https://openreview.net/forum?id=r1ecqn4YwB"),
@@ -85,23 +112,50 @@ REFS = {
     "hyndman2006": _ref("Hyndman, R. J. (2006). Another look at forecast-accuracy metrics for intermittent demand. Foresight, 4(4), 43–46.",
                         "https://econpapers.repec.org/RePEc:for:ijafaa:y:2006:i:4:p:43-46", True),
     "hyndmankoehler2006": _ref("Hyndman, R. J., & Koehler, A. B. (2006). Another look at measures of forecast accuracy. "
-                               "International Journal of Forecasting, 22(4), 679–688."),
-    "makridakis2020": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2020). The M4 Competition: 100,000 time series and 61 "
-                           "forecasting methods. International Journal of Forecasting, 36(1), 54–74."),
-    "makridakis2022": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2022). M5 accuracy competition: Results, findings, and "
-                           "conclusions. International Journal of Forecasting, 38(4), 1346–1364."),
+                               "International Journal of Forecasting, 22(4), 679–688.",
+                               "https://doi.org/10.1016/j.ijforecast.2006.03.001", True),
+    "makridakis2020": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2020). The M4 Competition: 100,000 "
+                           "time series and 61 forecasting methods. International Journal of Forecasting, 36(1), 54–74.",
+                           "https://doi.org/10.1016/j.ijforecast.2019.04.014", True),
+    "makridakis2022": _ref("Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2022). M5 accuracy competition: "
+                           "Results, findings, and conclusions. International Journal of Forecasting, 38(4), 1346–1364.",
+                           "https://doi.org/10.1016/j.ijforecast.2021.11.013", True),
     "petropoulos2020": _ref("Petropoulos, F., & Svetunkov, I. (2020). A simple combination of univariate models. "
-                            "International Journal of Forecasting, 36(1), 110–115."),
-    "fiorucci2016": _ref("Fiorucci, J. A., Pellegrini, T. R., Louzada, F., Petropoulos, F., & Koehler, A. B. (2016). Models for optimising "
-                         "the theta method and their relationship to state space models. International Journal of Forecasting, 32(4), 1151–1161."),
-    "holt2004": _ref("Holt, C. C. (2004). Forecasting seasonals and trends by exponentially weighted moving averages. International Journal of Forecasting, 20(1), 5-10 (reprint of the 1957 ONR memorandum).", "https://doi.org/10.1016/j.ijforecast.2003.09.015"),
-    "gardner1985": _ref("Gardner, E. S., Jr., & McKenzie, E. (1985). Forecasting trends in time series. Management Science, 31(10), 1237–1246."),
-    "kim2016": _ref("Kim, S., & Kim, H. (2016). A new metric of absolute percentage error for intermittent demand forecasts. "
-                    "International Journal of Forecasting, 32(3), 669–679."),
-    "davydenko2013": _ref("Davydenko, A., & Fildes, R. (2013). Measuring forecasting accuracy: The case of judgmental adjustments to SKU-level "
-                          "demand forecasts. International Journal of Forecasting, 29(3), 510–522."),
-    "nixtla": _ref("Nixtla StatsForecast (open source, Apache-2.0) documentation: in the Python engine this model is the library's own implementation.",
-                   "https://nixtlaverse.nixtla.io/statsforecast/"),
+                            "International Journal of Forecasting, 36(1), 110–115.",
+                            "https://doi.org/10.1016/j.ijforecast.2019.01.006", True),
+    "fiorucci2016": _ref("Fiorucci, J. A., Pellegrini, T. R., Louzada, F., Petropoulos, F., & Koehler, A. B. (2016). "
+                         "Models for optimising the theta method and their relationship to state space models. "
+                         "International Journal of Forecasting, 32(4), 1151–1161.",
+                         "https://doi.org/10.1016/j.ijforecast.2016.02.005", True),
+    "holt2004": _ref("Holt, C. C. (2004). Forecasting seasonals and trends by exponentially weighted moving averages. "
+                     "International Journal of Forecasting, 20(1), 5-10 (reprint of the 1957 ONR memorandum).",
+                     "https://doi.org/10.1016/j.ijforecast.2003.09.015", True),
+    "gardner1985": _ref("Gardner, E. S., Jr., & McKenzie, E. (1985). Forecasting trends in time series. Management "
+                        "Science, 31(10), 1237–1246.",
+                        "https://doi.org/10.1287/mnsc.31.10.1237", True),
+    "kim2016": _ref("Kim, S., & Kim, H. (2016). A new metric of absolute percentage error for intermittent demand "
+                    "forecasts. International Journal of Forecasting, 32(3), 669–679.",
+                    "https://doi.org/10.1016/j.ijforecast.2015.12.003", True),
+    "davydenko2013": _ref("Davydenko, A., & Fildes, R. (2013). Measuring forecasting accuracy: The case of judgmental "
+                          "adjustments to SKU-level demand forecasts. International Journal of Forecasting, 29(3), "
+                          "510–522.",
+                          "https://doi.org/10.1016/j.ijforecast.2012.09.002", True),
+    "nixtla": _ref("Nixtla StatsForecast (open source, Apache-2.0) documentation: in the Python engine this model is "
+                   "the library's own implementation.",
+                   "https://nixtlaverse.nixtla.io/statsforecast", True),
+    "lubba2019": _ref("Lubba, C. H., Sethi, S. S., Knaute, P., Schultz, S. R., Fulcher, B. D., & Jones, N. S. (2019). "
+                      "catch22: CAnonical Time-series CHaracteristics. Data Mining and Knowledge Discovery, 33(6), "
+                      "1821–1852.",
+                      "https://doi.org/10.1007/s10618-019-00647-x", True),
+    "guerrero1993": _ref("Guerrero, V. M. (1993). Time-series analysis supported by power transformations. Journal of "
+                         "Forecasting, 12(1), 37–48.",
+                         "https://doi.org/10.1002/for.3980120104", True),
+    "kang2017": _ref("Kang, Y., Hyndman, R. J., & Smith-Miles, K. (2017). Visualising forecasting algorithm performance "
+                     "using time series instance spaces. International Journal of Forecasting, 33(2), 345–358.",
+                     "https://doi.org/10.1016/j.ijforecast.2016.09.004", True),
+    "jolliffe2016": _ref("Jolliffe, I. T., & Cadima, J. (2016). Principal component analysis: a review and recent "
+                         "developments. Philosophical Transactions of the Royal Society A, 374(2065), 20150202.",
+                         "https://doi.org/10.1098/rsta.2015.0202", True),
 }
 
 

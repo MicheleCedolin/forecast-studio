@@ -190,8 +190,8 @@
     const r = learn.references[key];
     const li = el("li", { id: "ref-" + key });
     li.appendChild(document.createTextNode(r.text + " "));
-    if (r.url) li.appendChild(el("a", { href: r.url, target: "_blank", rel: "noopener", text: "link" }));
-    li.appendChild(el("span", { class: "tag", text: r.verified ? "checked" : "not checked" }));
+    if (r.url) li.appendChild(el("a", { href: r.url, target: "_blank", rel: "noopener", text: /doi\.org/.test(r.url) ? "DOI" : "link" }));
+    if (!r.verified) li.appendChild(el("span", { class: "tag", text: "not checked" }));   // only what is still open is marked
     return li;
   }
 
@@ -247,9 +247,46 @@
     p.appendChild(document.createTextNode("Sources of the definitions: "));
     p.appendChild(cite(learn.metric_refs));
     metrics.appendChild(p);
+    // data characteristics and the map
+    const ch = learn.characteristics, chars = $("learnChars");
+    chars.textContent = "";
+    if (ch) {
+      const block = (title, note, items, refKeys, open) => {
+        const d = el("details", open ? { open: "" } : {});
+        d.appendChild(el("summary", { text: title }));
+        if (note) d.appendChild(el("p", { text: note }));
+        const dl = el("dl", {});
+        for (const it of items) { dl.appendChild(el("dt", { text: it.id })); dl.appendChild(el("dd", { text: it.text })); }
+        d.appendChild(dl);
+        const p = el("p", { class: "note" });
+        p.appendChild(document.createTextNode("Sources: "));
+        p.appendChild(cite(refKeys));
+        d.appendChild(p);
+        chars.appendChild(d);
+      };
+      block("Demand pattern (four classes)", "Every series is put in one of four classes from two numbers: how often demand occurs (ADI) and " +
+            "how much its size varies (CV²). The class says which kind of method suits the series: the intermittent-demand methods are " +
+            "made for the intermittent and lumpy classes.", ch.classes, ch.class_refs, true);
+      block("Descriptive characteristics (10)", "Simple summaries of each series, computed after leaving out missing values.", ch.basic, ch.basic_refs);
+      block("catch22 (22 characteristics)", "A set of 22 characteristics chosen from several thousand candidates for telling time series " +
+            "apart while overlapping little. Each is computed on the standardised series, so it describes the shape of the series, " +
+            "not its level or scale. Series with fewer than 10 observations, constant series and series with missing values get no value.",
+            ch.catch22, ch.catch22_refs);
+      const d = el("details", {});
+      d.appendChild(el("summary", { text: "How to read the map (principal components)" }));
+      for (const t of ch.map) d.appendChild(el("p", { text: t }));
+      const p2 = el("p", { class: "note" });
+      p2.appendChild(document.createTextNode("Sources: "));
+      p2.appendChild(cite(ch.map_refs));
+      d.appendChild(p2);
+      chars.appendChild(d);
+    }
     const refs = $("learnRefs");
     refs.textContent = "";
     for (const k of order) refs.appendChild(refLine(k));
+    const open = order.filter((k) => !learn.references[k].verified).length;
+    $("learnRefsNote").textContent = open ? "Entries marked “not checked” have not been compared with a bibliographic record yet; check them yourself before citing them."
+      : "Every entry was compared with the publisher's or a bibliographic record (authors, year, title, journal, volume, issue and pages).";
   }
 
   const learnReady = fetch("learn.json" + V).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => {
