@@ -1,0 +1,778 @@
+{
+ "groups": [
+  {
+   "id": "yerel",
+   "name": "Local statistical",
+   "text": "A separate model is fitted to each series."
+  },
+  {
+   "id": "aralikli",
+   "name": "Intermittent demand",
+   "text": "Methods for series with many zeros (spare parts, retail)."
+  }
+ ],
+ "models": [
+  {
+   "id": "naive",
+   "name": "Naive",
+   "group": "yerel",
+   "summary": "Repeats the last observation unchanged over the horizon.",
+   "how": "The forecast equals the last value of the series and is flat over the horizon. It has no parameters.",
+   "use": "The simplest benchmark. Hard to beat on series that behave like a random walk.",
+   "caution": "Ignores seasonality and trend.",
+   "refs": [
+    "fpp3"
+   ]
+  },
+  {
+   "id": "snaive",
+   "name": "Seasonal naive",
+   "group": "yerel",
+   "summary": "Carries the values of the previous season forward.",
+   "how": "Forecast(T+h) = y(T+h−m); m is the integer part of the largest seasonal period (same as the msts frequency in R). Series for which other models fail also receive this method as a fallback forecast, and these are counted and reported.",
+   "use": "A baseline for seasonal data; also the fallback forecast.",
+   "caution": "Not meaningful if the series is shorter than one period. It also carries the noise forward unchanged.",
+   "refs": [
+    "fpp3"
+   ]
+  },
+  {
+   "id": "ses",
+   "name": "Simple exponential smoothing (SES)",
+   "group": "yerel",
+   "summary": "Smooths the level component with exponential weights; gives a flat forecast.",
+   "how": "The single smoothing parameter (alpha) is chosen by maximum likelihood (alpha in the range 0.0001–0.9999). There is no trend or seasonality; the forecast is constant over the horizon.",
+   "use": "Series without trend or seasonality, or whose seasonality is handled separately; a quick baseline.",
+   "caution": "Makes systematic errors if there is trend or seasonality.",
+   "refs": [
+    "fpp3"
+   ]
+  },
+  {
+   "id": "ets",
+   "name": "ETS (exponential smoothing state space)",
+   "group": "yerel",
+   "summary": "An exponential smoothing family that selects the error, trend and seasonality form automatically with an information criterion.",
+   "how": "All combinations of additive/multiplicative error, trend (possibly damped) and seasonality are fitted; the information criterion picks the best.",
+   "use": "A strong general-purpose classical method; common for monthly, quarterly and weekly data.",
+   "caution": "Seasonality is not used if the period exceeds 24 (same rule as R ets); it cannot capture seasonality in long daily/hourly periods. In that case consider dhr_arima, mstl or tbats.",
+   "refs": [
+    "hyndman2002",
+    "fpp3"
+   ]
+  },
+  {
+   "id": "theta",
+   "name": "Theta",
+   "group": "yerel",
+   "summary": "Combines simple exponential smoothing with a drift equal to half the slope of the series.",
+   "how": "If seasonality is detected by an ACF test, a classical multiplicative decomposition is applied; then the SES forecast and a linear drift with half the slope are added.",
+   "use": "The method that won the M3 competition; a fast and robust baseline for short series.",
+   "caution": "Does not handle complex multi-seasonal structures.",
+   "refs": [
+    "assimakopoulos2000",
+    "hyndmanbillah2003"
+   ]
+  },
+  {
+   "id": "drift",
+   "name": "Random walk with drift",
+   "group": "yerel",
+   "summary": "Extends the line from the first to the last observation into the future.",
+   "how": "Forecast(T+h) = y(T) + h·(y(T) − y(1))/(T − 1); the same rule as R rwf(drift = TRUE). It has no parameters.",
+   "use": "A standard benchmark for trended series.",
+   "caution": "Only the first and last observations determine the slope, so an outlier at either end changes the whole forecast.",
+   "refs": [
+    "fpp3"
+   ]
+  },
+  {
+   "id": "naive2",
+   "name": "Naive2 (M4 benchmark)",
+   "group": "yerel",
+   "summary": "Seasonally adjusted naive forecast; the reference method of the M4 OWA measure.",
+   "how": "If a 90% autocorrelation test (M4 benchmark code, at least 3 periods of data) finds seasonality, a classical multiplicative decomposition removes it; the last adjusted value is repeated and the seasonal indices are put back.",
+   "use": "Needed to compute OWA; a seasonal benchmark that is less noisy than seasonal naive.",
+   "caution": "The seasonality test uses R's default number of autocorrelation lags, so long periods (e.g. 365 in daily data) are treated as non-seasonal.",
+   "refs": [
+    "makridakis2020"
+   ]
+  },
+  {
+   "id": "comb_shd",
+   "name": "Comb S-H-D (M4 benchmark)",
+   "group": "yerel",
+   "summary": "Average of simple, Holt and damped Holt exponential smoothing on the seasonally adjusted series.",
+   "how": "Seasonality is removed as in Naive2; SES, Holt (linear trend) and damped Holt forecasts are averaged and the seasonal indices are put back. Holt parameters are fitted by least squares within the R ets bounds.",
+   "use": "The combination benchmark of the M3/M4 competitions; strong and hard to beat on yearly, quarterly and monthly data.",
+   "caution": "Same model as R holt() (ets AAN / AAdN, least squares). On NN5 the mean SMAPE and MASE are within 0.4% of R; single series can differ slightly because R's optimiser sometimes stops at a worse fit (docs/VALIDATION.md 1d).",
+   "refs": [
+    "makridakis2020",
+    "gardner1985"
+   ]
+  },
+  {
+   "id": "dotm",
+   "name": "Dynamic optimised Theta (DOTM)",
+   "group": "yerel",
+   "summary": "A Theta model whose theta coefficient and parameters are optimised and updated over time.",
+   "how": "State-space form of the Theta method with an optimised theta line; seasonality is removed first by classical decomposition when detected.",
+   "use": "A strong benchmark in M4 for yearly/quarterly/monthly data; also a component of SCUM.",
+   "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded).",
+   "refs": [
+    "fiorucci2016",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "scum",
+   "name": "SCUM (median of ETS, CES, ARIMA, DOTM)",
+   "group": "yerel",
+   "summary": "Point-wise median of four automatic statistical models.",
+   "how": "ETS, CES, ARIMA and DOTM are fitted with this engine's settings and the median of their forecasts is taken at each horizon step. If a component fails the median of the remaining ones is used (a note is recorded); with fewer than two the series falls back.",
+   "use": "A simple combination that ranked among the best statistical benchmarks in M4; useful to test whether combinations change rankings.",
+   "caution": "As slow as its slowest component (ARIMA); measure with a short trial first.",
+   "refs": [
+    "petropoulos2020"
+   ]
+  },
+  {
+   "id": "comb_eat",
+   "name": "Combination: mean of ETS, ARIMA, Theta",
+   "group": "yerel",
+   "summary": "Equal-weight average of the automatic ETS, ARIMA and Theta forecasts.",
+   "how": "ETS, ARIMA and Theta are fitted with this engine's settings and their forecasts are averaged at each horizon step. If a component fails the mean of the other two is used (a note is recorded); with fewer than two the series falls back.",
+   "use": "The classic simple combination: it is often more accurate than each of its parts (Makridakis & Hibon 2000; Hyndman's ETS-ARIMA-Theta average was a strong M4 benchmark). Good for testing whether combining changes rankings.",
+   "caution": "As slow as its slowest component (ARIMA). One badly wrong component pulls the mean; the median variant is more robust.",
+   "refs": [
+    "makridakis2000",
+    "petropoulos2020"
+   ]
+  },
+  {
+   "id": "comb_eat_median",
+   "name": "Combination: median of ETS, ARIMA, Theta",
+   "group": "yerel",
+   "summary": "Pointwise median of the automatic ETS, ARIMA and Theta forecasts.",
+   "how": "The same three components as the mean combination; at each horizon step the middle value is taken, so a single badly wrong component has no effect. With one component failed it is the mean of the other two.",
+   "use": "A robust alternative to the mean combination (the idea behind SCUM, with three components).",
+   "caution": "As slow as its slowest component (ARIMA).",
+   "refs": [
+    "petropoulos2020"
+   ]
+  },
+  {
+   "id": "tbats",
+   "name": "TBATS",
+   "group": "yerel",
+   "summary": "Exponential smoothing with trigonometric seasonality for series with multiple and fractional seasonal periods.",
+   "how": "Box-Cox transformation, ARMA errors, trend and trigonometric (Fourier) seasonality; the components to use are selected by AIC. Periods may be fractional (e.g. 365.25).",
+   "use": "When hourly/daily data have more than one seasonality.",
+   "caution": "Very slow. NOT available in the Python engine: statsforecast AutoTBATS did not find the same model as R tbats() (disabled by user decision).",
+   "refs": [
+    "delivera2011"
+   ]
+  },
+  {
+   "id": "arima",
+   "name": "Auto ARIMA",
+   "group": "yerel",
+   "summary": "ARIMA with automatic selection of the differencing order and the (p,d,q)(P,D,Q) structure.",
+   "how": "The differencing order is chosen by unit-root tests, and the orders by stepwise search and an information criterion; drift is allowed. Fallback chain: first with a log transformation (lambda=0), otherwise raw, otherwise non-seasonal.",
+   "use": "A flexible classical method for series with strong autocorrelation.",
+   "caution": "Slow; on long daily series (R) a single run can take about half an hour. The log transformation is tried only if all values are positive.",
+   "refs": [
+    "hyndman2008",
+    "fpp3"
+   ]
+  },
+  {
+   "id": "dhr_arima",
+   "name": "Dynamic harmonic regression (DHR-ARIMA)",
+   "group": "yerel",
+   "summary": "Models seasonality with Fourier terms and the remaining structure with a non-seasonal ARIMA.",
+   "how": "For each seasonal period, K pairs of sin/cos terms are added as external regressors; the errors are modelled with auto.arima. K=1 in the original study.",
+   "use": "Long or multi-seasonal periods (daily, weekly, hourly).",
+   "caution": "As K grows the model is more flexible but slower and prone to overfitting.",
+   "refs": [
+    "hyndman2008",
+    "fpp3"
+   ]
+  },
+  {
+   "id": "croston_classic",
+   "name": "Croston (classic)",
+   "group": "aralikli",
+   "summary": "Smooths the demand size and the interval between demands separately; gives a flat forecast as a demand rate.",
+   "how": "Only non-zero demands are exponentially smoothed; the interval between demands is smoothed separately. Forecast = size / interval, constant over the horizon.",
+   "use": "Demand series with many zeros, such as spare parts.",
+   "caution": "Produces a flat RATE (often below 1). If rounding to integers is on, it falls to 0: all forecasts can become 0. Turn rounding off. Classic Croston is known to be biased upwards.",
+   "refs": [
+    "croston1972",
+    "syntetos2005"
+   ]
+  },
+  {
+   "id": "croston_sba",
+   "name": "Croston–SBA",
+   "group": "aralikli",
+   "summary": "Applies to Croston the Syntetos–Boylan correction, which reduces its bias.",
+   "how": "Shrinks the Croston forecast by a correction factor (approximately 1 − alpha/2).",
+   "use": "To prevent Croston from consistently over-forecasting intermittent demand.",
+   "caution": "Rounding to integers can turn forecasts into 0; turn rounding off.",
+   "refs": [
+    "syntetos2005"
+   ]
+  },
+  {
+   "id": "croston_optimized",
+   "name": "Croston (optimised)",
+   "group": "aralikli",
+   "summary": "Classic Croston; the smoothing parameter is optimised per series.",
+   "how": "Instead of a fixed smoothing value, the parameter is chosen by the in-sample error.",
+   "use": "When you do not want to choose the smoothing value by hand.",
+   "caution": "On short and very sparse series the optimisation can be unstable. Turn rounding off.",
+   "refs": [
+    "croston1972"
+   ]
+  },
+  {
+   "id": "tsb",
+   "name": "TSB (Teunter–Syntetos–Babai)",
+   "group": "aralikli",
+   "summary": "Updates the demand probability every period; for products whose demand stops, the forecast decays towards zero over time.",
+   "how": "The demand probability (alpha_p) is smoothed every period, the demand size (alpha_d) only when demand occurs. Forecast = probability × size.",
+   "use": "Products at risk of obsolescence: the Croston family does not update its forecast when demand stops.",
+   "caution": "The default 0.1/0.1 is our own choice, not an evidence-based recommendation; tune it on your data. Turn rounding off.",
+   "refs": [
+    "teunter2011"
+   ]
+  },
+  {
+   "id": "adida",
+   "name": "ADIDA",
+   "group": "aralikli",
+   "summary": "Reduces intermittency by temporal aggregation, forecasts, and then disaggregates the result.",
+   "how": "The series is aggregated at one aggregation level (demand becomes less sparse), forecast with a simple method, and the forecast is divided back to the original scale.",
+   "use": "An alternative to Croston on very sparse series.",
+   "caution": "The aggregation level is chosen by the library. Turn rounding off.",
+   "refs": [
+    "nikolopoulos2011"
+   ]
+  },
+  {
+   "id": "imapa",
+   "name": "IMAPA",
+   "group": "aralikli",
+   "summary": "Combines the forecasts of several aggregation levels (MAPA for intermittent demand).",
+   "how": "Forecasts are made at different aggregation levels and averaged; this reduces the risk of choosing a single level.",
+   "use": "To avoid ADIDA's sensitivity to the choice of level.",
+   "caution": "Turn rounding off.",
+   "refs": [
+    "petropoulos2015"
+   ]
+  },
+  {
+   "id": "auto_theta",
+   "name": "Auto Theta",
+   "group": "yerel",
+   "summary": "Selects the best of the four Theta variants by in-sample error.",
+   "how": "Standard, optimised, dynamic standard and dynamic optimised Theta models are tried; the library selects by its criterion.",
+   "use": "An automated, more flexible version of Theta.",
+   "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded). Without at least 2 periods of data the model is non-seasonal.",
+   "refs": [
+    "assimakopoulos2000",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "auto_ces",
+   "name": "Complex exponential smoothing (CES)",
+   "group": "yerel",
+   "summary": "Smooths the series in the complex plane (real + imaginary component); selects the seasonality type automatically.",
+   "how": "Captures trend and seasonality with complex-valued smoothing instead of separate components as in ETS.",
+   "use": "Series with intertwined trend/seasonality where ETS falls short.",
+   "caution": "If the period exceeds the 'largest seasonal period' setting the model is non-seasonal; this threshold (24) is our own choice.",
+   "refs": [
+    "svetunkov2022",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "holt_winters",
+   "name": "Holt–Winters",
+   "group": "yerel",
+   "summary": "Tracks level, trend and seasonality with three separate exponential smoothings.",
+   "how": "The classical three-component method; if there is no seasonality it reduces to Holt (a note is recorded).",
+   "use": "Relatively short series with clear trend and seasonality.",
+   "caution": "For multiplicative error all values must be greater than 0. The period threshold (24) is our own choice.",
+   "refs": [
+    "winters1960",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "mstl",
+   "name": "MSTL (multiple seasonal-trend decomposition)",
+   "group": "yerel",
+   "summary": "Decomposes the series into trend, several seasonal components and a remainder; trend/remainder are forecast with ETS.",
+   "how": "STL decomposition is applied successively for each seasonal period. Periods are rounded to integers; only those with at least two periods of data are used.",
+   "use": "Multiple seasonalities in hourly/daily data.",
+   "caution": "If no valid period is found (e.g. yearly data) the series falls back to the fallback forecast; this is expected.",
+   "refs": [
+    "bandara2021",
+    "cleveland1990"
+   ]
+  },
+  {
+   "id": "stl_ets",
+   "name": "STL + ETS (stlf)",
+   "group": "yerel",
+   "summary": "R's stlf: STL removes the seasonality, ETS forecasts the seasonally adjusted series, the last seasonal cycle is added back.",
+   "how": "Same as R forecast::stlf(y): mstl() with R's stl() settings (s.window 11, 15, … per period; one pass for one period, two passes for several; periods shorter than half the series), ets(model = \"ZZN\") on trend + remainder, the last cycle of each seasonal component repeated.",
+   "use": "Seasonal daily/weekly data where a slowly changing seasonal pattern and a separate trend model are wanted; a strong, fast alternative to seasonal ETS (also for periods > 24, where ets() ignores seasonality).",
+   "caution": "Needs a seasonal period and more than two full periods of data; otherwise the series falls back. Close to MSTL, which uses statsmodels' STL settings instead of R's.",
+   "refs": [
+    "cleveland1990",
+    "hyndman2008",
+    "fpp3"
+   ]
+  },
+  {
+   "id": "stl_arima",
+   "name": "STL + ARIMA",
+   "group": "yerel",
+   "summary": "As STL + ETS, but the seasonally adjusted series is forecast with a non-seasonal auto.arima.",
+   "how": "R forecast(mstl(y), method = \"arima\"): the same R STL decomposition, auto.arima(seasonal = FALSE) on trend + remainder, the last seasonal cycle added back.",
+   "use": "Seasonal series whose adjusted part has autocorrelation that ETS does not capture.",
+   "caution": "Needs a seasonal period and more than two full periods of data; otherwise the series falls back.",
+   "refs": [
+    "cleveland1990",
+    "hyndman2008",
+    "fpp3"
+   ]
+  },
+  {
+   "id": "bagged_ets",
+   "name": "Bagged ETS",
+   "group": "yerel",
+   "summary": "ETS fitted to the series and to bootstrapped copies of it; the forecasts are averaged.",
+   "how": "R forecast::baggedETS after set.seed(seed): Box-Cox (Guerrero lambda in [0, 1] for positive data), periodic STL, a moving-block bootstrap of the remainder (blocks of two seasons) gives n_boot − 1 new series; ets() is fitted to each and to the original, and the point forecasts are averaged. R's random number generator is reproduced, so a seed gives R's numbers.",
+   "use": "When ETS is a good model but its selection is unstable; bagging usually improves accuracy (strong on M3 monthly).",
+   "caution": "About n_boot times the cost of ETS. Non-seasonal series (frequency 1, or fewer than two full periods) use R's loess trend instead of STL, as R does.",
+   "refs": [
+    "bergmeir2016",
+    "hyndman2008"
+   ]
+  },
+  {
+   "id": "thief",
+   "name": "THieF (temporal hierarchies, ETS)",
+   "group": "yerel",
+   "summary": "Forecasts the series at every temporal aggregation level that divides the season (e.g. monthly, 2-monthly, quarterly, …, annual) and reconciles them.",
+   "how": "R thief::thief(y, usemodel = \"ets\", comb = \"struc\"): non-overlapping sums at the levels that divide the seasonal period m, ets() at each level, then the forecasts are made coherent by structural-scaling weighted least squares; the reconciled bottom level is returned.",
+   "use": "Monthly, quarterly or weekly data where the annual picture is more stable than the fine detail; typically improves on plain ETS.",
+   "caution": "Needs a seasonal period m > 1 and at least two full periods of data; otherwise the series falls back. Levels with very short series use R's small-sample ETS branch.",
+   "refs": [
+    "athanasopoulos2017",
+    "hyndman2008"
+   ]
+  },
+  {
+   "id": "mapa",
+   "name": "MAPA (multiple aggregation prediction)",
+   "group": "yerel",
+   "summary": "ETS at temporal aggregation levels 1..m; the level, trend and seasonal components are combined across levels.",
+   "how": "R MAPA::mapa(y, comb = \"w.mean\", hybrid = TRUE, model = \"ZZZ\", type = \"ets\"): the series is averaged over 1..m periods, ets() is fitted at each level, the final states are translated into level / trend / season forecasts, level and trend are averaged, the seasonal parts of the levels that divide m are combined with 1/AL weights, and the result is averaged with the level-1 ETS forecast.",
+   "use": "Noisy series where the model chosen at the original frequency is unstable; strong on intermittent and monthly data.",
+   "caution": "About m ETS fits per series. Aggregation levels with fewer than four observations are skipped, as in R.",
+   "refs": [
+    "kourentzes2014",
+    "hyndman2008"
+   ]
+  },
+  {
+   "id": "auto_mfles",
+   "name": "Auto MFLES",
+   "group": "yerel",
+   "summary": "Gradient-boosted time-series decomposition: trend, seasonal and level steps are learned in sequence.",
+   "how": "The library selects its settings by taking the last 'horizon' observations as test windows (n_windows of them); the criterion can be chosen.",
+   "use": "To try a quick modern alternative to classical methods.",
+   "caution": "Requires scikit-learn. A peer-reviewed reference has not been verified; cite the library documentation before using it in a paper.",
+   "refs": [
+    "nixtla"
+   ]
+  },
+  {
+   "id": "holt_ets",
+   "name": "Holt (ETS with additive trend)",
+   "group": "yerel",
+   "summary": "Exponential smoothing of level and trend, with the trend damped or not as the information criterion decides.",
+   "how": "ETS(A,A,N) and ETS(A,Ad,N) (or the multiplicative-error forms) are fitted and the one with the lower AICc is kept.",
+   "use": "Trended, non-seasonal series; a classical benchmark between SES and the full automatic ETS.",
+   "caution": "For multiplicative error all values must be greater than 0. Seasonality is ignored; use ETS or Holt-Winters for seasonal data.",
+   "refs": [
+    "holt2004",
+    "gardner1985",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "historic_average",
+   "name": "Historic average",
+   "group": "yerel",
+   "summary": "Forecasts every future value with the mean of the whole training series.",
+   "how": "The arithmetic mean of all observations is repeated over the horizon (R: meanf).",
+   "use": "The simplest benchmark for stationary series without trend or seasonality.",
+   "caution": "Ignores trend, seasonality and recent level shifts; only useful as a lower bound.",
+   "refs": [
+    "fpp3",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "window_average",
+   "name": "Window average",
+   "group": "yerel",
+   "summary": "Forecasts with the mean of the last few observations.",
+   "how": "The mean of the last window_size values is repeated over the horizon.",
+   "use": "A benchmark that follows level shifts more quickly than the historic average.",
+   "caution": "A series shorter than the window falls back. The default window (4) is our own choice.",
+   "refs": [
+    "nixtla"
+   ]
+  },
+  {
+   "id": "seasonal_window_average",
+   "name": "Seasonal window average",
+   "group": "yerel",
+   "summary": "Forecasts each season position with the mean of that position over the last few seasons.",
+   "how": "The last window_size full seasons are averaged position by position and the seasonal profile is repeated.",
+   "use": "A seasonal benchmark that is less noisy than the seasonal naive method (daily data with weekly cycles, NN5).",
+   "caution": "Needs window_size full seasons, otherwise the series falls back; without a usable season it is the window average.",
+   "refs": [
+    "nixtla"
+   ]
+  },
+  {
+   "id": "seasonal_es",
+   "name": "Seasonal exponential smoothing (optimised)",
+   "group": "yerel",
+   "summary": "Simple exponential smoothing run separately on each season position, with its own optimised alpha.",
+   "how": "The series is split into its m season positions; SES with alpha chosen in [0.01, 0.99] by golden-section search forecasts each one.",
+   "use": "Seasonal series whose seasonal pattern changes slowly; a smoother alternative to the seasonal naive method.",
+   "caution": "There is no trend component. A series shorter than one season falls back.",
+   "refs": [
+    "fpp3",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "zero_model",
+   "name": "Zero forecast",
+   "group": "aralikli",
+   "summary": "Forecasts zero for every period.",
+   "how": "Returns 0 over the whole horizon.",
+   "use": "Sanity baseline for intermittent demand (M5): a model that cannot beat it on a given metric adds nothing.",
+   "caution": "Only meaningful for intermittent series and for metrics that do not divide by the forecast; rounding has no effect on it.",
+   "refs": [
+    "makridakis2022",
+    "nixtla"
+   ]
+  }
+ ],
+ "metrics": [
+  {
+   "id": "SMAPE",
+   "name": "SMAPE",
+   "unit": "ratio (0–2)",
+   "text": "Mean of 2·|forecast−actual| / (|forecast|+|actual|). Given as a ratio (0–2), NOT a percentage. It is undefined when forecast and actual are both 0, and that point is excluded.",
+   "caution": "Misleading for intermittent demand: every point with forecast 0 and actual > 0 gives exactly 2; a model that forecasts all zeros scores exactly 2.0.",
+   "default": true
+  },
+  {
+   "id": "mSMAPE",
+   "name": "mSMAPE",
+   "unit": "ratio",
+   "text": "A form of SMAPE corrected (epsilon = 0.1) so that its denominator does not blow up for small values.",
+   "caution": "Reduces SMAPE's zero problem but does not remove it.",
+   "default": true
+  },
+  {
+   "id": "MASE",
+   "name": "MASE",
+   "unit": "scale-free",
+   "text": "Mean absolute error / mean absolute error of the seasonal naive on the training part (lag = seasonal period). Below 1 means better than seasonal naive.",
+   "caution": "If the whole training part is zero the denominator is 0 (the series is excluded). With intermittent demand it can reward zero forecasts.",
+   "default": true
+  },
+  {
+   "id": "MAE",
+   "name": "MAE",
+   "unit": "data unit",
+   "text": "Mean absolute error.",
+   "caution": "With intermittent demand it rewards the median (often 0) forecast; it can be meaningless for inventory.",
+   "default": true
+  },
+  {
+   "id": "RMSE",
+   "name": "RMSE",
+   "unit": "data unit",
+   "text": "Square root of the mean of squared errors; penalises large errors more.",
+   "caution": "Computed per series and then averaged across series; watch the scale effect when comparing series of different scales.",
+   "default": true
+  },
+  {
+   "id": "WAPE",
+   "name": "WAPE",
+   "unit": "percent",
+   "text": "Total |error| / total |actual| × 100 (per series).",
+   "caution": "Undefined if the total of actuals is 0. A model that forecasts all zeros scores exactly 100%.",
+   "default": true
+  },
+  {
+   "id": "nRMSE_Mean",
+   "name": "nRMSE (mean)",
+   "unit": "ratio",
+   "text": "RMSE / mean of the actuals.",
+   "caution": "Undefined if the mean is 0.",
+   "default": true
+  },
+  {
+   "id": "nRMSE_Range",
+   "name": "nRMSE (range)",
+   "unit": "ratio",
+   "text": "RMSE / (maximum of actuals − minimum of actuals).",
+   "caution": "Undefined if the range is 0.",
+   "default": true
+  },
+  {
+   "id": "RMSSE",
+   "name": "RMSSE",
+   "unit": "scale-free",
+   "text": "Root of: mean squared error / mean squared one-step naive error on the training part (the M5 measure). Below 1 means better than the in-sample naive.",
+   "caution": "The scale uses the whole training part; the official M5 definition starts at the first non-zero sale, which differs only for series with leading zeros.",
+   "default": false
+  },
+  {
+   "id": "MSE",
+   "name": "MSE",
+   "unit": "data unit²",
+   "text": "Mean of squared errors.",
+   "caution": "Scale-dependent; do not average across series of different scales.",
+   "default": false
+  },
+  {
+   "id": "MAPE",
+   "name": "MAPE",
+   "unit": "percent",
+   "text": "Mean of |error| / |actual| × 100.",
+   "caution": "Points with actual = 0 are excluded; asymmetric (penalises over-forecasts more). Not suitable for intermittent demand.",
+   "default": false
+  },
+  {
+   "id": "MAAPE",
+   "name": "MAAPE",
+   "unit": "radians (0–π/2)",
+   "text": "Mean of arctan(|error| / |actual|); bounded, defined when the actual is 0.",
+   "caution": "A zero forecast for a positive actual scores about 0.785 (π/4) per point, so it can still favour zero forecasts on intermittent data.",
+   "default": false
+  },
+  {
+   "id": "MedAE",
+   "name": "MedAE",
+   "unit": "data unit",
+   "text": "Median absolute error over the horizon.",
+   "caution": "Robust to a few large errors; scale-dependent.",
+   "default": false
+  },
+  {
+   "id": "RMSLE",
+   "name": "RMSLE",
+   "unit": "log ratio",
+   "text": "Root mean squared difference of log(1 + forecast) and log(1 + actual).",
+   "caution": "Undefined (series excluded) if any forecast or actual is negative; no clipping is applied.",
+   "default": false
+  },
+  {
+   "id": "ME",
+   "name": "ME (bias)",
+   "unit": "data unit",
+   "text": "Mean of forecast − actual. Positive: over-forecasting.",
+   "caution": "Positive and negative errors cancel; read together with an absolute measure.",
+   "default": false
+  },
+  {
+   "id": "PBias",
+   "name": "Percent bias",
+   "unit": "percent",
+   "text": "100 · Σ(forecast − actual) / Σ actual.",
+   "caution": "Undefined if the actuals sum to 0. Shows when a 'winning' model is simply biased toward zero.",
+   "default": false
+  }
+ ],
+ "metric_refs": [
+  "hyndmankoehler2006",
+  "hyndman2006",
+  "makridakis2022",
+  "kim2016",
+  "davydenko2013"
+ ],
+ "references": {
+  "fpp3": {
+   "text": "Hyndman, R. J., & Athanasopoulos, G. (2021). Forecasting: Principles and Practice (3rd ed.). OTexts.",
+   "url": "https://otexts.com/fpp3/",
+   "verified": false
+  },
+  "hyndman2002": {
+   "text": "Hyndman, R. J., Koehler, A. B., Snyder, R. D., & Grose, S. (2002). A state space framework for automatic forecasting using exponential smoothing methods. International Journal of Forecasting, 18(3), 439–454.",
+   "url": "https://econpapers.repec.org/RePEc:eee:intfor:v:18:y:2002:i:3:p:439-454",
+   "verified": true
+  },
+  "assimakopoulos2000": {
+   "text": "Assimakopoulos, V., & Nikolopoulos, K. (2000). The theta model: a decomposition approach to forecasting. International Journal of Forecasting, 16(4), 521–530.",
+   "url": null,
+   "verified": false
+  },
+  "hyndmanbillah2003": {
+   "text": "Hyndman, R. J., & Billah, B. (2003). Unmasking the Theta method. International Journal of Forecasting, 19(2), 287–290.",
+   "url": null,
+   "verified": false
+  },
+  "makridakis2020": {
+   "text": "Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2020). The M4 Competition: 100,000 time series and 61 forecasting methods. International Journal of Forecasting, 36(1), 54–74.",
+   "url": null,
+   "verified": false
+  },
+  "gardner1985": {
+   "text": "Gardner, E. S., Jr., & McKenzie, E. (1985). Forecasting trends in time series. Management Science, 31(10), 1237–1246.",
+   "url": null,
+   "verified": false
+  },
+  "fiorucci2016": {
+   "text": "Fiorucci, J. A., Pellegrini, T. R., Louzada, F., Petropoulos, F., & Koehler, A. B. (2016). Models for optimising the theta method and their relationship to state space models. International Journal of Forecasting, 32(4), 1151–1161.",
+   "url": null,
+   "verified": false
+  },
+  "nixtla": {
+   "text": "Nixtla StatsForecast (open source, Apache-2.0) documentation: in the Python engine this model is the library's own implementation.",
+   "url": "https://nixtlaverse.nixtla.io/statsforecast/",
+   "verified": false
+  },
+  "petropoulos2020": {
+   "text": "Petropoulos, F., & Svetunkov, I. (2020). A simple combination of univariate models. International Journal of Forecasting, 36(1), 110–115.",
+   "url": null,
+   "verified": false
+  },
+  "makridakis2000": {
+   "text": "Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and implications. International Journal of Forecasting, 16(4), 451–476.",
+   "url": "https://doi.org/10.1016/S0169-2070(00)00057-1",
+   "verified": false
+  },
+  "delivera2011": {
+   "text": "De Livera, A. M., Hyndman, R. J., & Snyder, R. D. (2011). Forecasting time series with complex seasonal patterns using exponential smoothing. Journal of the American Statistical Association, 106(496), 1513–1527.",
+   "url": null,
+   "verified": false
+  },
+  "hyndman2008": {
+   "text": "Hyndman, R. J., & Khandakar, Y. (2008). Automatic time series forecasting: the forecast package for R. Journal of Statistical Software, 27(3), 1–22.",
+   "url": "https://www.jstatsoft.org/v27/i03",
+   "verified": true
+  },
+  "croston1972": {
+   "text": "Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Operational Research Quarterly, 23(3), 289–303.",
+   "url": null,
+   "verified": false
+  },
+  "syntetos2005": {
+   "text": "Syntetos, A. A., & Boylan, J. E. (2005). The accuracy of intermittent demand estimates. International Journal of Forecasting, 21(2), 303–314.",
+   "url": null,
+   "verified": false
+  },
+  "teunter2011": {
+   "text": "Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: linking forecasting to inventory obsolescence. European Journal of Operational Research, 214(3), 606–615.",
+   "url": null,
+   "verified": false
+  },
+  "nikolopoulos2011": {
+   "text": "Nikolopoulos, K., Syntetos, A. A., Boylan, J. E., Petropoulos, F., & Assimakopoulos, V. (2011). An aggregate–disaggregate intermittent demand approach (ADIDA) to forecasting. Journal of the Operational Research Society, 62(3), 544–554.",
+   "url": null,
+   "verified": false
+  },
+  "petropoulos2015": {
+   "text": "Petropoulos, F., & Kourentzes, N. (2015). Forecast combinations for intermittent demand. Journal of the Operational Research Society, 66(6), 914–924.",
+   "url": null,
+   "verified": false
+  },
+  "svetunkov2022": {
+   "text": "Svetunkov, I., Kourentzes, N., & Ord, J. K. (2022). Complex exponential smoothing. Naval Research Logistics, 69(8), 1108–1123.",
+   "url": null,
+   "verified": false
+  },
+  "winters1960": {
+   "text": "Winters, P. R. (1960). Forecasting sales by exponentially weighted moving averages. Management Science, 6(3), 324–342.",
+   "url": null,
+   "verified": false
+  },
+  "bandara2021": {
+   "text": "Bandara, K., Hyndman, R. J., & Bergmeir, C. (2021). MSTL: a seasonal-trend decomposition algorithm for time series with multiple seasonal patterns. arXiv:2107.13462.",
+   "url": "https://arxiv.org/abs/2107.13462",
+   "verified": false
+  },
+  "cleveland1990": {
+   "text": "Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990). STL: a seasonal-trend decomposition procedure based on loess. Journal of Official Statistics, 6(1), 3–73.",
+   "url": null,
+   "verified": false
+  },
+  "bergmeir2016": {
+   "text": "Bergmeir, C., Hyndman, R. J., & Benítez, J. M. (2016). Bagging exponential smoothing methods using STL decomposition and Box–Cox transformation. International Journal of Forecasting, 32(2), 303–312.",
+   "url": "https://doi.org/10.1016/j.ijforecast.2015.07.002",
+   "verified": false
+  },
+  "athanasopoulos2017": {
+   "text": "Athanasopoulos, G., Hyndman, R. J., Kourentzes, N., & Petropoulos, F. (2017). Forecasting with temporal hierarchies. European Journal of Operational Research, 262(1), 60–74.",
+   "url": "https://doi.org/10.1016/j.ejor.2017.02.046",
+   "verified": false
+  },
+  "kourentzes2014": {
+   "text": "Kourentzes, N., Petropoulos, F., & Trapero, J. R. (2014). Improving forecasting by estimating time series structural components across multiple frequencies. International Journal of Forecasting, 30(2), 291–302.",
+   "url": "https://doi.org/10.1016/j.ijforecast.2013.09.006",
+   "verified": false
+  },
+  "holt2004": {
+   "text": "Holt, C. C. (2004). Forecasting seasonals and trends by exponentially weighted moving averages. International Journal of Forecasting, 20(1), 5-10 (reprint of the 1957 ONR memorandum).",
+   "url": "https://doi.org/10.1016/j.ijforecast.2003.09.015",
+   "verified": false
+  },
+  "makridakis2022": {
+   "text": "Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2022). M5 accuracy competition: Results, findings, and conclusions. International Journal of Forecasting, 38(4), 1346–1364.",
+   "url": null,
+   "verified": false
+  },
+  "hyndmankoehler2006": {
+   "text": "Hyndman, R. J., & Koehler, A. B. (2006). Another look at measures of forecast accuracy. International Journal of Forecasting, 22(4), 679–688.",
+   "url": null,
+   "verified": false
+  },
+  "hyndman2006": {
+   "text": "Hyndman, R. J. (2006). Another look at forecast-accuracy metrics for intermittent demand. Foresight, 4(4), 43–46.",
+   "url": "https://econpapers.repec.org/RePEc:for:ijafaa:y:2006:i:4:p:43-46",
+   "verified": true
+  },
+  "kim2016": {
+   "text": "Kim, S., & Kim, H. (2016). A new metric of absolute percentage error for intermittent demand forecasts. International Journal of Forecasting, 32(3), 669–679.",
+   "url": null,
+   "verified": false
+  },
+  "davydenko2013": {
+   "text": "Davydenko, A., & Fildes, R. (2013). Measuring forecasting accuracy: The case of judgmental adjustments to SKU-level demand forecasts. International Journal of Forecasting, 29(3), 510–522.",
+   "url": null,
+   "verified": false
+  },
+  "godahewa2021": {
+   "text": "Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., & Montero-Manso, P. (2021). Monash Time Series Forecasting Archive. NeurIPS Datasets and Benchmarks Track.",
+   "url": "https://arxiv.org/abs/2105.06643",
+   "verified": true
+  }
+ }
+}

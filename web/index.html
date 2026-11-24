@@ -5,26 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forecast Studio in the browser</title>
 <style>
-  :root { --bg: #f5f6f8; --panel: #ffffff; --ink: #1c2738; --muted: #5b6676; --line: #d5dae2; --accent: #1f3a63; --warn: #8a5a00; --bad: #9b1c1c; }
+  :root {
+    color-scheme: light;
+    --bg: #f9f9f7; --panel: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781; --line: #e1e0d9; --axis: #c3c2b7;
+    --accent: #1c5cab; --on-accent: #ffffff; --series-1: #2a78d6; --band: rgba(42, 120, 214, 0.07);
+    --warn: #7a5200; --bad: #b02a2a;
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #12161d; --panel: #1a2029; --ink: #e6eaf0; --muted: #9aa5b5; --line: #2e3745; --accent: #8fb3ea; --warn: #e0b45c; --bad: #f08a8a; }
+    :root {
+      color-scheme: dark;
+      --bg: #0d0d0d; --panel: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781; --line: #2c2c2a; --axis: #383835;
+      --accent: #86b6ef; --on-accent: #0b0b0b; --series-1: #3987e5; --band: rgba(57, 135, 229, 0.10);
+      --warn: #fab219; --bad: #e66767;
+    }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
-  h1 { font-size: 1.45rem; margin: 0 0 2px; }
-  .sub { color: var(--muted); margin: 0 0 18px; font-size: 0.95rem; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 56px; }
+  h1 { font-size: 1.5rem; margin: 0 0 2px; }
+  .sub { color: var(--ink2); margin: 0 0 14px; font-size: 0.95rem; }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--axis); margin-bottom: 16px; }
+  nav button { font: inherit; padding: 9px 14px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--ink2); cursor: pointer; }
+  nav button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
-  h2 { font-size: 1.02rem; margin: 0 0 10px; }
-  label { display: block; font-size: 0.86rem; color: var(--muted); margin-bottom: 3px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-  select, input[type=number] { width: 100%; padding: 8px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  h3 { font-size: 0.98rem; margin: 18px 0 6px; }
+  label { display: block; font-size: 0.86rem; color: var(--ink2); margin-bottom: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  select, input[type=number] { width: 100%; padding: 8px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--axis); border-radius: 6px; }
   input[type=file] { width: 100%; font: inherit; color: var(--ink); }
-  button { font: inherit; padding: 9px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--panel); cursor: pointer; }
-  button.plain { background: transparent; color: var(--accent); }
+  button.act { font: inherit; padding: 9px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+  button.plain { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--axis); background: transparent; color: var(--ink); cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: default; }
   .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
-  .note { color: var(--muted); font-size: 0.88rem; margin: 8px 0 0; }
+  .note { color: var(--ink2); font-size: 0.88rem; margin: 8px 0 0; }
+  .note a, .learn a { color: var(--accent); }
   .status { margin: 0; }
   .error { color: var(--bad); }
   .warning { color: var(--warn); font-size: 0.9rem; margin: 6px 0 0; }
@@ -32,210 +47,134 @@
   table { border-collapse: collapse; width: 100%; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
   th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; }
-  th { color: var(--muted); font-weight: 600; }
-  .files a { display: inline-block; margin: 4px 12px 0 0; color: var(--accent); }
-  .note a { color: var(--accent); }
+  th { color: var(--ink2); font-weight: 600; }
+  .files a { display: inline-block; margin: 4px 12px 0 0; color: var(--accent); font-size: 0.92rem; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; width: 0; background: var(--series-1); transition: width 0.3s linear; }
+  /* charts */
+  .chart { position: relative; margin-top: 6px; }
+  .chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+  .chart-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  .chart-head > div { flex: 1 1 180px; }
+  .legend { display: flex; gap: 14px; font-size: 0.85rem; color: var(--ink2); margin: 8px 0 0; }
+  .legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
+  .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px;
+         font-size: 0.82rem; line-height: 1.35; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); font-variant-numeric: tabular-nums; }
+  .tip b { font-weight: 600; }
+  svg text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--muted); }
+  svg .lbl { fill: var(--ink2); font-size: 12px; }
+  /* learn */
+  .learn p { margin: 6px 0; }
+  .learn details { border-top: 1px solid var(--line); padding: 8px 0; }
+  .learn summary { cursor: pointer; font-weight: 600; }
+  .learn summary span { font-weight: 400; color: var(--ink2); }
+  .learn dl { margin: 8px 0 0; display: grid; grid-template-columns: minmax(90px, max-content) 1fr; gap: 4px 12px; font-size: 0.93rem; }
+  .learn dt { color: var(--ink2); }
+  .learn dd { margin: 0; }
+  .learn ol { padding-left: 20px; font-size: 0.92rem; }
+  .learn li { margin-bottom: 6px; }
+  .tag { font-size: 0.78rem; color: var(--ink2); border: 1px solid var(--axis); border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
+  @media (max-width: 520px) { .learn dl { grid-template-columns: 1fr; } .learn dt { margin-top: 6px; } }
 </style>
 </head>
 <body>
 <main>
   <h1>Forecast Studio in the browser</h1>
-  <p class="sub">Trial page. The forecasting engine runs on this device; your data is not sent anywhere.</p>
+  <p class="sub">The forecasting engine runs on this device; your data is not sent anywhere.</p>
+  <nav role="tablist">
+    <button id="tab-run" role="tab" aria-selected="true" aria-controls="panel-run">Run a forecast</button>
+    <button id="tab-learn" role="tab" aria-selected="false" aria-controls="panel-learn">Learn</button>
+  </nav>
 
-  <section>
-    <h2>1 Data</h2>
-    <label for="example">A small example dataset</label>
-    <select id="example"><option value="">loading…</option></select>
-    <label for="file" style="margin-top:12px">or your own file in Monash .tsf format</label>
-    <input id="file" type="file" accept=".tsf,text/plain">
-    <p id="dataInfo" class="note"></p>
-    <p class="note">More data: download any dataset of the
-      <a href="https://forecastingdata.org/" target="_blank" rel="noopener">Monash Time Series Forecasting Archive</a>
-      (<a href="https://zenodo.org/communities/forecasting" target="_blank" rel="noopener">files on Zenodo</a>), unzip it and choose
-      the .tsf file above. Large files need a lot of memory; on a phone stay with files of a few megabytes.
-      The examples are from this archive (CC BY 4.0).</p>
-  </section>
+  <div id="panel-run" role="tabpanel" aria-labelledby="tab-run">
+    <section>
+      <h2>1 Data</h2>
+      <label for="example">A small example dataset</label>
+      <select id="example"><option value="">loading…</option></select>
+      <label for="file" style="margin-top:12px">or your own file in Monash .tsf format</label>
+      <input id="file" type="file" accept=".tsf,text/plain">
+      <p id="dataInfo" class="note"></p>
+      <p class="note">More data: download any dataset of the
+        <a href="https://forecastingdata.org/" target="_blank" rel="noopener">Monash Time Series Forecasting Archive</a>
+        (<a href="https://zenodo.org/communities/forecasting" target="_blank" rel="noopener">files on Zenodo</a>), unzip it and choose
+        the .tsf file above. Large files need a lot of memory; on a phone stay with files of a few megabytes.
+        The examples are from this archive (CC BY 4.0).</p>
+    </section>
 
-  <section>
-    <h2>2 Model and settings</h2>
-    <div class="grid">
-      <div><label for="method">Method</label><select id="method" disabled><option>loading…</option></select></div>
-      <div><label for="horizon">Horizon (blank = file's)</label><input id="horizon" type="number" min="1" inputmode="numeric"></div>
-      <div><label for="maxSeries">Series to run (blank = all)</label><input id="maxSeries" type="number" min="1" inputmode="numeric" value="50"></div>
-      <div><label for="missing">Missing values</label>
-        <select id="missing"><option value="error">Stop and tell me</option><option value="locf">Carry last value forward</option>
-          <option value="interpolate">Linear interpolation</option><option value="zero">Fill with zero</option></select></div>
-    </div>
-    <div class="row"><button id="run" type="button" disabled>Start run</button><p id="status" class="status note">Loading the engine…</p></div>
-  </section>
+    <section>
+      <h2>2 Model and settings</h2>
+      <div class="grid">
+        <div><label for="method">Method</label><select id="method" disabled><option>loading…</option></select></div>
+        <div><label for="horizon">Horizon (blank = file's)</label><input id="horizon" type="number" min="1" inputmode="numeric"></div>
+        <div><label for="maxSeries">Series to run (blank = all)</label><input id="maxSeries" type="number" min="1" inputmode="numeric" value="50"></div>
+        <div><label for="missing">Missing values</label>
+          <select id="missing"><option value="error">Stop and tell me</option><option value="locf">Carry last value forward</option>
+            <option value="interpolate">Linear interpolation</option><option value="zero">Fill with zero</option></select></div>
+      </div>
+      <p id="methodInfo" class="note"></p>
+      <div class="row"><button id="run" class="act" type="button" disabled>Start run</button><p id="status" class="status note">Loading the engine…</p></div>
+      <div id="progress" class="bar" hidden><div></div></div>
+    </section>
 
-  <section id="results" hidden>
-    <h2>3 Results</h2>
-    <p id="runInfo" class="note"></p>
-    <div id="warnings"></div>
-    <div class="scroll"><table id="summary"></table></div>
-    <p class="note">Result files</p>
-    <div id="files" class="files"></div>
-  </section>
+    <section id="results" hidden>
+      <h2>3 Results</h2>
+      <p id="runInfo" class="note"></p>
+      <div id="warnings"></div>
+
+      <h3>Summary of the error measures</h3>
+      <div class="scroll"><table id="summary"></table></div>
+
+      <h3 id="fcTitle">Actual values and forecast</h3>
+      <div class="chart-head">
+        <div><label for="seriesSel">Series</label><select id="seriesSel"></select></div>
+        <button id="prevSeries" class="plain" type="button" aria-label="Previous series">‹ Previous</button>
+        <button id="nextSeries" class="plain" type="button" aria-label="Next series">Next ›</button>
+      </div>
+      <div class="legend"><span><i style="border-color:var(--ink2)"></i>Actual</span><span><i style="border-color:var(--series-1)"></i>Forecast</span></div>
+      <div id="fcChart" class="chart"></div>
+      <p id="fcNote" class="note"></p>
+
+      <h3 id="histTitle">How the error is spread over the series</h3>
+      <div class="chart-head"><div><label for="metricSel">Error measure</label><select id="metricSel"></select></div></div>
+      <div id="histChart" class="chart"></div>
+      <p id="histNote" class="note"></p>
+
+      <h3>Result files</h3>
+      <div class="row" style="margin-top:4px"><button id="downloadAll" class="act" type="button">Download all (.zip)</button></div>
+      <div id="files" class="files"></div>
+    </section>
+  </div>
+
+  <div id="panel-learn" role="tabpanel" aria-labelledby="tab-learn" class="learn" hidden>
+    <section>
+      <h2>What a run does</h2>
+      <p>Each series is split in two: the last <i>horizon</i> observations are set aside as the test part, everything before
+        them is the training part. The method sees only the training part and forecasts the horizon; the forecast is then
+        compared with the test part, one error value per series for each measure.</p>
+      <p>Series too short for the split are left out and listed in the result. When a method fails on a series, that series
+        receives the seasonal naive forecast instead; these fallbacks are counted and reported, never hidden.</p>
+      <p>Nothing on this tab runs a computation. The texts are the ones the desktop application shows for the same methods
+        and measures.</p>
+    </section>
+    <section>
+      <h2>Forecasting methods</h2>
+      <p class="note" style="margin-top:0">The methods this page can run. Open one to read how it works, when to use it and what to watch for.</p>
+      <div id="learnModels"></div>
+    </section>
+    <section>
+      <h2>Error measures</h2>
+      <p class="note" style="margin-top:0">Every measure is computed per series; the summary gives the mean and the median over the series.
+        A value that is undefined for a series (for example a division by zero) is left out and counted, not replaced.</p>
+      <div id="learnMetrics"></div>
+    </section>
+    <section>
+      <h2>References</h2>
+      <p class="note" style="margin-top:0">Entries marked “checked” were compared with the publisher's or a bibliographic record;
+        check the others yourself before citing them.</p>
+      <ol id="learnRefs"></ol>
+    </section>
+  </div>
 </main>
-<script>
-(function () {
-  const $ = (id) => document.getElementById(id);
-  const worker = new Worker("worker.js");
-  let data = null;      // { name, bytes }
-  let engineReady = false, running = false;
-  // methods a first-time user is most likely to want, shown first
-  const FIRST = ["ets", "theta", "arima", "snaive", "naive", "ses", "holt_winters", "auto_theta", "croston_sba"];
-
-  function refresh() { $("run").disabled = !(engineReady && data && !running); }
-  function status(text, isError) { $("status").textContent = text; $("status").className = "status " + (isError ? "error" : "note"); }
-
-  // `info`: the catalogue entry of an example (horizon, rounding), or null for the user's own file
-  function setData(name, bytes, info) {
-    data = { name, bytes, id: info ? info.id : name.replace(/\.tsf$/i, ""), integer: !!(info && info.integer_conversion) };
-    $("dataInfo").textContent = (info ? info.title + ": " + info.n_series + " " + info.frequency + " series, " : name + ", ") +
-      (bytes.byteLength / 1048576).toFixed(2) + " MB" + (data.integer ? "; forecasts are rounded to whole numbers" : "");
-    $("horizon").value = info && info.horizon ? info.horizon : "";
-    refresh();
-  }
-
-  $("file").addEventListener("change", async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    $("example").value = "";
-    setData(f.name, await f.arrayBuffer(), null);
-  });
-
-  let examples = [];
-  async function loadExample(id) {
-    const info = examples.find((x) => x.id === id);
-    if (!info) return;
-    $("dataInfo").textContent = "Loading " + info.id + "…";
-    try {
-      const r = await fetch("data/" + info.file);
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      $("file").value = "";
-      setData(info.file, await r.arrayBuffer(), info);
-    } catch (err) {
-      $("dataInfo").textContent = "The example could not be loaded (" + err.message + "); choose a .tsf file instead.";
-    }
-  }
-  $("example").addEventListener("change", (e) => loadExample(e.target.value));
-
-  fetch("data/index.json").then((r) => (r.ok ? r.json() : [])).catch(() => []).then((list) => {
-    examples = list;
-    const sel = $("example");
-    sel.textContent = "";
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = list.length ? "choose…" : "no examples are published with this page";
-    sel.appendChild(none);
-    for (const x of list) {
-      const o = document.createElement("option");
-      o.value = x.id;
-      o.textContent = x.id + " – " + x.title + " (" + x.n_series + " series)";
-      sel.appendChild(o);
-    }
-    if (list.length) { sel.value = list[0].id; loadExample(list[0].id); }
-  });
-
-  function parseCsv(text) {
-    const rows = [];
-    let row = [], cell = "", quoted = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      if (quoted) {
-        if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
-        else if (c === '"') quoted = false;
-        else cell += c;
-      } else if (c === '"') quoted = true;
-      else if (c === ",") { row.push(cell); cell = ""; }
-      else if (c === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
-      else if (c !== "\r") cell += c;
-    }
-    if (cell || row.length) { row.push(cell); rows.push(row); }
-    return rows;
-  }
-
-  function fmt(text) {
-    if (text === "") return "–";
-    const v = Number(text);
-    if (!Number.isFinite(v)) return text;
-    return Number.isInteger(v) ? String(v) : v.toPrecision(5);
-  }
-
-  function showResults(msg) {
-    const manifest = JSON.parse(msg.files["manifest.json"].replace(/\bNaN\b|-?\bInfinity\b/g, "null"));
-    $("runInfo").textContent = manifest.dataset.id + ", " + manifest.config.method + ": " + manifest.dataset.n_series_run + " of " +
-      manifest.dataset.n_series_total + " series, horizon " + manifest.split.horizon + ", " + msg.seconds.toFixed(1) + " s on this device.";
-    const w = $("warnings");
-    w.textContent = "";
-    for (const text of manifest.warnings) {
-      const p = document.createElement("p");
-      p.className = "warning";
-      p.textContent = text;
-      w.appendChild(p);
-    }
-    const table = $("summary");
-    table.textContent = "";
-    parseCsv(msg.files["summary.csv"]).forEach((cells, r) => {
-      const tr = document.createElement("tr");
-      cells.forEach((cell, c) => {
-        const el = document.createElement(r === 0 ? "th" : "td");
-        el.textContent = r === 0 || c === 0 ? cell.replace("N_valid", "Series").replace("N_excluded", "Left out") : fmt(cell);
-        tr.appendChild(el);
-      });
-      table.appendChild(tr);
-    });
-    const files = $("files");
-    files.textContent = "";
-    for (const name of Object.keys(msg.files).sort()) {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([msg.files[name]], { type: name.endsWith(".json") ? "application/json" : "text/csv" }));
-      a.download = name;
-      a.textContent = name;
-      files.appendChild(a);
-    }
-    $("results").hidden = false;
-  }
-
-  worker.onmessage = (e) => {
-    const msg = e.data;
-    if (msg.type === "ready") {
-      engineReady = true;
-      const sel = $("method");
-      sel.textContent = "";
-      const names = FIRST.filter((m) => msg.methods.includes(m)).concat(msg.methods.filter((m) => !FIRST.includes(m)).sort());
-      for (const m of names) {
-        const o = document.createElement("option");
-        o.value = o.textContent = m;
-        sel.appendChild(o);
-      }
-      sel.disabled = false;
-      status("Engine ready (" + msg.version + ").");
-    } else if (msg.type === "done") {
-      running = false;
-      status("Finished in " + msg.seconds.toFixed(1) + " s.");
-      showResults(msg);
-    } else if (msg.type === "error") {
-      running = false;
-      status(msg.message, true);
-    }
-    refresh();
-  };
-  worker.onerror = (e) => { running = false; status("The engine could not be loaded: " + (e.message || "unknown error"), true); refresh(); };
-
-  $("run").addEventListener("click", () => {
-    const config = ["method=" + $("method").value, "missing_policy=" + $("missing").value, "threads=1", "eol=lf",
-                    "dataset_id=" + data.id, "integer_conversion=" + (data.integer ? 1 : 0)];
-    if ($("horizon").value) config.push("horizon=" + parseInt($("horizon").value, 10));
-    if ($("maxSeries").value) config.push("max_series=" + parseInt($("maxSeries").value, 10));
-    running = true;
-    refresh();
-    status("Running " + $("method").value + " on this device…");
-    worker.postMessage({ bytes: data.bytes.slice(0), name: data.name, config });
-  });
-})();
-</script>
+<script src="app.js"></script>
 </body>
 </html>

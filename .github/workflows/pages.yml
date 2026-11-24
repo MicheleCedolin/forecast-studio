@@ -6,7 +6,7 @@ name: Browser page
 on:
   push:
     branches: [main]
-    paths: ["cpp/**", "web/**", ".github/workflows/pages.yml"]
+    paths: ["cpp/**", "web/**", ".github/workflows/pages.yml"]   # web/learn.json: python tools/build_web_learn.py
   workflow_dispatch:
 
 permissions:
@@ -45,7 +45,7 @@ jobs:
           em++ -O3 -fexceptions $objects -o web/tsfcore.js \
             -sMODULARIZE=1 -sEXPORT_NAME=createTsfCore -sENVIRONMENT=web,worker,node \
             -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=8MB \
-            -sEXPORTED_FUNCTIONS=_malloc,_free,_tsf_version,_tsf_methods,_tsf_run,_tsf_forecast_batch,_tsf_io_open_buffer,_tsf_io_close,_tsf_io_n_series,_tsf_io_n_attributes,_tsf_io_series,_tsf_io_attr,_tsf_io_header_json,_tsf_io_stats_json,_tsf_metrics_names,_tsf_metrics_table,_tsf_metrics_summary,_tsf_primary_period \
+            -sEXPORTED_FUNCTIONS=_malloc,_free,_tsf_version,_tsf_methods,_tsf_run,_tsf_forecast_batch,_tsf_io_open,_tsf_io_open_buffer,_tsf_io_close,_tsf_io_n_series,_tsf_io_n_attributes,_tsf_io_series,_tsf_io_attr,_tsf_io_header_json,_tsf_io_stats_json,_tsf_metrics_names,_tsf_metrics_table,_tsf_metrics_summary,_tsf_primary_period \
             -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAPF64,HEAP64,HEAP32
           ls -l web
       - uses: actions/configure-pages@v5
