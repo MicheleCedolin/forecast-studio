@@ -89,9 +89,12 @@
         Restart Forecast Studio afterwards.</li>
       <li>Check: in the Forecast Studio folder, <code>ForecastStudio.exe engines</code> should list the R engine as available.</li>
     </ol>
-    <p class="note">CatBoost on the R engine also needs the catboost R package, which is not on CRAN; see the
-      <a href="https://catboost.ai/docs/en/installation/r-installation-binary-installation" target="_blank" rel="noopener">CatBoost installation guide</a>.
-      CatBoost also runs on the C++ and Python engines without it.</p>
+    <p class="note">CatBoost on the R engine also needs the catboost R package, which is not on CRAN. Install the same version
+      the other engines use (1.2.10, about 90 MB) from the CatBoost release, in R:</p>
+    <pre><code>install.packages("https://github.com/catboost/catboost/releases/download/v1.2.10/catboost-R-windows-x86_64-1.2.10.tgz",
+                 repos = NULL, type = "source", INSTALL_opts = c("--no-multiarch", "--no-test-load"))</code></pre>
+    <p class="note">More in the <a href="https://catboost.ai/docs/en/installation/r-installation-binary-installation" target="_blank" rel="noopener">CatBoost installation guide</a>.
+      CatBoost also runs on the C++ and Python engines without it, with the same forecasts.</p>
   </section>
 
   <section>

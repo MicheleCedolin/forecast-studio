@@ -49,10 +49,13 @@ def available(method: str) -> list[str]:
     sys.path.insert(0, str(ROOT / "src"))
     from tsfstudio.app import models_info as mi
     eng = mi.MODELS[method]["engines"]
-    out = [e for e in ENGINES if e in eng]
-    if method == "catboost":          # the catboost R package is not on CRAN and is not installed here
-        out = [e for e in out if e != "r"]
+    out = [e for e in ENGINES if e in eng and (not ONLY_ENGINES or e in ONLY_ENGINES)]
+    # catboost on R needs the catboost R package (not on CRAN): the 1.2.10 binary from the CatBoost GitHub release,
+    # the same version as the Python package
     return out
+
+
+ONLY_ENGINES: list[str] = []
 
 
 def run_one(folder: Path, dataset: str, method: str, engine: str, max_series: int | None = None) -> dict:
@@ -256,8 +259,15 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("step", choices=["run", "scaling", "analyse"])
     ap.add_argument("--datasets", nargs="+", help="only these datasets (default: the full list)")
+    ap.add_argument("--methods", nargs="+", help="only these methods (run step)")
+    ap.add_argument("--engines", nargs="+", help="only these engines (run step)")
     a = ap.parse_args()
     if a.datasets:
         DATASETS[:] = a.datasets
+    if a.methods:
+        LOCAL[:] = [m for m in LOCAL if m in a.methods]
+        GLOBAL[:] = [m for m in GLOBAL if m in a.methods]
+    if a.engines:
+        ONLY_ENGINES[:] = a.engines
     OUT.mkdir(parents=True, exist_ok=True)
     {"run": cmd_run, "scaling": cmd_scaling, "analyse": cmd_analyse}[a.step]()
