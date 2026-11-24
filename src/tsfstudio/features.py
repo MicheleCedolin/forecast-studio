@@ -150,7 +150,7 @@ def pca(df, n_components: int = 3, max_missing: float = 0.5) -> dict:
     and the features used / dropped.
     """
     num = df.select_dtypes(include=[np.number]).astype(float)
-    X = num.to_numpy()
+    X = num.to_numpy(dtype=float, copy=True)   # own writable copy: pandas (copy-on-write) returns a read-only view
     X[~np.isfinite(X)] = np.nan
     miss = np.isnan(X).mean(axis=0) if len(X) else np.ones(X.shape[1])
     keep = miss <= max_missing
