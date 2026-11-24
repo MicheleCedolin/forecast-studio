@@ -1,5 +1,7 @@
 # Docker/Linux içinde çalışan dosyalar her platformda LF kalmalıdır (CRLF betikleri bozar).
 *.sh   text eol=lf
+*.sge  text eol=lf
+*.sbatch text eol=lf
 *.R    text eol=lf
 *.py   text eol=lf
 *.yml  text eol=lf
