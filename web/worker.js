@@ -1,10 +1,11 @@
 // Runs tsfcore (WebAssembly) off the main thread. Messages from the page:
 //   { type: "load", bytes, name }        keep a .tsf file (in the module's in-memory file system) and report its summary
 //   { type: "series", index, token }     the values of one series of the loaded file (for the chart)
+//   { type: "features", token }          characteristics of every series of the loaded file and their PCA
 //   { type: "run", config, pilot }       tsf_run with the "key=value" lines in config; pilot > 0 first times that many
 //                                        series and reports it, so the page can show an estimate before the full run
 const V = self.location.search;   // "?v=<commit id>" from the page: the engine files are fetched with the same version
-importScripts("tsfcore.js" + V);
+importScripts("tsfcore.js" + V, "features.js" + V);
 
 let core = null;
 let handle = 0;        // tsf_io handle of the loaded file
@@ -83,6 +84,15 @@ onmessage = async (event) => {
     } else if (m.type === "series") {
       const values = series(m.index);
       postMessage({ type: "series", token: m.token, index: m.index, values }, [values.buffer]);
+    } else if (m.type === "features") {
+      // characteristics of every series and their principal components (features.js)
+      const t0 = performance.now();
+      const header = JSON.parse(core.UTF8ToString(core._tsf_io_header_json(handle)));
+      const f = TsfFeatures.compute(core, handle, header);
+      let pca = null, pcaError = null;
+      try { pca = TsfFeatures.pca(f.table, f.names.length, f.columns); } catch (err) { pcaError = String(err.message || err); }
+      postMessage({ type: "features", token: m.token, names: f.names, columns: f.columns, table: f.table, classes: f.classes, pca, pcaError,
+                    seconds: (performance.now() - t0) / 1000 });
     } else if (m.type === "run") {
       if (m.pilot > 0) {
         const t0 = performance.now();

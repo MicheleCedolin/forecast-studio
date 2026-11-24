@@ -105,6 +105,10 @@
   // ------------------------------------------------------------------------------------------- data
   function sendFile(name, bytes, info) {
     data = null;
+    result = null;                 // results and characteristics belong to the previous file
+    $("results").hidden = true;
+    resetCharacteristics();
+    $("charStatus").textContent = "Reading the data…";
     refresh();
     $("dataInfo").textContent = "Reading " + name + "…";
     const mine = (pendingLoad = { name, info, mb: bytes.byteLength / 1048576 });
@@ -131,6 +135,7 @@
     $("horizon").value = h || "";
     if (!h) $("dataInfo").textContent += ". The file names no horizon: enter one below.";
     refresh();
+    afterLoadCharacteristics();
   }
 
   $("file").addEventListener("change", async (e) => {
@@ -352,6 +357,7 @@
     $("results").hidden = false;
     requestSeries(0);
     drawHistogram();
+    updatePcaColor();              // the map can now be coloured by this run's errors
   }
 
   // ---- forecast chart
@@ -608,11 +614,332 @@
   $("downloadAll").addEventListener("click", () => {
     if (!result) return;
     const a = el("a", { download: result.manifest.run_id + ".zip" });
-    a.href = URL.createObjectURL(zip(result.files));
+    a.href = URL.createObjectURL(zip(feat ? Object.assign({ "characteristics.csv": featuresCsv() }, result.files) : result.files));
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  });
+
+  // ------------------------------------------------------------------------------------------- data characteristics
+  // As the desktop application's "Features" view: basic features + catch22 per series, and a PCA map of the series.
+  const CLASSES = ["smooth", "intermittent", "erratic", "lumpy"];
+  const PCA_CAT = { light: ["#2a78d6", "#eb6834", "#1baf7a"], dark: ["#3987e5", "#d95926", "#199e70"] };
+  const PCA_SEQ = { light: ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"], dark: ["#1c5cab", "#2a78d6", "#5598e7", "#86b6ef", "#b7d3f6"] };
+  const PCA_OTHER = "#898781";
+  const AUTO_VALUES = 3e6;   // files up to this many observations are analysed without asking
+  let feat = null;           // the worker's answer for the loaded file
+  let featToken = 0;
+  const pcaView = { ax: [0, 1], arrows: true, color: "class", focus: null, pts: [], colors: null };
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const themeMode = () => (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+  function resetCharacteristics() {
+    feat = null;
+    featToken++;
+    $("charBody").hidden = true;
+    $("charRun").hidden = true;
+  }
+  function requestFeatures() {
+    $("charRun").hidden = true;
+    $("charStatus").textContent = "Computing the characteristics of " + data.stats.n_series + " series…";
+    worker.postMessage({ type: "features", token: ++featToken });
+  }
+  $("charRun").addEventListener("click", requestFeatures);
+
+  function afterLoadCharacteristics() {
+    resetCharacteristics();
+    const approx = data.stats.n_series * data.stats.len_median;
+    if (approx <= AUTO_VALUES) { requestFeatures(); return; }
+    $("charStatus").textContent = "This file has about " + (approx / 1e6).toFixed(1) + " million observations; analysing it can take a while.";
+    $("charRun").hidden = false;
+  }
+
+  function column(name) {
+    const j = feat.columns.indexOf(name), p = feat.columns.length, out = new Array(feat.names.length);
+    for (let i = 0; i < out.length; i++) out[i] = feat.table[i * p + j];
+    return out;
+  }
+
+  function pcaColorOptions() {
+    const sel = $("pcaColor"), keep = pcaView.color;
+    sel.textContent = "";
+    sel.appendChild(el("option", { value: "class", text: "Demand pattern" }));
+    if (result) {
+      const og = el("optgroup", { label: "Error of the last run (" + result.manifest.config.method + ")" });
+      result.errors[0].slice(1).forEach((m) => og.appendChild(el("option", { value: "run:" + m, text: m })));
+      sel.appendChild(og);
+    }
+    const og2 = el("optgroup", { label: "A characteristic" });
+    feat.columns.forEach((c) => og2.appendChild(el("option", { value: "feature:" + c, text: c })));
+    sel.appendChild(og2);
+    sel.value = keep;
+    if (sel.value !== keep) { sel.value = "class"; pcaView.color = "class"; }
+  }
+
+  // the values the points are coloured by: { kind: "cat" | "num", label, values }
+  function pcaColorData() {
+    const [kind, rest] = pcaView.color.split(/:(.*)/);
+    if (kind === "feature") return { kind: "num", label: rest, values: column(rest) };
+    if (kind === "run" && result) {
+      const j = result.errors[0].indexOf(rest), by = new Map();
+      for (let i = 1; i < result.errors.length; i++) by.set(result.errors[i][0], num(result.errors[i][j]));
+      return { kind: "num", label: rest + " of " + result.manifest.config.method, values: feat.names.map((n) => (by.has(n) ? by.get(n) : NaN)),
+               partial: by.size < feat.names.length };
+    }
+    return { kind: "cat", label: "Demand pattern", values: feat.classes };
+  }
+
+  function pcaColors(c) {
+    const mode = themeMode(), n = c.values.length;
+    if (c.kind === "cat") {
+      const counts = {};
+      c.values.forEach((v) => { if (v != null) counts[v] = (counts[v] || 0) + 1; });
+      const levels = CLASSES.filter((l) => counts[l]);
+      const slot = {};
+      levels.slice(0, 3).forEach((l, i) => { slot[l] = PCA_CAT[mode][i]; });
+      const other = levels.slice(3);
+      const items = levels.slice(0, 3).map((l) => ({ key: l, label: l, color: slot[l], n: counts[l] }));
+      if (other.length) items.push({ key: "__other", label: other.join(", "), color: PCA_OTHER, n: other.reduce((s, l) => s + counts[l], 0), members: other });
+      return { col: c.values.map((v) => (v == null ? null : slot[v] || PCA_OTHER)),
+               legend: { kind: "cat", title: c.label, items, missing: c.values.filter((v) => v == null).length } };
+    }
+    const idx = c.values.map((x, i) => [x, i]).filter(([x]) => Number.isFinite(x)).sort((a, b) => a[0] - b[0]);
+    const stops = PCA_SEQ[mode], rgb = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+    const ramp = (t) => {
+      const p = t * (stops.length - 1), k = Math.min(stops.length - 2, Math.floor(p)), f = p - k, a = rgb(stops[k]), b = rgb(stops[k + 1]);
+      return "rgb(" + a.map((x, j) => Math.round(x + (b[j] - x) * f)).join(",") + ")";
+    };
+    const col = new Array(n).fill(null);
+    idx.forEach(([, i], r) => { col[i] = ramp(idx.length > 1 ? r / (idx.length - 1) : 0.5); });
+    const q = (p) => (idx.length ? idx[Math.min(idx.length - 1, Math.round(p * (idx.length - 1)))][0] : NaN);
+    return { col, legend: { kind: "num", title: c.label, stops, lo: q(0), mid: q(0.5), hi: q(1), missing: n - idx.length } };
+  }
+
+  function renderPcaLegend() {
+    const host = $("pcaLegend"), lg = pcaView.colors.legend;
+    host.textContent = "";
+    host.appendChild(el("span", { text: lg.title + ":" }));
+    if (lg.kind === "cat") {
+      for (const it of lg.items) {
+        const b = el("button", { type: "button", "aria-pressed": String(pcaView.focus === it.key), title: "Show this group on top, dim the rest" },
+                     el("i", { class: "sw", style: "background:" + it.color }), it.label + " " + it.n);
+        b.addEventListener("click", () => { pcaView.focus = pcaView.focus === it.key ? null : it.key; renderPcaLegend(); drawPca(); });
+        host.appendChild(b);
+      }
+    } else {
+      host.appendChild(el("span", { text: fmt(lg.lo) }));
+      host.appendChild(el("i", { class: "ramp", style: "background:linear-gradient(90deg," + lg.stops.join(",") + ")" }));
+      host.appendChild(el("span", { text: fmt(lg.hi) + " (colour by rank; median " + fmt(lg.mid) + ")" }));
+    }
+    if (lg.missing) host.appendChild(el("span", {}, el("i", { class: "sw hollow" }), " no value " + lg.missing));
+  }
+
+  function drawPca() {
+    if (!feat || !feat.pca || !pcaView.colors) return;
+    const cv = $("pcaCanvas"), d = feat.pca, k = d.k;
+    const W = Math.max(260, cv.parentElement.clientWidth), H = Math.round(Math.min(480, Math.max(280, W * 0.7))), dpr = window.devicePixelRatio || 1;
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px";
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    const ink = cssVar("--ink"), muted = cssVar("--muted"), grid = cssVar("--line"), axis = cssVar("--axis"), surf = cssVar("--panel");
+    g.font = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    const [a, b] = pcaView.ax, L = 46, R = 14, T = 12, B = 40, n = feat.names.length;
+    const xs = new Array(n), ys = new Array(n);
+    for (let i = 0; i < n; i++) { xs[i] = d.scores[i * k + a]; ys[i] = d.scores[i * k + b]; }
+    const pad = (lo, hi) => { const r = hi - lo || 1; return [lo - r * 0.05, hi + r * 0.05]; };
+    const [x0, x1] = pad(Math.min(...xs), Math.max(...xs)), [y0, y1] = pad(Math.min(...ys), Math.max(...ys));
+    const X = (v) => L + ((v - x0) / (x1 - x0)) * (W - L - R), Y = (v) => H - B - ((v - y0) / (y1 - y0)) * (H - T - B);
+    g.strokeStyle = grid; g.lineWidth = 1; g.fillStyle = muted; g.textAlign = "right"; g.textBaseline = "middle";
+    for (const t of ticks(y0, y1, 5).values) { g.beginPath(); g.moveTo(L, Y(t) + 0.5); g.lineTo(W - R, Y(t) + 0.5); g.stroke(); g.fillText(fmt(t), L - 6, Y(t)); }
+    g.textAlign = "center"; g.textBaseline = "top";
+    for (const t of ticks(x0, x1, W < 480 ? 4 : 6).values) { g.beginPath(); g.moveTo(X(t) + 0.5, T); g.lineTo(X(t) + 0.5, H - B); g.stroke(); g.fillText(fmt(t), X(t), H - B + 6); }
+    g.strokeStyle = axis; g.beginPath(); g.moveTo(L, H - B + 0.5); g.lineTo(W - R, H - B + 0.5); g.stroke();
+    const pct = (e) => (100 * e).toFixed(1) + "%";
+    g.fillStyle = muted; g.fillText("PC" + (a + 1) + " (" + pct(d.explained[a]) + ")", (L + W - R) / 2, H - 16);
+    g.save(); g.translate(12, (T + H - B) / 2); g.rotate(-Math.PI / 2); g.textBaseline = "middle"; g.fillText("PC" + (b + 1) + " (" + pct(d.explained[b]) + ")", 0, 0); g.restore();
+
+    const lg = pcaView.colors.legend, col = pcaView.colors.col, cd = pcaView.colorData;
+    const focused = (i) => {
+      if (!pcaView.focus || lg.kind !== "cat") return true;
+      const it = lg.items.find((t) => t.key === pcaView.focus);
+      return it.members ? it.members.includes(cd.values[i]) : cd.values[i] === pcaView.focus;
+    };
+    const pts = xs.map((x, i) => ({ i, x: X(x), y: Y(ys[i]) }));
+    const r = n > 1500 ? 2.5 : n > 400 ? 3.2 : 4;
+    for (const on of [false, true]) {
+      for (const p of pts) {
+        if (focused(p.i) !== on) continue;
+        g.globalAlpha = on ? 1 : 0.15;
+        g.beginPath(); g.arc(p.x, p.y, r, 0, 2 * Math.PI);
+        if (col[p.i]) { g.fillStyle = col[p.i]; g.fill(); g.lineWidth = 1; g.strokeStyle = surf; g.stroke(); }
+        else { g.lineWidth = 1.2; g.strokeStyle = muted; g.stroke(); }
+      }
+    }
+    g.globalAlpha = 1;
+    if (pcaView.arrows) {
+      const p = d.features.length, cx = X(0), cy = Y(0);
+      const ext = 0.8 * Math.min((Math.max(Math.abs(x0), Math.abs(x1)) * (W - L - R)) / (x1 - x0), (Math.max(Math.abs(y0), Math.abs(y1)) * (H - T - B)) / (y1 - y0));
+      const ld = d.features.map((f, j) => [f, d.loadings[j * k + a], d.loadings[j * k + b]])
+        .sort((u, v) => Math.hypot(v[1], v[2]) - Math.hypot(u[1], u[2])).slice(0, W < 480 ? 4 : 6);
+      const m = Math.max(...ld.map((t) => Math.hypot(t[1], t[2])), 1e-9);
+      // the longest arrow length for which every arrow stays inside the plot
+      let fit = ext;
+      for (const [, u, v] of ld) {
+        const dx = u / m, dy = -v / m;
+        if (Math.abs(dx) > 1e-9) fit = Math.min(fit, 0.92 * (dx > 0 ? W - R - cx : cx - L) / Math.abs(dx));
+        if (Math.abs(dy) > 1e-9) fit = Math.min(fit, 0.92 * (dy > 0 ? H - B - cy : cy - T) / Math.abs(dy));
+      }
+      g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 1.5; g.textBaseline = "middle";
+      for (const [f, u, v] of ld) {
+        const ex = cx + (u / m) * fit, ey = cy - (v / m) * fit;
+        g.beginPath(); g.moveTo(cx, cy); g.lineTo(ex, ey); g.stroke();
+        const label = W < 480 && f.length > 18 ? f.slice(0, 17) + "…" : f, tw = g.measureText(label).width;
+        const right = u >= 0 ? ex + 4 + tw <= W - 2 : ex - 4 - tw < 2;      // keep the label inside the canvas
+        g.textAlign = right ? "left" : "right";
+        g.lineWidth = 3; g.strokeStyle = surf; g.lineJoin = "round";        // a halo keeps the label readable over the points
+        g.strokeText(label, ex + (right ? 4 : -4), ey);
+        g.fillText(label, ex + (right ? 4 : -4), ey);
+        g.lineWidth = 1.5; g.strokeStyle = ink;
+      }
+    }
+    pcaView.pts = pts;
+  }
+
+  function renderCharacteristics() {
+    const n = feat.names.length;
+    $("charStatus").textContent = n + " series analysed in " + (feat.seconds < 1 ? "under a second" : feat.seconds.toFixed(1) + " s") + ": " +
+      feat.columns.length + " characteristics per series (10 descriptive ones and the 22 of catch22).";
+    const counts = {};
+    feat.classes.forEach((c) => { const key = c || "undefined"; counts[key] = (counts[key] || 0) + 1; });
+    const tiles = $("classTiles");
+    tiles.textContent = "";
+    for (const c of CLASSES.concat(counts.undefined ? ["undefined"] : [])) {
+      tiles.appendChild(el("div", { class: "tile" }, el("b", { text: String(counts[c] || 0) }),
+                           el("span", { text: c + " (" + ((100 * (counts[c] || 0)) / n).toFixed(0) + "%)" })));
+    }
+    // summary of every characteristic
+    const ft = $("featTable");
+    ft.textContent = "";
+    ft.appendChild(el("tr", {}, ...["Characteristic", "Mean", "Median", "Minimum", "Maximum", "No value"].map((t) => el("th", { text: t }))));
+    for (const name of feat.columns) {
+      const v = column(name).filter(Number.isFinite).sort((x, y) => x - y), m = v.length;
+      const med = m ? (m % 2 ? v[(m - 1) / 2] : (v[m / 2 - 1] + v[m / 2]) / 2) : NaN;
+      const cells = [name, fmt(m ? v.reduce((s, x) => s + x, 0) / m : NaN), fmt(med), fmt(m ? v[0] : NaN), fmt(m ? v[m - 1] : NaN), String(n - m)];
+      ft.appendChild(el("tr", {}, ...cells.map((t) => el("td", { text: t }))));
+    }
+    $("charBody").hidden = false;
+    const d = feat.pca;
+    $("pcaBox").hidden = !d;
+    $("pcaCsv").hidden = !d;
+    if (!d) { $("pcaHint").textContent = "A map cannot be drawn for this file: " + feat.pcaError + "."; return; }
+    $("pcaHint").textContent = "Each point is one series; series with similar characteristics lie close together. The axes are the principal " +
+      "components of the " + d.features.length + " standardised characteristics. Explained variance: " +
+      d.explained.map((e, i) => "PC" + (i + 1) + " " + (100 * e).toFixed(1) + "%").join(", ") + "." +
+      (d.dropped.length ? " Left out (constant or mostly missing): " + d.dropped.join(", ") + "." : "");
+    for (const [id, which] of [["pcaX", 0], ["pcaY", 1]]) {
+      const sel = $(id);
+      sel.textContent = "";
+      for (let i = 0; i < d.k; i++) sel.appendChild(el("option", { value: String(i), text: "PC" + (i + 1) }));
+      pcaView.ax[which] = Math.min(pcaView.ax[which], d.k - 1);
+      sel.value = String(pcaView.ax[which]);
+    }
+    const lt = $("loadTable");
+    lt.textContent = "";
+    const head = el("tr", {});
+    for (let c = 0; c < d.k; c++) { head.appendChild(el("th", { text: "PC" + (c + 1) })); head.appendChild(el("th", { text: "loading" })); }
+    lt.appendChild(head);
+    const tops = [];
+    for (let c = 0; c < d.k; c++) {
+      tops.push(d.features.map((f, j) => [f, d.loadings[j * d.k + c]]).sort((u, v) => Math.abs(v[1]) - Math.abs(u[1])).slice(0, 6));
+    }
+    for (let r = 0; r < 6; r++) {
+      const tr = el("tr", {});
+      for (let c = 0; c < d.k; c++) {
+        const t = tops[c][r];
+        tr.appendChild(el("td", { text: t ? t[0] : "" }));
+        tr.appendChild(el("td", { text: t ? t[1].toFixed(2) : "" }));
+      }
+      lt.appendChild(tr);
+    }
+    updatePcaColor();
+  }
+
+  function updatePcaColor() {
+    if (!feat || !feat.pca) return;
+    pcaColorOptions();
+    pcaView.colorData = pcaColorData();
+    pcaView.colors = pcaColors(pcaView.colorData);
+    pcaView.focus = null;
+    $("pcaCanvas").setAttribute("aria-label", "Scatter of " + feat.names.length + " series on two principal components, coloured by " + pcaView.colorData.label + ".");
+    $("pcaNote").textContent = (pcaView.colorData.partial ? "Series outside the last run have no value and are drawn hollow. " : "") +
+      (result ? "Tap a point to see that series in the forecast chart below." : "After a run you can also colour the map by the error of each series.");
+    renderPcaLegend();
+    drawPca();
+  }
+  $("pcaColor").addEventListener("change", (e) => { pcaView.color = e.target.value; updatePcaColor(); });
+  $("pcaX").addEventListener("change", (e) => { pcaView.ax[0] = parseInt(e.target.value, 10); drawPca(); });
+  $("pcaY").addEventListener("change", (e) => { pcaView.ax[1] = parseInt(e.target.value, 10); drawPca(); });
+  $("pcaArrows").addEventListener("change", (e) => { pcaView.arrows = e.target.checked; drawPca(); });
+  window.addEventListener("resize", () => { clearTimeout(drawPca.timer); drawPca.timer = setTimeout(drawPca, 150); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updatePcaColor);
+
+  function nearestPoint(ev) {
+    const cv = $("pcaCanvas"), r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+    let best = null, bd = ev.pointerType === "touch" ? 324 : 100;
+    for (const p of pcaView.pts) { const dd = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y); if (dd < bd) { bd = dd; best = p; } }
+    return { best, x, y, width: r.width };
+  }
+  function pcaHover(ev) {
+    const tip = $("pcaTip"), hit = nearestPoint(ev);
+    if (!hit.best || !feat || !feat.pca) { tip.hidden = true; return null; }
+    const i = hit.best.i, d = feat.pca, c = pcaView.colorData, v = c.values[i];
+    tip.textContent = "";
+    tip.appendChild(el("b", { text: feat.names[i] }));
+    tip.appendChild(el("div", { text: [0, 1].map((w) => "PC" + (pcaView.ax[w] + 1) + " " + d.scores[i * d.k + pcaView.ax[w]].toFixed(2)).join("   ") }));
+    tip.appendChild(el("div", { text: c.label + ": " + (v == null || (typeof v === "number" && !Number.isFinite(v)) ? "no value" : typeof v === "number" ? fmt(v) : v) }));
+    tip.hidden = false;
+    tip.style.left = Math.max(0, Math.min(hit.width - tip.offsetWidth, hit.x + (hit.x > hit.width / 2 ? -tip.offsetWidth - 12 : 12))) + "px";
+    tip.style.top = Math.max(0, hit.y - 10) + "px";
+    return i;
+  }
+  $("pcaCanvas").addEventListener("pointermove", pcaHover);
+  $("pcaCanvas").addEventListener("pointerleave", () => { $("pcaTip").hidden = true; });
+  $("pcaCanvas").addEventListener("click", (ev) => {
+    const i = pcaHover(ev);
+    if (i === null || !result) return;
+    for (let r = 1; r < result.errors.length; r++) {
+      if (result.errors[r][0] === feat.names[i]) { requestSeries(r - 1); $("pcaNote").textContent = feat.names[i] + " is now shown in the forecast chart below."; return; }
+    }
+    $("pcaNote").textContent = feat.names[i] + " was not part of the last run.";
+  });
+
+  function csvCell(s) { return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function featuresCsv() {
+    const p = feat.columns.length, lines = ["series," + feat.columns.join(",") + ",demand_class"];
+    feat.names.forEach((nm, i) => {
+      const row = [csvCell(nm)];
+      for (let j = 0; j < p; j++) { const v = feat.table[i * p + j]; row.push(Number.isFinite(v) ? String(v) : ""); }
+      row.push(feat.classes[i] || "");
+      lines.push(row.join(","));
+    });
+    return lines.join("\n") + "\n";
+  }
+  function saveText(name, text) {
+    const a = el("a", { download: name });
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  }
+  $("featCsv").addEventListener("click", () => { if (feat) saveText(data.id + "_characteristics.csv", featuresCsv()); });
+  $("pcaCsv").addEventListener("click", () => {
+    if (!feat || !feat.pca) return;
+    const d = feat.pca, lines = ["series," + d.explained.map((e, i) => "PC" + (i + 1)).join(",")];
+    feat.names.forEach((nm, i) => lines.push([csvCell(nm)].concat(Array.from(d.scores.subarray(i * d.k, (i + 1) * d.k), String)).join(",")));
+    saveText(data.id + "_pca_scores.csv", lines.join("\n") + "\n");
   });
 
   // ------------------------------------------------------------------------------------------- worker messages
@@ -633,8 +960,11 @@
       showResults(msg);
     } else if (msg.type === "series") {
       if (msg.token === seriesToken && result) drawForecast(msg.values);
+    } else if (msg.type === "features") {
+      if (msg.token === featToken) { feat = msg; renderCharacteristics(); }
     } else if (msg.type === "error") {
-      if (msg.stage === "load") { $("dataInfo").textContent = msg.message; $("dataInfo").className = "note error"; }
+      if (msg.stage === "features") { $("charStatus").textContent = "The characteristics could not be computed: " + msg.message; $("charRun").hidden = false; }
+      else if (msg.stage === "load") { $("dataInfo").textContent = msg.message; $("dataInfo").className = "note error"; }
       else if (msg.stage === "run") { endRun(); status(msg.message, true); }
     }
     if (msg.type === "loaded") $("dataInfo").className = "note";

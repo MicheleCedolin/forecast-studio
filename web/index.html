@@ -63,6 +63,22 @@
   .tip b { font-weight: 600; }
   svg text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--muted); }
   svg .lbl { fill: var(--ink2); font-size: 12px; }
+  /* data characteristics */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .tile { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .tile b { display: block; font-size: 1.35rem; font-weight: 600; line-height: 1.2; }
+  .tile span { font-size: 0.85rem; color: var(--ink2); }
+  .chk { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; font-size: 0.9rem; color: var(--ink); }
+  #pcaCanvas { display: block; width: 100%; touch-action: pan-y; cursor: crosshair; }
+  .pca-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 0.85rem; color: var(--ink2); margin-top: 8px; }
+  .pca-legend button { font: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--axis);
+                       border-radius: 14px; background: transparent; color: var(--ink); cursor: pointer; }
+  .pca-legend button[aria-pressed=true] { border-color: var(--ink); font-weight: 600; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+  .sw.hollow { border: 1.2px solid var(--muted); }
+  .ramp { display: inline-block; width: 90px; height: 10px; border-radius: 5px; }
+  section > div details, #charBody > details { border-top: 1px solid var(--line); padding: 8px 0; margin-top: 10px; }
+  details > summary { cursor: pointer; font-size: 0.93rem; color: var(--ink2); }
   /* learn */
   .learn p { margin: 6px 0; }
   .learn details { border-top: 1px solid var(--line); padding: 8px 0; }
@@ -102,7 +118,38 @@
     </section>
 
     <section>
-      <h2>2 Model and settings</h2>
+      <h2>2 Data characteristics</h2>
+      <p id="charStatus" class="note" style="margin-top:0">Choose a dataset to see what its series look like.</p>
+      <button id="charRun" class="plain" type="button" hidden>Analyse the data</button>
+      <div id="charBody" hidden>
+        <h3>Demand pattern of the series</h3>
+        <div id="classTiles" class="tiles"></div>
+        <p class="note">Classes of Syntetos, Boylan and Croston (2005): a series is <i>intermittent</i> or <i>lumpy</i> when demand
+          occurs rarely (average interval between non-zero values of 1.32 or more), and <i>erratic</i> or <i>lumpy</i> when the
+          non-zero values vary a lot (squared coefficient of variation of 0.49 or more).</p>
+
+        <h3>Map of the series (principal components)</h3>
+        <p id="pcaHint" class="note" style="margin-top:0"></p>
+        <div id="pcaBox">
+          <div class="grid">
+            <div><label for="pcaX">Horizontal axis</label><select id="pcaX"></select></div>
+            <div><label for="pcaY">Vertical axis</label><select id="pcaY"></select></div>
+            <div><label for="pcaColor">Colour by</label><select id="pcaColor"></select></div>
+          </div>
+          <label class="chk"><input id="pcaArrows" type="checkbox" checked> Show the characteristics that pull the map (loadings)</label>
+          <div id="pcaWrap" class="chart"><canvas id="pcaCanvas" role="img"></canvas><div id="pcaTip" class="tip" hidden></div></div>
+          <div id="pcaLegend" class="pca-legend"></div>
+          <p id="pcaNote" class="note"></p>
+          <details><summary>Strongest loadings of each component</summary><div class="scroll"><table id="loadTable"></table></div></details>
+        </div>
+        <details><summary>Summary of every characteristic</summary><div class="scroll"><table id="featTable"></table></div></details>
+        <div class="row"><button id="featCsv" class="plain" type="button">Download characteristics (CSV)</button>
+          <button id="pcaCsv" class="plain" type="button">Download map coordinates (CSV)</button></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3 Model and settings</h2>
       <div class="grid">
         <div><label for="method">Method</label><select id="method" disabled><option>loading…</option></select></div>
         <div><label for="horizon">Horizon (blank = file's)</label><input id="horizon" type="number" min="1" inputmode="numeric"></div>
@@ -118,7 +165,7 @@
     </section>
 
     <section id="results" hidden>
-      <h2>3 Results</h2>
+      <h2>4 Results</h2>
       <p id="runInfo" class="note"></p>
       <div id="warnings"></div>
 
