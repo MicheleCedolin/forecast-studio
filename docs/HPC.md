@@ -59,9 +59,9 @@ run smallest file first. `--methods`: method names and presets, comma separated:
 |---|---|
 | `study` (default) | per dataset, the methods of the study in the catalogue: ses, ets, theta, tbats, arima or dhr_arima, pooled_regression, catboost |
 | `benchmarks` | naive, snaive, drift, naive2, ses, theta, comb_shd, historic_average, window_average, seasonal_window_average, seasonal_es, holt_ets, zero_model |
-| `local` | every local C++ method except the intermittent-demand ones |
+| `local` | every local C++ method except the intermittent-demand ones (the combinations comb_eat, comb_eat_median and scum included) |
 | `intermittent` | croston_classic, croston_sba, croston_optimized, tsb, adida, imapa |
-| `global` | pooled_regression, lightgbm, lightgbm_feat, catboost (those available) |
+| `global` | pooled_regression, lightgbm, lightgbm_feat, lightgbm_direct, catboost (those available) |
 | `all` | everything the engine offers |
 
 `--exclude-datasets` and `--exclude-methods` remove entries. Horizon, lag, seasonality and integer rounding come from the
@@ -212,10 +212,17 @@ array tasks share the node are noisier than those of an exclusive node (`#SBATCH
 
 ## Agreement on Linux
 
-The reference checks in `cpp/README.md` were made on Windows (MinGW GCC). On Linux (GCC 13.3, glibc, x86-64), 2026-11-23,
-`tests/test_cpp_engine.py` and `tests/test_golden_nn5.py` gave 84 passed, 1 skipped and 2 differing checks: `thief` and
-`mapa` on one of the 29 quarterly reference series (18 observations) differ from R by a relative 1.4e-6, where the test
-asks for 1e-12; the other 28 quarterly and all 38 monthly series meet it. The likely cause is a last-bit
-difference between the C libraries' elementary functions that sends one optimiser run down another path; it has not been
-traced. Everything else, including ETS, ARIMA, TBATS and the bagged models on NN5, agrees within the documented
-tolerances. `scripts/hpc/setup.sh` repeats these checks on the cluster; run them on the node type that will do the work.
+The reference checks in `cpp/README.md` were made on Windows (MinGW GCC). On Linux (GCC 13.3, glibc, x86-64), 2026-11-24,
+the whole test suite gave 386 passed, 25 skipped and 2 differing checks: `thief` and `mapa` on one of the 29 quarterly
+reference series (18 observations) differ from the Windows R fixture by a relative 1.4e-6, where the test asks for
+1e-12; the other 28 quarterly and all 38 monthly series meet it. Everything else, including ETS, ARIMA, DHR-ARIMA,
+TBATS and the bagged models on NN5, agrees within the documented tolerances.
+
+The build needs GCC's libquadmath (correctly rounded Fourier terms of `dhr_arima`); it is linked as a shared library, and
+`python -m tsfstudio engines` reports the C++ engine as missing if the system cannot find it at run time.
+
+Known limit, unchanged: with several seasonal periods (hourly and finer data) `dhr_arima` stops as R does
+("Number of periods does not match number of orders") and every series gets the seasonal naive forecast; the task is
+then listed with as many `fallbacks` as series and a warning, and its errors are those of seasonal naive.
+
+`scripts/hpc/setup.sh` repeats these checks on the cluster; run them on the node type that will do the work.
