@@ -405,6 +405,7 @@ Forecast Studio is a Python package (`tsfstudio`, Python 3.10 or later) with a c
 | Series-level instability (`instability`) | The analysis of Section 5.5: per-series Kendall's W and selection regret with within-series-equivalent measures counted once, the concordance of such measures at the task level (the aggregation effect), six built-in series features, and their within-task association with instability, pooled over tasks; external feature tables such as tsfeatures or catch22 output can be supplied instead |
 | Runner | Train-test split, missing-value policy, memory and run-time estimate before execution, output files, manifest |
 | Interface | Five-step browser workflow; 39 selectable methods with explanatory margin notes and references |
+| Web edition | A static page with the C++ engine compiled to WebAssembly: 35 local methods and pooled regression, seven measures, fixed-origin evaluation; computed on the visitor's device, with no server part (Section 6.5) |
 
 The interface follows five steps. (1) *Data*: the user picks a catalogue dataset or uploads a `.tsf` or Excel file, and the application reports frequency, horizon, number and length of series, shares of missing and zero values, and the demand pattern. (2) *Model*: methods are grouped as local, intermittent-demand, and global; a method whose engine is not installed is marked and cannot be started. (3) *Settings*: defaults are the values of the original study, a changed field is highlighted, and one click restores the default. (4) *Run*: a pre-run check estimates memory and time, refuses a run that would exhaust memory, and asks for confirmation of long runs; progress is shown and the run can be cancelled. (5) *Results*: a summary table, forecast diagnostics, sample-series charts, the error distribution, a per-series error table, and file downloads. Past runs can be compared side by side per measure, with a warning when datasets or horizons differ.
 
@@ -470,6 +471,25 @@ The omnibus test rejects equality overwhelmingly under every measure, and the sa
 
 Forecast Studio currently covers the statistical and regression part of the forecast pool. The neural forecasts analyzed in Section 5 come from the archived GluonTS runs and cannot yet be regenerated in the workbench. The three analysis commands (`rank`, `reliability`, `instability`) are available from the command line and not yet from the browser interface. The rule-based evidence screen of Section 3.3 and the competition-level perturbations of Section 5.4 remain in the scripts of the reproducibility package: the workbench drops a model from a task when one of its losses is undefined, but it does not classify measures as Primary, Secondary, or Excluded. The comparison of compatibility rules in Section 5.4 is likewise a script of the reproducibility package; it calls the workbench's `reliability` functions, and the workbench itself applies the common-support rule only. The repository's validation record reports that the C++ ports reproduce the archived R forecasts of the two NN5 tasks for ETS, ARIMA, and TBATS to within optimizer tolerance on all 222 series. [TODO: these figures come from `cpp/README.md` and were not re-run for this draft; verify them, and decide whether to report them in Section 6.3 with a table.] The intermittent-demand methods have no counterpart in the archive. Probabilistic measures and rolling-origin evaluation are not included.
 
+*Web edition.* A second, deliberately smaller edition runs without installation. The C++ engine is compiled, from unchanged sources, to WebAssembly and served as a static page of about 1.2 MB; the page reads a `.tsf` or delimited file, holds out the last $h$ observations of each series, runs the selected methods in one worker per processor core of the visitor's device, and reports seven measures (MASE, sMAPE, msMAPE, MAE, RMSE, RMSSE, WAPE) with their mean, median, and the mean rank by MASE. No computation takes place on the host and the data do not leave the device, so the page can be offered publicly at no running cost and without receiving users' data. It offers the 35 local methods of the C++ engine and pooled regression. Method parameters, the R engine, the gradient-boosting and neural models, and the three analysis commands are available in the desktop edition only.
+
+Because the page's forecasts come from a different compilation target than the desktop library, we validated it separately (Table 15). On NN5 Weekly the WebAssembly build reproduces the archived R forecasts at the level reported for the R engine in Table 12, and no series differs by more than $10^{-3}$. For the three methods that are not in the archive the reference is the output of forecast 9.0.2 stored with the repository's validation fixtures. The page's own implementation of the seven measures agrees with the package's to a relative $10^{-12}$ on every series, and for eleven further methods the WebAssembly forecasts equal those of the natively compiled library to $10^{-9}$. These checks are part of the test suite. They cover one task; the web edition was not validated on NN5 Daily. In a single thread three methods (Comb S-H-D, the temporal-hierarchy combination, and MAPA) run much more slowly than the native library, for a reason we have not investigated, and large collections with ARIMA or TBATS are impractical in a browser.
+
+**Table 15.** WebAssembly build of the C++ engine versus R forecasts, NN5 Weekly ($h=8$, 111 series, no fallbacks). Relative differences are per forecast value. Reference: the archived forecasts (forecast 8.12), or forecast 9.0.2 where marked †.
+
+| Method | Median relative difference | Maximum relative difference | Series differing by more than $10^{-3}$ |
+|:--|--:|--:|--:|
+| ETS | $1.1\times10^{-15}$ | $4.5\times10^{-15}$ | 0 / 111 |
+| TBATS | $1.6\times10^{-15}$ | $1.3\times10^{-11}$ | 0 / 111 |
+| ARIMA | $6.6\times10^{-14}$ | $4.0\times10^{-6}$ | 0 / 111 |
+| ARIMA with Fourier terms | $4.6\times10^{-14}$ | $5.2\times10^{-8}$ | 0 / 111 |
+| Pooled Regression | $1.9\times10^{-15}$ | $7.4\times10^{-15}$ | 0 / 111 |
+| STL with ETS † | $1.4\times10^{-15}$ | $4.9\times10^{-15}$ | 0 / 111 |
+| STL with ARIMA † | $1.4\times10^{-14}$ | $5.7\times10^{-8}$ | 0 / 111 |
+| Bagged ETS † | $1.3\times10^{-15}$ | $2.9\times10^{-13}$ | 0 / 111 |
+
+[TODO: state the public address of the web edition once it is published, and record the Emscripten version (7.0.1) and the commit of the build in the reproducibility package.]
+
 The source code, tests, and validation fixtures are available at https://github.com/MicheleCedolin/forecast-studio [TODO: confirm the repository is public; add an archived DOI; replace by an anonymized link if the review is blinded] under the GNU General Public License, version 3; a notice file lists the routines translated from R and other libraries. For users who do not want to install Python, release 0.1.1 provides a self-contained Windows package (about 224 MB, for 64-bit Windows 10 and 11) that starts the interface from a single executable. It is built by an automated workflow from the repository, and its SHA-256 checksum is published with it. A local build of the same code, unpacked into a fresh folder, reproduced the Python engine's Comb S-H-D result on NN5 Weekly (mean MASE 0.8929). The package is unsigned, so Windows shows a warning at first start. [TODO: at the time of this draft the `reliability` and `instability` commands, their tests, and the analysis scripts of Section 5.5 exist only in the working copy. They are not in the repository's main branch and not in release 0.1.1. Commit them and cut a new release before submission, otherwise Section 6 describes software a reader cannot obtain.]
 
 # 7 Discussion
@@ -501,9 +521,9 @@ The results suggest six items that a benchmark study should report alongside any
 5. **A stability summary, not only a point ranking.** First-place and top-$k$ frequencies under resampling of the benchmark units.
 6. **Composition sensitivity.** The ranking after removing each benchmark source in turn.
 
-For an analyst who has to choose a model rather than report a benchmark, the diagnostics translate into the reading in Table 15. The thresholds a user applies are a matter of judgment; the table states which quantity answers which question.
+For an analyst who has to choose a model rather than report a benchmark, the diagnostics translate into the reading in Table 16. The thresholds a user applies are a matter of judgment; the table states which quantity answers which question.
 
-**Table 15.** Reading the diagnostics when a model has to be chosen.
+**Table 16.** Reading the diagnostics when a model has to be chosen.
 
 | Observation | What it means | What to do |
 |:--|:--|:--|
