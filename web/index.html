@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forecast Studio in the browser</title>
+<style>
+  :root { --bg: #f5f6f8; --panel: #ffffff; --ink: #1c2738; --muted: #5b6676; --line: #d5dae2; --accent: #1f3a63; --warn: #8a5a00; --bad: #9b1c1c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12161d; --panel: #1a2029; --ink: #e6eaf0; --muted: #9aa5b5; --line: #2e3745; --accent: #8fb3ea; --warn: #e0b45c; --bad: #f08a8a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 1.45rem; margin: 0 0 2px; }
+  .sub { color: var(--muted); margin: 0 0 18px; font-size: 0.95rem; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 1.02rem; margin: 0 0 10px; }
+  label { display: block; font-size: 0.86rem; color: var(--muted); margin-bottom: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  select, input[type=number] { width: 100%; padding: 8px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  input[type=file] { width: 100%; font: inherit; color: var(--ink); }
+  button { font: inherit; padding: 9px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--panel); cursor: pointer; }
+  button.plain { background: transparent; color: var(--accent); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+  .note { color: var(--muted); font-size: 0.88rem; margin: 8px 0 0; }
+  .status { margin: 0; }
+  .error { color: var(--bad); }
+  .warning { color: var(--warn); font-size: 0.9rem; margin: 6px 0 0; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  .files a { display: inline-block; margin: 4px 12px 0 0; color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Forecast Studio in the browser</h1>
+  <p class="sub">Trial page. The forecasting engine runs on this device; your data is not sent anywhere.</p>
+
+  <section>
+    <h2>1 Data</h2>
+    <label for="file">A Monash .tsf file</label>
+    <input id="file" type="file" accept=".tsf,text/plain">
+    <div class="row"><button id="example" class="plain" type="button">Use the example file</button><span id="dataInfo" class="note"></span></div>
+  </section>
+
+  <section>
+    <h2>2 Model and settings</h2>
+    <div class="grid">
+      <div><label for="method">Method</label><select id="method" disabled><option>loading…</option></select></div>
+      <div><label for="horizon">Horizon (blank = file's)</label><input id="horizon" type="number" min="1" inputmode="numeric"></div>
+      <div><label for="maxSeries">Series to run (blank = all)</label><input id="maxSeries" type="number" min="1" inputmode="numeric" value="50"></div>
+      <div><label for="missing">Missing values</label>
+        <select id="missing"><option value="error">Stop and tell me</option><option value="locf">Carry last value forward</option>
+          <option value="interpolate">Linear interpolation</option><option value="zero">Fill with zero</option></select></div>
+    </div>
+    <div class="row"><button id="run" type="button" disabled>Start run</button><p id="status" class="status note">Loading the engine…</p></div>
+  </section>
+
+  <section id="results" hidden>
+    <h2>3 Results</h2>
+    <p id="runInfo" class="note"></p>
+    <div id="warnings"></div>
+    <div class="scroll"><table id="summary"></table></div>
+    <p class="note">Result files</p>
+    <div id="files" class="files"></div>
+  </section>
+</main>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const worker = new Worker("worker.js");
+  let data = null;      // { name, bytes }
+  let engineReady = false, running = false;
+  // methods a first-time user is most likely to want, shown first
+  const FIRST = ["ets", "theta", "arima", "snaive", "naive", "ses", "holt_winters", "auto_theta", "croston_sba"];
+
+  function refresh() { $("run").disabled = !(engineReady && data && !running); }
+  function status(text, isError) { $("status").textContent = text; $("status").className = "status " + (isError ? "error" : "note"); }
+
+  function setData(name, bytes) {
+    data = { name, bytes };
+    $("dataInfo").textContent = name + " (" + (bytes.byteLength / 1048576).toFixed(2) + " MB)";
+    refresh();
+  }
+
+  $("file").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (f) setData(f.name, await f.arrayBuffer());
+  });
+
+  $("example").addEventListener("click", async () => {
+    try {
+      const r = await fetch("sample.tsf");
+      if (!r.ok) throw new Error("not found");
+      setData("sample.tsf", await r.arrayBuffer());
+    } catch (err) {
+      $("dataInfo").textContent = "No example file is published with this page; choose a .tsf file.";
+    }
+  });
+
+  function parseCsv(text) {
+    const rows = [];
+    let row = [], cell = "", quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) {
+        if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+        else if (c === '"') quoted = false;
+        else cell += c;
+      } else if (c === '"') quoted = true;
+      else if (c === ",") { row.push(cell); cell = ""; }
+      else if (c === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+      else if (c !== "\r") cell += c;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+
+  function fmt(text) {
+    if (text === "") return "–";
+    const v = Number(text);
+    if (!Number.isFinite(v)) return text;
+    return Number.isInteger(v) ? String(v) : v.toPrecision(5);
+  }
+
+  function showResults(msg) {
+    const manifest = JSON.parse(msg.files["manifest.json"].replace(/\bNaN\b|-?\bInfinity\b/g, "null"));
+    $("runInfo").textContent = manifest.dataset.id + ", " + manifest.config.method + ": " + manifest.dataset.n_series_run + " of " +
+      manifest.dataset.n_series_total + " series, horizon " + manifest.split.horizon + ", " + msg.seconds.toFixed(1) + " s on this device.";
+    const w = $("warnings");
+    w.textContent = "";
+    for (const text of manifest.warnings) {
+      const p = document.createElement("p");
+      p.className = "warning";
+      p.textContent = text;
+      w.appendChild(p);
+    }
+    const table = $("summary");
+    table.textContent = "";
+    parseCsv(msg.files["summary.csv"]).forEach((cells, r) => {
+      const tr = document.createElement("tr");
+      cells.forEach((cell, c) => {
+        const el = document.createElement(r === 0 ? "th" : "td");
+        el.textContent = r === 0 || c === 0 ? cell.replace("N_valid", "Series").replace("N_excluded", "Left out") : fmt(cell);
+        tr.appendChild(el);
+      });
+      table.appendChild(tr);
+    });
+    const files = $("files");
+    files.textContent = "";
+    for (const name of Object.keys(msg.files).sort()) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([msg.files[name]], { type: name.endsWith(".json") ? "application/json" : "text/csv" }));
+      a.download = name;
+      a.textContent = name;
+      files.appendChild(a);
+    }
+    $("results").hidden = false;
+  }
+
+  worker.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === "ready") {
+      engineReady = true;
+      const sel = $("method");
+      sel.textContent = "";
+      const names = FIRST.filter((m) => msg.methods.includes(m)).concat(msg.methods.filter((m) => !FIRST.includes(m)).sort());
+      for (const m of names) {
+        const o = document.createElement("option");
+        o.value = o.textContent = m;
+        sel.appendChild(o);
+      }
+      sel.disabled = false;
+      status("Engine ready (" + msg.version + "). Choose a file.");
+    } else if (msg.type === "done") {
+      running = false;
+      status("Finished in " + msg.seconds.toFixed(1) + " s.");
+      showResults(msg);
+    } else if (msg.type === "error") {
+      running = false;
+      status(msg.message, true);
+    }
+    refresh();
+  };
+  worker.onerror = (e) => { running = false; status("The engine could not be loaded: " + (e.message || "unknown error"), true); refresh(); };
+
+  $("run").addEventListener("click", () => {
+    const config = ["method=" + $("method").value, "missing_policy=" + $("missing").value, "threads=1", "eol=lf",
+                    "dataset_id=" + data.name.replace(/\.tsf$/i, "")];
+    if ($("horizon").value) config.push("horizon=" + parseInt($("horizon").value, 10));
+    if ($("maxSeries").value) config.push("max_series=" + parseInt($("maxSeries").value, 10));
+    running = true;
+    refresh();
+    status("Running " + $("method").value + " on this device…");
+    worker.postMessage({ bytes: data.bytes.slice(0), name: data.name, config });
+  });
+})();
+</script>
+</body>
+</html>
