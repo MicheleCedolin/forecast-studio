@@ -8,6 +8,8 @@
   engines      availability of the registered engines (R, baseline, ...)
   estimate     memory/time estimate for a run (without running)
   run          runs a model on a dataset: forecasts + error measures + Excel outputs + manifest
+  sweep        batch (HPC): every chosen dataset x every chosen method in turn; errors, times and memory per task,
+               forecasts and errors per series; continues where an earlier job stopped (docs/HPC.md)
   doctor       environment check: Python, R, packages, memory, data; a quick live test of every method of every engine
   golden       compares an engine's forecasts with your own R outputs (NN5): forecast difference + effect on SMAPE/MASE
   rank         ranks models from several runs; Friedman, Nemenyi CD and bootstrap ranking stability
@@ -177,6 +179,61 @@ def _cmd_run(a) -> int:
     print(res.summary.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
     for w in res.manifest["warnings"]:
         print("WARNING:", w)
+    return 0
+
+
+def _csv_list(values) -> list[str]:
+    """--x a,b --x c  ->  [a, b, c]"""
+    return [v.strip() for item in (values or []) for v in str(item).split(",") if v.strip()]
+
+
+def _cmd_sweep(a) -> int:
+    from . import sweep as S
+    from .metrics import ALL_METRICS, DEFAULT_METRICS
+
+    if a.report_only:
+        print(f"Report -> {S.build_report(Path(a.out) / 'probe' if a.probe else a.out)}")
+        return 0
+    if a.list_datasets:                                     # for scripts that submit one job per dataset
+        try:
+            plan, _ = S.build_plan(_csv_list(a.datasets) or ["all"], _csv_list(a.methods) or ["study"], engine=a.engine,
+                                   exclude_datasets=_csv_list(a.exclude_datasets), exclude_methods=_csv_list(a.exclude_methods),
+                                   data_dir=a.data_dir, lag=a.lag)
+        except S.SweepError as exc:
+            print("ERROR:", exc, file=sys.stderr)
+            return 2
+        # catalogue datasets by id, other files by path: either can be given back to --datasets
+        print("\n".join(dict.fromkeys(p["dataset"] if p["catalog"] else p["path"] for p in plan)))
+        return 0
+    metrics = _csv_list(a.metrics) or ["default"]
+    metrics = list(dict.fromkeys(m for item in metrics for m in (DEFAULT_METRICS if item == "default" else ALL_METRICS if item == "all" else (item,))))
+    bad = [m for m in metrics if m not in ALL_METRICS]
+    if bad:
+        print(f"ERROR: unknown measure(s) {bad}. Valid: default, all, {', '.join(ALL_METRICS)}")
+        return 2
+    try:
+        return S.sweep(_csv_list(a.datasets) or ["all"], _csv_list(a.methods) or ["study"], a.out, engine=a.engine,
+                       exclude_datasets=_csv_list(a.exclude_datasets), exclude_methods=_csv_list(a.exclude_methods),
+                       data_dir=a.data_dir, threads=a.threads, task_timeout=a.task_timeout * 60 if a.task_timeout else None,
+                       missing_policy=a.missing_policy, metrics=metrics, max_series=a.max_series, probe=a.probe, seed=a.seed,
+                       lag=a.lag, horizon=a.horizon, origins=a.origins, force=a.force, retry_failed=a.retry_failed,
+                       rerun=a.rerun, in_process=a.in_process, array_index=a.array_index, jobs=a.jobs, report=not a.no_report,
+                       dry_run=a.dry_run, echo=lambda m: print(m, flush=True))
+    except S.SweepError as exc:
+        print("ERROR:", exc)
+        return 2
+
+
+def _cmd_sweep_task(a) -> int:
+    import signal
+
+    from . import sweep as S
+    for name in ("SIGUSR1", "SIGUSR2"):                     # SGE's notify signals are handled by the sweep, not here
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), signal.SIG_IGN)
+    st = S.run_task(json.loads(a.spec))
+    if st["state"] != "done":
+        print(st.get("message", ""), flush=True)
     return 0
 
 
@@ -607,6 +664,47 @@ def main(argv: list[str] | None = None) -> int:
             sp.add_argument("--probe", action="store_true", help="measure the time by making a small trial run")
         else:
             sp.add_argument("--yes", action="store_true", help="skip the long-run confirmation")
+    sp = sub.add_parser("sweep", help="batch (HPC): all chosen datasets x methods, with times and per-series outputs")
+    sp.add_argument("--out", required=True, help="output folder; start again with the same folder to continue a stopped sweep")
+    sp.add_argument("--datasets", action="append", help="comma list: all (default) | main | extra | m5 | catalogue ids | paths to .tsf files")
+    sp.add_argument("--methods", action="append",
+                    help="comma list of presets and method names. Presets: study (default: the methods of the study for each "
+                         "dataset), benchmarks, local (all local except intermittent-demand), intermittent, global, all")
+    sp.add_argument("--exclude-datasets", action="append", help="comma list of dataset ids to leave out")
+    sp.add_argument("--exclude-methods", action="append", help="comma list of methods to leave out")
+    sp.add_argument("--engine", default="cpp", help="cpp (default) | python | r | python-baseline")
+    sp.add_argument("--data-dir", default=None, help="default: $TSFSTUDIO_DATA_DIR or data/tsf")
+    sp.add_argument("--jobs", type=int, default=1, metavar="J",
+                    help="tasks ((dataset, method) pairs) running at the same time (default 1); J x threads should equal the cores")
+    sp.add_argument("--threads", type=int, default=None,
+                    help="threads per task, fixed exactly (default: the cores granted by the scheduler, else those available, divided by --jobs)")
+    sp.add_argument("--task-timeout", type=float, default=None, metavar="MINUTES",
+                    help="stop a task after this many minutes and go on (state 'timeout'); default: no limit")
+    sp.add_argument("--missing-policy", choices=("error", "zero", "locf", "interpolate"), default="error",
+                    help="missing values in the training part (default error: such a task is recorded as failed)")
+    sp.add_argument("--metrics", action="append", help="comma list: default | all | measure names")
+    sp.add_argument("--probe", type=int, default=None, metavar="N",
+                    help="time estimate: run the plan on N random series per dataset into <out>/probe and project the full time")
+    sp.add_argument("--max-series", type=int, default=None, help="only the first N series of every dataset (trial)")
+    sp.add_argument("--lag", type=int, default=None, help="lag of the global models (default: the catalogue value)")
+    sp.add_argument("--horizon", type=int, default=None, help="forecast horizon (default: catalogue / file header)")
+    sp.add_argument("--origins", type=int, default=1, help="rolling origin: number of forecast origins (default 1)")
+    sp.add_argument("--seed", type=int, default=1)
+    sp.add_argument("--force", action="store_true", help="override the memory block of global models (not recommended)")
+    sp.add_argument("--retry-failed", action="store_true", help="run failed / timed-out / crashed tasks again")
+    sp.add_argument("--rerun", action="store_true", help="run every task again, finished ones included")
+    sp.add_argument("--array-index", type=int, default=None, metavar="K",
+                    help="job arrays: only the K-th dataset of the plan (0-based, as --dry-run numbers them); writes no report")
+    sp.add_argument("--no-report", action="store_true", help="do not write <out>/report at the end")
+    sp.add_argument("--report-only", action="store_true", help="only rebuild <out>/report from the task folders")
+    sp.add_argument("--dry-run", action="store_true", help="print the plan and stop")
+    sp.add_argument("--list-datasets", action="store_true", help="print the dataset ids of the plan, one per line, and stop")
+    sp.add_argument("--in-process", action="store_true",
+                    help="run the tasks inside this process (no isolation, no time limit, no memory per task); for debugging")
+    sp.set_defaults(fn=_cmd_sweep)
+    sp = sub.add_parser("sweep-task", help=argparse.SUPPRESS)          # one task of a sweep (started by `sweep`)
+    sp.add_argument("spec")
+    sp.set_defaults(fn=_cmd_sweep_task)
     a = p.parse_args(argv)
     return a.fn(a)
 

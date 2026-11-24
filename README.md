@@ -77,6 +77,21 @@ from `reference/experiments/fixed_horizon.R` and `deep_learning_experiments.py` 
 Entries marked `lag_origin: suggested` (M5, sample, london_smart_meters) are not in the study; they are suggestions.
 Datasets mentioned in your code but not in Drive: `kaggle_web_traffic_daily`, `saugeen_river_flow`, `sunspot`, `us_births`.
 
+## Batch runs on a cluster (HPC)
+
+`python -m tsfstudio sweep` runs every chosen dataset with every chosen C++ method in turn and records, per task, the
+error measures, computation time and memory, and per series the forecasts and errors; a stopped job continues where it
+ended. Set-up, the SLURM script, the time estimate and the output tables are in **docs/HPC.md**.
+
+```bash
+bash scripts/hpc/setup.sh                                                    # login node: .venv + tsfcore.so + checks
+python -m tsfstudio sweep --out results/sweep --methods study --dry-run      # the plan
+PROBE=20 sbatch --time=02:00:00 scripts/hpc/sweep.sbatch                     # projected time from 20 series per dataset
+sbatch scripts/hpc/sweep.sbatch                                              # the run (32 cores: 4 tasks at a time x 8 threads)
+qsub scripts/hpc/sweep.sge                                                   # the same on SGE (old systems: setup_conda.sh first)
+bash scripts/hpc/run_sweep.sh                                                # the same on a machine without a scheduler
+```
+
 ## Loading data from Excel
 
 ```bash
@@ -128,7 +143,8 @@ src/tsfstudio/
   r/worker.R, r/lib/*.R      R worker + corrected original models (docs/CHANGES_R.md)
   runner.py                  split, missing-value policy, engine, measures, outputs, manifest
   estimate.py                memory (cgroup) and time (NN5 priors / trial run) estimate
-  cli.py                     data-check, index, hash, template, convert, engines, estimate, run, doctor, golden, app
+  sweep.py                   batch runs for clusters: datasets x methods, isolation per task, continuing, report (docs/HPC.md)
+  cli.py                     data-check, index, hash, template, convert, engines, estimate, run, sweep, doctor, golden, app
   app/                       local interface: server.py (http.server), service.py (business logic), models_info.py (model/parameter/reference schema), static/
 reference/                   the user's original R/Python code (NOT MODIFIED)
 tools/                       catalogue builder, M5 TSF production/verification scripts
@@ -138,7 +154,8 @@ docs/PYTHON_ENGINE.md        Python engine: method table, relation to R, deliber
 docs/APP.md                  interface: use, security, limits, references
 docs/DOCKER_WINDOWS.md       installation, .wslconfig, troubleshooting
 docs/VALIDATION.md           golden tests: what, how, results
-Dockerfile, docker-compose.yml, docker/, scripts/windows/
+docs/HPC.md                  cluster runs: set-up, SLURM script, time estimate, outputs, agreement on Linux
+Dockerfile, docker-compose.yml, docker/, scripts/windows/, scripts/hpc/ (setup.sh, setup_conda.sh, sweep.sge, submit_datasets.sh, sweep.sbatch, run_sweep.sh)
 ```
 
 Language note: the interface, the run messages and the CLI output are in English. Source comments, the older documents (`docs/METRICS.md`, `docs/CHANGES_R.md`, `docs/PYTHON_ENGINE.md`, `docs/VALIDATION.md`, `docs/DOCKER_WINDOWS.md`) and the Windows set-up scripts are still in Turkish.

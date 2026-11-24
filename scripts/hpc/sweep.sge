@@ -1,0 +1,56 @@
+#!/bin/bash
+# Forecast Studio sweep on SGE (Grid Engine): every dataset x every method on one node. See docs/HPC.md.
+#
+#   qsub scripts/hpc/sweep.sge                                         # 32 slots: 4 tasks at a time x 8 threads
+#   qsub -v SWEEP_JOBS=32,SWEEP_THREADS=1 scripts/hpc/sweep.sge        # 32 tasks at a time, single-thread timings
+#   qsub -v PROBE=20 scripts/hpc/sweep.sge                             # time estimate on 20 series per dataset
+#   qsub -v SWEEP_METHODS=study,benchmarks,SWEEP_EXCLUDE_DATASETS=london_smart_meters scripts/hpc/sweep.sge
+#
+# (a comma inside a value needs the other form:  SWEEP_METHODS=study,benchmarks qsub -V scripts/hpc/sweep.sge)
+# One job per dataset instead of one job for everything:  bash scripts/hpc/submit_datasets.sh
+# Submitting the same command again continues: finished tasks are skipped. Submit from the repository root.
+#$ -N tsf-sweep
+#$ -S /bin/bash
+#$ -cwd
+#$ -q all.q
+#$ -pe smp 32
+#$ -j y
+#$ -o sge-$JOB_NAME.$JOB_ID.log
+#$ -notify
+# -pe smp 32: 32 slots on one node. Where a slot is a hardware thread (hyper-threading on), 32 slots are 16 physical
+# cores' worth unless the node is otherwise idle; times measured on a shared node are noisier.
+# -notify: qdel first sends SIGUSR2, so the sweep records the running tasks as interrupted and writes the report.
+
+set -uo pipefail
+
+# ---- what to run (override with qsub -v NAME=value,...)
+: "${SWEEP_OUT:=results/sweep}"              # output folder; keep it to continue or to add methods later
+: "${SWEEP_DATASETS:=all}"                   # all | main | extra | m5 | ids, comma separated
+: "${SWEEP_METHODS:=study}"                  # study | benchmarks | local | intermittent | global | all | method names
+: "${SWEEP_EXCLUDE_DATASETS:=}"
+: "${SWEEP_EXCLUDE_METHODS:=}"
+: "${SWEEP_TASK_TIMEOUT_MIN:=1440}"          # one (dataset, method) may take this long
+: "${SWEEP_JOBS:=4}"                         # (dataset, method) tasks running at the same time
+: "${SWEEP_THREADS:=$(( ${NSLOTS:-1} / SWEEP_JOBS ))}"   # threads inside each task; JOBS x THREADS = slots
+[ "$SWEEP_THREADS" -lt 1 ] && SWEEP_THREADS=1
+: "${SWEEP_EXTRA:=}"                         # further options, e.g. "--missing-policy locf --metrics all"
+
+cd "${SGE_O_WORKDIR:-$PWD}"
+: "${TSFSTUDIO_DATA_DIR:=$PWD/data/tsf}"
+export TSFSTUDIO_DATA_DIR
+source scripts/hpc/activate.sh || exit 1
+export OMP_NUM_THREADS="$SWEEP_THREADS" OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONUNBUFFERED=1
+
+args=(--out "$SWEEP_OUT" --datasets "$SWEEP_DATASETS" --methods "$SWEEP_METHODS" --jobs "$SWEEP_JOBS"
+      --threads "$SWEEP_THREADS" --task-timeout "$SWEEP_TASK_TIMEOUT_MIN")
+[ -n "$SWEEP_EXCLUDE_DATASETS" ] && args+=(--exclude-datasets "$SWEEP_EXCLUDE_DATASETS")
+[ -n "$SWEEP_EXCLUDE_METHODS" ] && args+=(--exclude-methods "$SWEEP_EXCLUDE_METHODS")
+[ -n "${PROBE:-}" ] && args+=(--probe "$PROBE")
+[ -n "${SWEEP_NO_REPORT:-}" ] && args+=(--no-report)
+[ -n "${SWEEP_REPORT_ONLY:-}" ] && args=(--out "$SWEEP_OUT" --report-only)
+
+echo "host $(hostname) | job ${JOB_ID:-none} | slots ${NSLOTS:-?} | $(date)"
+echo "python -m tsfstudio sweep ${args[*]} $SWEEP_EXTRA"
+# exec: the scheduler's signals reach the sweep directly.
+# shellcheck disable=SC2086
+exec python -m tsfstudio sweep "${args[@]}" $SWEEP_EXTRA
