@@ -221,6 +221,8 @@ def catboost(train: list[np.ndarray], lag: int, h: int, max_obs: int | None = No
     values = np.ascontiguousarray(np.concatenate([np.asarray(s, dtype=np.float64) for s in train]) if n else np.zeros(0))
     out = np.empty((n, h), dtype=np.float64)
     msg = ctypes.create_string_buffer(1024)
+    if threads <= 0:   # all cores; the catboost program rejects --thread-count -1 (the Python package accepts it)
+        threads = os.cpu_count() or 1
     with tempfile.TemporaryDirectory(prefix="tsf_catboost_") as wd:
         rc = lib.tsf_catboost(_ptr(values, ctypes.c_double), _ptr(offsets, ctypes.c_int64), n, int(lag), int(h),
                               int(max_obs or 0), str(paths[0]).encode(), str(paths[1]).encode(), wd.encode(),
