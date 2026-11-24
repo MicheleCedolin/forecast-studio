@@ -55,7 +55,7 @@
     $("run").disabled = !(engineReady && data && !running);
     // say why the button is off
     const why = running ? "" : !engineReady ? "The button turns on when the engine has loaded." :
-      !data ? (pendingLoad ? "The button turns on when the data has been read." : "Choose an example dataset or a .tsf file first.") : "";
+      !data ? (pendingLoad ? "The button turns on when the data has been read." : "Choose an example dataset or a file of your own first.") : "";
     $("runWhy").textContent = why;
     $("runWhy").hidden = !why;
   }
@@ -138,11 +138,90 @@
     afterLoadCharacteristics();
   }
 
+  // A table (Excel, CSV) is converted to .tsf on this device (convert.js) and then read like any .tsf file.
+  let table = null;            // { name, bytes } of the table chosen last, kept to convert it again at another frequency
+  let converted = null;        // { name, text } of the .tsf made from it
+  const LAYOUT = { long: "one row per observation", wide: "one row per date, one column per series", columns: "columns of numbers without dates" };
+  const freqLabel = (f) => f.replace("_", " ");
+  (function () {
+    const sel = $("convFreq");
+    sel.appendChild(el("option", { value: "", text: "work it out from the dates" }));
+    for (const f of TsfConvert.FREQUENCIES) sel.appendChild(el("option", { value: f, text: freqLabel(f) }));
+  })();
+
+  function resetConversion() {
+    table = null;
+    converted = null;
+    $("convBox").hidden = true;
+    $("convSave").hidden = true;
+    $("convFreq").value = "";
+  }
+
+  function conversionText(rep) {
+    const parts = [
+      "Read as a table with " + LAYOUT[rep.layout] + (rep.sheet ? " (sheet '" + rep.sheet + "')" : "") + ": " + rep.nSeries + " series, " +
+        freqLabel(rep.frequency) + (rep.noDates ? "" : ", " + rep.first + " to " + rep.last) + "."];
+    if (rep.noDates) parts.push(rep.frequencySource === "assumed"
+      ? "The file has no dates: the data is taken as monthly, oldest value first. Choose the frequency below if it is another one."
+      : "The file has no dates: the oldest value is taken to come first.");
+    else if (rep.frequencySource === "detected") parts.push("The frequency was worked out from the dates; change it below if it is wrong.");
+    if (rep.dateOrder) parts.push("Dates were read as " + rep.dateOrder + ".");
+    if (rep.filled) parts.push(rep.filled + " dates absent inside the series became missing values.");
+    if (rep.dropped) parts.push(rep.dropped + " series without any number were left out.");
+    if (rep.renamed) parts.push(rep.renamed + " series names were simplified (letters, digits and underscores only).");
+    if (rep.ignored.length) parts.push("Columns not used: " + rep.ignored.slice(0, 6).join(", ") + (rep.ignored.length > 6 ? " and " + (rep.ignored.length - 6) + " more" : "") + ".");
+    return parts.join(" ");
+  }
+
+  async function convertTable() {
+    const mine = table;
+    $("convBox").hidden = false;
+    $("convSave").hidden = true;
+    $("convInfo").className = "note";
+    $("convInfo").textContent = "Converting " + mine.name + "…";
+    try {
+      const r = await TsfConvert.convert(mine.name, mine.bytes, { frequency: $("convFreq").value || undefined });
+      if (table !== mine) return;
+      converted = { name: r.name, text: r.text };
+      $("convInfo").textContent = conversionText(r.report);
+      $("convSave").hidden = false;
+      const bytes = new TextEncoder().encode(r.text).buffer;
+      sendFile(r.name, bytes, null);
+    } catch (err) {
+      if (table !== mine) return;
+      converted = null;
+      data = null;
+      result = null;
+      $("results").hidden = true;
+      resetCharacteristics();
+      $("dataInfo").textContent = "";
+      $("convInfo").className = "note error";
+      $("convInfo").textContent = err instanceof TsfConvert.ConvertError ? err.message
+        : "The file could not be converted (" + (err && err.message ? err.message : err) + ").";
+      refresh();
+    }
+  }
+
+  $("convFreq").addEventListener("change", () => { if (table) convertTable(); });
+  $("convSave").addEventListener("click", () => {
+    if (!converted) return;
+    const a = el("a", { download: converted.name });
+    a.href = URL.createObjectURL(new Blob([converted.text], { type: "text/plain" }));
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
   $("file").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;
     $("example").value = "";
-    sendFile(f.name, await f.arrayBuffer(), null);
+    const bytes = await f.arrayBuffer();
+    resetConversion();
+    if (TsfConvert.isTsf(f.name, bytes)) { sendFile(f.name, bytes, null); return; }
+    table = { name: f.name, bytes };
+    convertTable();
   });
 
   async function loadExample(id) {
@@ -153,9 +232,10 @@
       const r = await fetch("data/" + info.file);
       if (!r.ok) throw new Error("HTTP " + r.status);
       $("file").value = "";
+      resetConversion();
       sendFile(info.file, await r.arrayBuffer(), info);
     } catch (err) {
-      $("dataInfo").textContent = "The example could not be loaded (" + err.message + "); choose a .tsf file instead.";
+      $("dataInfo").textContent = "The example could not be loaded (" + err.message + "); choose a file of your own instead.";
     }
   }
   $("example").addEventListener("change", (e) => loadExample(e.target.value));

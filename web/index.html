@@ -100,7 +100,7 @@
   <h1>Forecast Studio in the browser</h1>
   <p class="sub">The forecasting engine runs on this device; your data is not sent anywhere.</p>
   <p class="desk">For the R and Python libraries and a larger pool of models (global and deep learning models, model settings,
-    Excel files), see the <a href="desktop.html">desktop version</a>.</p>
+    Excel results), see the <a href="desktop.html">desktop version</a>.</p>
   <nav role="tablist">
     <button id="tab-run" role="tab" aria-selected="true" aria-controls="panel-run">Run a forecast</button>
     <button id="tab-learn" role="tab" aria-selected="false" aria-controls="panel-learn">Learn</button>
@@ -111,13 +111,32 @@
       <h2>1 Data</h2>
       <label for="example">A small example dataset</label>
       <select id="example"><option value="">loading…</option></select>
-      <label for="file" style="margin-top:12px">or your own file in Monash .tsf format</label>
-      <input id="file" type="file" accept=".tsf,text/plain">
+      <label for="file" style="margin-top:12px">or your own file: Excel (.xlsx), CSV or Monash .tsf</label>
+      <input id="file" type="file" accept=".tsf,.csv,.tsv,.txt,.xlsx,.xlsm,text/plain,text/csv,text/tab-separated-values,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      <div id="convBox" hidden>
+        <p id="convInfo" class="note"></p>
+        <label for="convFreq">Frequency of the data</label>
+        <select id="convFreq"></select>
+        <button id="convSave" class="plain" type="button" style="margin-top:10px" hidden>Download the converted .tsf file</button>
+      </div>
       <p id="dataInfo" class="note"></p>
+      <details class="note">
+        <summary>How should an Excel or CSV file look?</summary>
+        <p>Either of these, with a header row; the page works out which one it is and converts the table on this device.</p>
+        <ul>
+          <li><b>One row per date:</b> a date column, then one column per series (for example <i>date, shop A, shop B</i>).</li>
+          <li><b>One row per observation:</b> three columns for the series name, the date and the value
+            (for example <i>series, date, value</i>).</li>
+          <li><b>No dates:</b> only columns of numbers, one per series, oldest value first; choose the frequency yourself.</li>
+        </ul>
+        <p>Dates may be written as 2024-01-31, 31.01.2024, 2024-01, Jan 2024, 2024 Q1 or a plain year, or be Excel date cells.
+          Each series needs one value per period (day, week, month …); dates that are absent become missing values. In an Excel
+          file the first sheet that holds a table is read. Old .xls files are not read: save them as .xlsx or CSV.</p>
+      </details>
       <p class="note">More data: download any dataset of the
         <a href="https://forecastingdata.org/" target="_blank" rel="noopener">Monash Time Series Forecasting Archive</a>
         (<a href="https://zenodo.org/communities/forecasting" target="_blank" rel="noopener">files on Zenodo</a>), unzip it and choose
-        the .tsf file above. Large files need a lot of memory; on a phone stay with files of a few megabytes.
+        the .tsf file above. Your own file is read on this device and is not uploaded. Large files need a lot of memory; on a phone stay with files of a few megabytes.
         The examples are from this archive (CC BY 4.0).</p>
     </section>
 
@@ -236,6 +255,7 @@
   </div>
 </main>
 <!-- __BUILD__ is replaced by the commit id when the page is published, so a browser never mixes files of two versions -->
+<script src="convert.js?v=__BUILD__"></script>
 <script src="app.js?v=__BUILD__"></script>
 </body>
 </html>
