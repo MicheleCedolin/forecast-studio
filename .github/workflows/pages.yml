@@ -47,6 +47,8 @@ jobs:
             -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=8MB \
             -sEXPORTED_FUNCTIONS=_malloc,_free,_tsf_version,_tsf_methods,_tsf_run,_tsf_forecast_batch,_tsf_io_open,_tsf_io_open_buffer,_tsf_io_close,_tsf_io_n_series,_tsf_io_n_attributes,_tsf_io_series,_tsf_io_attr,_tsf_io_header_json,_tsf_io_stats_json,_tsf_metrics_names,_tsf_metrics_table,_tsf_metrics_summary,_tsf_primary_period \
             -sEXPORTED_RUNTIME_METHODS=FS,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAPF64,HEAP64,HEAP32
+          # stamp the version into the page, so that every file is requested as "<name>?v=<commit>"
+          sed -i "s/__BUILD__/${GITHUB_SHA::7}/g" web/index.html web/app.js
           ls -l web
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

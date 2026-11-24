@@ -3,7 +3,8 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const SVG = "http://www.w3.org/2000/svg";
-  const worker = new Worker("worker.js");
+  const V = "?v=__BUILD__";   // the commit id once published (see index.html): every file is fetched with it
+  const worker = new Worker("worker.js" + V);
 
   let engineReady = false, running = false;
   let data = null;         // { name, id, integer, stats, header } of the file the worker holds
@@ -50,7 +51,14 @@
     $("status").textContent = text;
     $("status").className = "status " + (isError ? "error" : "note");
   }
-  function refresh() { $("run").disabled = !(engineReady && data && !running); }
+  function refresh() {
+    $("run").disabled = !(engineReady && data && !running);
+    // say why the button is off
+    const why = running ? "" : !engineReady ? "The button turns on when the engine has loaded." :
+      !data ? (pendingLoad ? "The button turns on when the data has been read." : "Choose an example dataset or a .tsf file first.") : "";
+    $("runWhy").textContent = why;
+    $("runWhy").hidden = !why;
+  }
 
   function parseCsv(text) {
     const rows = [];
@@ -99,8 +107,15 @@
     data = null;
     refresh();
     $("dataInfo").textContent = "Reading " + name + "…";
-    pendingLoad = { name, info, mb: bytes.byteLength / 1048576 };
+    const mine = (pendingLoad = { name, info, mb: bytes.byteLength / 1048576 });
     worker.postMessage({ type: "load", name, bytes }, [bytes]);
+    refresh();
+    setTimeout(() => {   // no answer: the engine did not start, or the browser holds files of an older version of the page
+      if (pendingLoad === mine && !data && engineReady) {
+        $("dataInfo").textContent = "The data could not be read. Reload the page; if that does not help, clear this site's data in the browser.";
+        $("dataInfo").className = "note error";
+      }
+    }, 20000);
   }
   let pendingLoad = null;
 
@@ -140,7 +155,7 @@
   }
   $("example").addEventListener("change", (e) => loadExample(e.target.value));
 
-  const examplesReady = fetch("data/index.json").then((r) => (r.ok ? r.json() : [])).catch(() => []).then((list) => {
+  const examplesReady = fetch("data/index.json" + V).then((r) => (r.ok ? r.json() : [])).catch(() => []).then((list) => {
     examples = list;
     const sel = $("example");
     sel.textContent = "";
@@ -232,7 +247,7 @@
     for (const k of order) refs.appendChild(refLine(k));
   }
 
-  const learnReady = fetch("learn.json").then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => {
+  const learnReady = fetch("learn.json" + V).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => {
     learn = j;
     const sel = $("method");
     sel.textContent = "";

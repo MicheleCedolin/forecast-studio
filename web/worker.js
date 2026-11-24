@@ -3,13 +3,14 @@
 //   { type: "series", index, token }     the values of one series of the loaded file (for the chart)
 //   { type: "run", config, pilot }       tsf_run with the "key=value" lines in config; pilot > 0 first times that many
 //                                        series and reports it, so the page can show an estimate before the full run
-importScripts("tsfcore.js");
+const V = self.location.search;   // "?v=<commit id>" from the page: the engine files are fetched with the same version
+importScripts("tsfcore.js" + V);
 
 let core = null;
 let handle = 0;        // tsf_io handle of the loaded file
 let dataPath = null;
 
-const ready = createTsfCore().then((m) => {
+const ready = createTsfCore({ locateFile: (path) => path + V }).then((m) => {
   core = m;
   for (const dir of ["/data", "/runs"]) {
     try { m.FS.mkdir(dir); } catch (e) { /* exists */ }

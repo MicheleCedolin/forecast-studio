@@ -113,6 +113,7 @@
       </div>
       <p id="methodInfo" class="note"></p>
       <div class="row"><button id="run" class="act" type="button" disabled>Start run</button><p id="status" class="status note">Loading the engine…</p></div>
+      <p id="runWhy" class="note" hidden></p>
       <div id="progress" class="bar" hidden><div></div></div>
     </section>
 
@@ -175,6 +176,7 @@
     </section>
   </div>
 </main>
-<script src="app.js"></script>
+<!-- __BUILD__ is replaced by the commit id when the page is published, so a browser never mixes files of two versions -->
+<script src="app.js?v=__BUILD__"></script>
 </body>
 </html>
