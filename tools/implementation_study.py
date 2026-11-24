@@ -38,8 +38,11 @@ ENGINES = ["r", "python", "cpp"]
 LOCAL = ["snaive", "ses", "theta", "ets", "arima", "dhr_arima", "tbats"]
 GLOBAL = ["pooled_regression", "catboost"]
 DATASETS = ["m1_yearly", "m1_quarterly", "m1_monthly", "m3_yearly", "m3_quarterly", "m3_monthly", "m3_other",
-            "tourism_yearly", "tourism_quarterly", "tourism_monthly", "cif_2016", "nn5_weekly", "hospital",
+            "tourism_yearly", "tourism_quarterly", "tourism_monthly", "fred_md", "nn5_weekly", "hospital",
             "car_parts", "m4_weekly"]
+# headers without @horizon: the horizon of the Monash archive's own evaluation (cif_2016 is left out: its horizon
+# differs from series to series)
+HORIZON = {"fred_md": 12}
 SCALING_N = [100, 1000, 10000, 48000]
 SCALING_METHODS = ["ets", "theta", "arima"]
 TIMEOUT = 3 * 3600
@@ -69,6 +72,8 @@ def run_one(folder: Path, dataset: str, method: str, engine: str, max_series: in
         cmd += ["--task", "global"]
     if max_series:
         cmd += ["--max-series", str(max_series)]
+    if dataset in HORIZON:
+        cmd += ["--horizon", str(HORIZON[dataset])]
     env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), TSFSTUDIO_RSCRIPT=RSCRIPT)
     t0 = time.perf_counter()
     try:
