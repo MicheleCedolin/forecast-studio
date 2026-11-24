@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forecast Studio desktop</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f9f9f7; --panel: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --line: #e1e0d9; --axis: #c3c2b7; --accent: #1c5cab; --code: #f1f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #0d0d0d; --panel: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --line: #2c2c2a; --axis: #383835; --accent: #86b6ef; --code: #242423;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 56px; }
+  h1 { font-size: 1.5rem; margin: 0 0 2px; }
+  .sub { color: var(--ink2); margin: 0 0 16px; font-size: 0.95rem; }
+  a { color: var(--accent); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p { margin: 6px 0; }
+  ul, ol { padding-left: 22px; margin: 6px 0; }
+  li { margin-bottom: 4px; }
+  .note { color: var(--ink2); font-size: 0.9rem; }
+  .tag { font-size: 0.78rem; color: var(--ink2); border: 1px solid var(--axis); border-radius: 4px; padding: 0 6px; margin-left: 6px; font-weight: 400; white-space: nowrap; }
+  code { font: 0.88em ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--code); border-radius: 4px; padding: 1px 4px; overflow-wrap: anywhere; }
+  pre { background: var(--code); border-radius: 6px; padding: 10px 12px; overflow-x: auto; margin: 8px 0; }
+  pre code { background: none; padding: 0; overflow-wrap: normal; }
+  .btn { display: inline-block; margin: 6px 0 4px; padding: 9px 16px; border-radius: 6px; background: var(--accent); color: var(--bg); text-decoration: none; font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { color: var(--ink2); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <p class="note" style="margin:0 0 8px"><a href="./">‹ Back to the browser version</a></p>
+  <h1>Forecast Studio desktop</h1>
+  <p class="sub">The full application for your computer. It opens in your web browser but runs entirely on your machine.</p>
+
+  <section>
+    <h2>Browser or desktop?</h2>
+    <div class="scroll"><table>
+      <tr><th></th><th>Browser (phone, tablet, computer)</th><th>Desktop (Windows)</th></tr>
+      <tr><td>Installation</td><td>None, open the link</td><td>Download and unzip one file</td></tr>
+      <tr><td>Methods</td><td>37 local and intermittent-demand methods</td><td>45: the same 37 plus 8 global models (pooled regression,
+        CatBoost, three LightGBM variants, N-HiTS, N-BEATS, Chronos-Bolt)</td></tr>
+      <tr><td>Engines</td><td>C++ (checked against R and Python)</td><td>C++, Python (statsforecast, LightGBM, CatBoost) and
+        R (the original <code>forecast</code> package)</td></tr>
+      <tr><td>Model settings</td><td>Defaults</td><td>Adjustable</td></tr>
+      <tr><td>Data and results</td><td>.tsf files of a few MB; CSV results</td><td>Large .tsf and Excel files; Excel results,
+        past runs, ranking reliability</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>1 Download and start <span class="tag">required</span></h2>
+    <p>Windows 10 or 11, 64-bit. Python is included in the package; you do not need to install it.</p>
+    <a class="btn" href="https://github.com/MicheleCedolin/forecast-studio/releases/latest" target="_blank" rel="noopener">Download the latest release</a>
+    <ol>
+      <li>On the release page, under <b>Assets</b>, download <code>ForecastStudio-…-win64.zip</code> (about 225 MB).
+        The <code>.sha256</code> file next to it lets you check the download.</li>
+      <li>Unzip it to a folder outside OneDrive, for example <code>C:\ForecastStudio</code>.</li>
+      <li>Double-click <code>ForecastStudio.exe</code>. A console window opens and the interface opens in your browser; the first start
+        can take 10 to 20 seconds.</li>
+      <li>The program is not signed, so Windows may say it is from an unknown publisher: choose <b>More info</b>, then <b>Run anyway</b>.</li>
+      <li>To stop, press <b>Quit application</b> in the interface or Ctrl+C in the console.</li>
+    </ol>
+    <p>Without anything else this gives every method except N-HiTS, N-BEATS and Chronos-Bolt, with the C++ and Python engines.</p>
+  </section>
+
+  <section>
+    <h2>2 R, for the R engine <span class="tag">optional</span></h2>
+    <p>Install R only if you want results from the original R code (the <code>forecast</code> package by Hyndman and colleagues)
+      rather than its C++ and Python counterparts. Nine methods can run on the R engine.</p>
+    <ol>
+      <li>Download R for Windows from <a href="https://cran.r-project.org/bin/windows/base/" target="_blank" rel="noopener">CRAN</a> and install it.</li>
+      <li>Open R and install the two packages the engine uses:
+        <pre><code>install.packages(c("forecast", "jsonlite"))</code></pre></li>
+      <li>Tell Forecast Studio where R is. Open PowerShell and run, with your own R version and folder:
+        <pre><code>setx TSFSTUDIO_RSCRIPT "C:\Program Files\R\R-4.6.2\bin\Rscript.exe"</code></pre>
+        If you installed R without administrator rights, the folder is <code>%LOCALAPPDATA%\Programs\R\R-…\bin</code>.
+        Restart Forecast Studio afterwards.</li>
+      <li>Check: in the Forecast Studio folder, <code>ForecastStudio.exe engines</code> should list the R engine as available.</li>
+    </ol>
+    <p class="note">CatBoost on the R engine also needs the catboost R package, which is not on CRAN; see the
+      <a href="https://catboost.ai/docs/en/installation/r-installation-binary-installation" target="_blank" rel="noopener">CatBoost installation guide</a>.
+      CatBoost also runs on the C++ and Python engines without it.</p>
+  </section>
+
+  <section>
+    <h2>3 Python, for the deep learning models <span class="tag">optional</span></h2>
+    <p>N-HiTS, N-BEATS and Chronos-Bolt need PyTorch, which would make the package several gigabytes, so they are not in the zip.
+      To use them, run Forecast Studio from its source code:</p>
+    <ol>
+      <li>Install Python 3.12 from <a href="https://www.python.org/downloads/windows/" target="_blank" rel="noopener">python.org</a>
+        (newer versions may lack ready-made packages).</li>
+      <li>Download the source code: <a href="https://github.com/MicheleCedolin/forecast-studio" target="_blank" rel="noopener">GitHub</a>,
+        <b>Code</b>, <b>Download ZIP</b>, and unzip it outside OneDrive.</li>
+      <li>In PowerShell, in that folder:
+        <pre><code>powershell -ExecutionPolicy Bypass -File scripts\windows\setup_native.ps1
+.venv\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+.venv\Scripts\python.exe -m pip install -e ".[deep]"</code></pre></li>
+      <li>Start it with <code>ForecastStudio.bat</code>.</li>
+    </ol>
+    <p class="note">Chronos-Bolt downloads its pretrained weights from Hugging Face the first time it runs.
+      On macOS and Linux there is no ready-made package; the same source installation works there with
+      <code>pip install -e ".[pyengine,deep]"</code> and <code>python -m tsfstudio app</code>.</p>
+  </section>
+
+  <section>
+    <h2>Source code</h2>
+    <p>Forecast Studio is free software under the GNU GPL version 3. Source code, documentation and all releases:
+      <a href="https://github.com/MicheleCedolin/forecast-studio" target="_blank" rel="noopener">github.com/MicheleCedolin/forecast-studio</a>.</p>
+  </section>
+</main>
+</body>
+</html>
