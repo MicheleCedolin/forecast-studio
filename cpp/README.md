@@ -12,6 +12,13 @@ powershell -ExecutionPolicy Bypass -File cpp\build.ps1
 The DLL is copied to `src/tsfstudio/native/tsfcore.dll` (not in git). It links the GCC runtime statically and depends only on
 Windows system DLLs. GitHub Actions builds it with MSVC (`-Generator ""`) for the release package.
 
+### WebAssembly (web edition)
+```bash
+source /path/to/emsdk/emsdk_env.sh && bash cpp/build_wasm.sh     # writes web/tsfcore.mjs + web/tsfcore.wasm
+```
+The same sources, unchanged, built with Emscripten for the page in `web/` (see `web/README.md`). One thread per instance; the
+page runs one instance per CPU core. `tests/test_web_edition.py` checks the build against the R forecasts and the native library.
+
 ## Status
 | Phase | Methods | Check against Python (tests/test_cpp_engine.py) |
 |---|---|---|

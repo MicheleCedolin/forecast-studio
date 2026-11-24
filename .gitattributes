@@ -6,3 +6,7 @@
 *.yaml text eol=lf
 Dockerfile text eol=lf
 *.ps1  text eol=crlf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.wasm binary
+*.woff binary

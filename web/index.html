@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forecast Studio (web edition)</title>
+<meta name="description" content="Run and compare statistical forecasting methods on your own time series, in the browser. Nothing is uploaded: the computation runs on your device.">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="mast">
+  <p class="kicker">Forecast Studio · web edition</p>
+  <h1>Compare forecasting methods on your own series</h1>
+  <p class="lede">Choose a data set and the methods, and read the errors side by side. Everything is computed
+    <strong>in this browser, on this device</strong>: your data are not uploaded anywhere.</p>
+</header>
+
+<main>
+  <section id="s-data" aria-labelledby="h-data">
+    <h2 id="h-data"><span class="step">1</span> Data</h2>
+    <div class="row">
+      <button type="button" class="btn" id="btn-sample">Try the sample (NN5 Weekly, 111 series)</button>
+      <label class="btn ghost" for="file">Choose a file…</label>
+      <input type="file" id="file" accept=".tsf,.csv,.txt,.tsv" class="visually-hidden">
+    </div>
+    <p class="note" id="drop-note">or drop a file anywhere on this page. Accepted: Monash <code>.tsf</code>, or a table
+      (<code>.csv</code>) with one column per series and one row per time step.</p>
+    <p class="note err" id="data-error" role="alert" hidden></p>
+    <div id="data-panel" hidden>
+      <dl class="facts" id="data-facts"></dl>
+      <div class="fields">
+        <label>Frequency
+          <select id="frequency"></select></label>
+        <label>Forecast horizon
+          <input type="number" id="horizon" min="1" step="1" inputmode="numeric"></label>
+        <label>Missing values in the training part
+          <select id="missing">
+            <option value="interpolate">Linear interpolation</option>
+            <option value="locf">Carry the last value forward</option>
+            <option value="zero">Replace by zero</option>
+          </select></label>
+      </div>
+      <p class="note" id="split-note"></p>
+    </div>
+  </section>
+
+  <section id="s-methods" aria-labelledby="h-methods" hidden>
+    <h2 id="h-methods"><span class="step">2</span> Methods</h2>
+    <div class="row">
+      <button type="button" class="btn ghost small" data-preset="fast">Quick benchmarks</button>
+      <button type="button" class="btn ghost small" data-preset="study">Monash statistical set</button>
+      <button type="button" class="btn ghost small" data-preset="none">Clear</button>
+      <span class="note" id="method-count"></span>
+    </div>
+    <div id="method-list"></div>
+    <div class="fields" id="lag-field" hidden>
+      <label>Lags for pooled regression
+        <input type="number" id="lag" min="1" step="1" inputmode="numeric"></label>
+    </div>
+  </section>
+
+  <section id="s-run" aria-labelledby="h-run" hidden>
+    <h2 id="h-run"><span class="step">3</span> Run</h2>
+    <div class="row">
+      <button type="button" class="btn" id="btn-run">Run</button>
+      <button type="button" class="btn ghost" id="btn-cancel" hidden>Stop</button>
+      <span class="note" id="run-status" role="status" aria-live="polite"></span>
+    </div>
+    <p class="note err" id="run-error" role="alert" hidden></p>
+    <ul class="progress" id="progress"></ul>
+  </section>
+
+  <section id="s-results" aria-labelledby="h-results" hidden>
+    <h2 id="h-results"><span class="step">4</span> Results</h2>
+    <div class="row">
+      <div class="seg" role="group" aria-label="Summary statistic">
+        <button type="button" data-stat="mean" aria-pressed="true">Mean</button>
+        <button type="button" data-stat="median" aria-pressed="false">Median</button>
+      </div>
+      <span class="note">over the series; lowest value in each column is marked. Select a column heading to sort.</span>
+    </div>
+    <div class="table-wrap"><table id="summary"></table></div>
+    <p class="note" id="result-notes"></p>
+    <div class="row">
+      <button type="button" class="btn ghost small" data-download="summary">Summary (CSV)</button>
+      <button type="button" class="btn ghost small" data-download="errors">Errors per series (CSV)</button>
+      <button type="button" class="btn ghost small" data-download="forecasts">Forecasts (CSV)</button>
+    </div>
+
+    <h3>One series</h3>
+    <div class="fields">
+      <label>Series <select id="series"></select></label>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Methods shown in the chart (up to four)"></div>
+    <figure class="chart">
+      <div id="legend" class="legend"></div>
+      <div id="chart" class="plot"></div>
+      <figcaption class="note" id="chart-note"></figcaption>
+    </figure>
+  </section>
+</main>
+
+<footer>
+  <p><strong>What this page does.</strong> The forecasting core is the C++ library of Forecast Studio compiled to WebAssembly.
+    Its ETS, ARIMA, TBATS and STL-based methods are ports of the R <em>forecast</em> package; on the NN5 Weekly sample the
+    ETS and TBATS forecasts equal R's to 10 significant digits or more, and the ARIMA forecasts to within 0.0004%. The test part is the last <em>h</em> observations of each series.</p>
+  <p><strong>What it leaves out.</strong> The desktop edition adds the R engine, CatBoost, LightGBM, N-HiTS, Chronos-Bolt,
+    prediction intervals, rolling origins, series features and the ranking-reliability analyses.
+    <a href="https://github.com/MicheleCedolin/forecast-studio">Source code and desktop edition</a> (GPL-3).</p>
+  <p class="note" id="core-version"></p>
+</footer>
+<div id="tip" class="tip" hidden></div>
+</body>
+</html>

@@ -18,6 +18,17 @@ This repository contains **Phase A** (core), **Phase B** (R engine, runner, Dock
 | E | WRMSSE (M5), data features (tsfeatures/catch22/lambda), rolling origin | – |
 | F | Local interface (in the browser; standard library only): data/model selection, margin-note explanations, editable parameters, pre-run check, progress/cancel, result charts, history and comparison, Excel upload | **Coded** (docs/APP.md) |
 
+## Web edition (runs in the visitor's browser)
+
+`web/` is a static page (about 1.2 MB) with the 35 local methods of the C++ engine and pooled regression, compiled to
+WebAssembly. It needs no server: copy the folder to any web host, and each visitor's own device does the computation; their data
+are not uploaded. It is the light edition (seven measures, one fixed origin, CSV output); everything else stays in the desktop
+edition. Details, the checks against R and how to rebuild the core: `web/README.md`.
+
+```bash
+python -m http.server 8000 --directory web      # http://127.0.0.1:8000/
+```
+
 ## Claude Code agents
 `.claude/agents/` defines three project agents for Claude Code: `test-manager` (runs and triages the test suite),
 `ui-design-reviewer` (evaluates the web interface; latest report: `docs/UI_REVIEW.md`) and `forecasting-researcher`
@@ -130,6 +141,7 @@ src/tsfstudio/
   estimate.py                memory (cgroup) and time (NN5 priors / trial run) estimate
   cli.py                     data-check, index, hash, template, convert, engines, estimate, run, doctor, golden, app
   app/                       local interface: server.py (http.server), service.py (business logic), models_info.py (model/parameter/reference schema), static/
+web/                         web edition: static page + WebAssembly build of the C++ core (web/README.md)
 reference/                   the user's original R/Python code (NOT MODIFIED)
 tools/                       catalogue builder, M5 TSF production/verification scripts
 docs/METRICS.md              definitions, differences from the original, problems fixed

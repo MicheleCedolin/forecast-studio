@@ -36,3 +36,6 @@ data/ranking_study/
 
 # downloaded third-party binaries (CatBoost CLI and model library; see cpp/README.md)
 third_party/
+
+# WebAssembly build objects (cpp/build_wasm.sh); the built core itself is kept in web/
+cpp/build-wasm/
