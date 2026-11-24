@@ -1,6 +1,7 @@
 // Series characteristics and their principal components, as the desktop application computes them
-// (src/tsfstudio/features.py): the basic descriptive features, catch22 (in tsfcore) and a PCA on the standardised
-// features. Used by worker.js; tools/validate_web_features.py runs it under Node and compares it with Python.
+// (src/tsfstudio/features.py): the basic descriptive features, catch22 and the tsfeatures set (both in tsfcore) and a
+// PCA on the standardised features. Used by worker.js; tools/validate_web_features.py and tools/validate_tsfeat.py run
+// it under Node and compare it with Python.
 (function (root) {
   "use strict";
   const BASIC = ["length", "mean", "sd", "cv", "min", "max", "zero_share", "adi", "cv2", "boxcox_lambda"];
@@ -103,6 +104,58 @@
       for (const q of [lenPtr, values, offsets, out, tmp]) core._free(q);
     }
     return { names, columns, table, classes };
+  }
+
+  // The tsfeatures set of the ranking study (tsfcore's tsfeat.cpp, as features.tsfeatures_table of the desktop
+  // application): the dataset's seasonal periods are the study's (tsfeat.STUDY_PERIODS, the same table as SEASONS), the
+  // cycle position of a series' first observation comes from its start_timestamp, and a feature that some series lack
+  // is left out for all. progress(done, total) is called every few series; maxSeries limits the series (for tests).
+  // Returns { columns, table (Float64Array, n x columns.length, row-major; NaN for a series without features) }.
+  function tsfeatures(core, handle, header, progress, maxSeries) {
+    const total = Number(core._tsf_io_n_series(handle));
+    const n = maxSeries ? Math.min(total, maxSeries) : total;
+    const periods = SEASONS[header.frequency] || [1];
+    const startAttr = header.attributes.findIndex((a) => a[0] === "start_timestamp");
+    const pp = core._malloc(8 * periods.length), lenPtr = core._malloc(8), buf = core._malloc(8192);
+    periods.forEach((v, j) => { core.HEAPF64[(pp >> 3) + j] = v; });
+    const h = core._tsf_tsfeat_new(pp, periods.length);
+    let out = 0;
+    try {
+      for (let i = 0; i < n; i++) {
+        if (progress && i % 5 === 0) progress(i, n);
+        const ptr = core._tsf_io_series(handle, BigInt(i), lenPtr);
+        const len = core.HEAP64[lenPtr >> 3];
+        let startx = 0;
+        if (startAttr >= 0) {
+          const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(core.UTF8ToString(core._tsf_io_attr(handle, BigInt(i), startAttr)));
+          if (d) startx = core._tsf_tsfeat_startx(Number(d[1]), Number(d[2]), Number(d[3]), pp, periods.length);
+        }
+        core._tsf_tsfeat_add(h, ptr, len, startx);
+      }
+      const k = core._tsf_tsfeat_columns(h, buf, 8192);
+      if (k <= 0) return { columns: [], table: new Float64Array(0) };
+      const columns = core.UTF8ToString(buf).split("\n");
+      out = core._malloc(8 * n * k);
+      core._tsf_tsfeat_table(h, out);
+      return { columns, table: core.HEAPF64.slice(out >> 3, (out >> 3) + n * k) };
+    } finally {
+      core._tsf_tsfeat_free(h);
+      for (const q of [pp, lenPtr, buf, out]) if (q) core._free(q);
+    }
+  }
+
+  // features.compute's way of joining the sets: the tsfeatures columns follow the others; one whose name is taken
+  // already (mean) gets the prefix "tsf_".
+  function join(base, extra) {
+    const n = base.names.length, p0 = base.columns.length, p1 = extra.columns.length;
+    if (!p1) return base;
+    const columns = base.columns.concat(extra.columns.map((c) => (base.columns.includes(c) ? "tsf_" + c : c)));
+    const table = new Float64Array(n * (p0 + p1));
+    for (let i = 0; i < n; i++) {
+      table.set(base.table.subarray(i * p0, (i + 1) * p0), i * (p0 + p1));
+      table.set(extra.table.subarray(i * p1, (i + 1) * p1), i * (p0 + p1) + p0);
+    }
+    return { names: base.names, columns, table, classes: base.classes };
   }
 
   // Eigenvalues and eigenvectors of a symmetric matrix (cyclic Jacobi). a: p x p row-major, overwritten.
@@ -208,7 +261,7 @@
     return { k, scores, explained, loadings, features: keep.map((j) => columns[j]), dropped: dropped.map((j) => columns[j]) };
   }
 
-  const api = { BASIC, CLASSES, primaryPeriod, basic, compute, pca };
+  const api = { BASIC, CLASSES, primaryPeriod, basic, compute, tsfeatures, join, pca };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.TsfFeatures = api;
 })(typeof self !== "undefined" ? self : globalThis);

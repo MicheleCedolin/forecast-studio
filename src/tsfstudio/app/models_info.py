@@ -72,7 +72,7 @@ REFS = {
                           "3–73.",
                           None, True),
     "prokhorenkova2018": _ref("Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A. V., & Gulin, A. (2018). CatBoost: unbiased boosting with "
-                              "categorical features. Advances in Neural Information Processing Systems 31.", "https://arxiv.org/abs/1706.09516"),
+                              "categorical features. Advances in Neural Information Processing Systems 31.", "https://proceedings.neurips.cc/paper/2018/hash/14491b756b3a51daac41c24863285549-Abstract.html", True),
     "athanasopoulos2017": _ref("Athanasopoulos, G., Hyndman, R. J., Kourentzes, N., & Petropoulos, F. (2017). "
                                "Forecasting with temporal hierarchies. European Journal of Operational Research, "
                                "262(1), 60–74.",
@@ -87,21 +87,22 @@ REFS = {
                          "https://doi.org/10.1016/j.ijforecast.2015.07.002", True),
     "ke2017": _ref("Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T.-Y. (2017). LightGBM: a highly efficient "
                    "gradient boosting decision tree. Advances in Neural Information Processing Systems 30.",
-                   "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree"),
+                   "https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree", True),
     "taieb2012": _ref("Ben Taieb, S., Bontempi, G., Atiya, A. F., & Sorjamaa, A. (2012). A review and comparison of strategies for multi-step "
                       "ahead time series forecasting based on the NN5 forecasting competition. Expert Systems with Applications, 39(8), "
-                      "7067–7083.", "https://doi.org/10.1016/j.eswa.2012.01.039"),
+                      "7067–7083.", "https://doi.org/10.1016/j.eswa.2012.01.039", True),
     "makridakis2000": _ref("Makridakis, S., & Hibon, M. (2000). The M3-Competition: results, conclusions and "
                            "implications. International Journal of Forecasting, 16(4), 451–476.",
                            "https://doi.org/10.1016/S0169-2070(00)00057-1", True),
     "oreshkin2020": _ref("Oreshkin, B. N., Carpov, D., Chapados, N., & Bengio, Y. (2020). N-BEATS: Neural basis expansion analysis for "
                          "interpretable time series forecasting. International Conference on Learning Representations.",
-                         "https://openreview.net/forum?id=r1ecqn4YwB"),
+                         "https://openreview.net/forum?id=r1ecqn4YwB", True),
     "challu2023": _ref("Challu, C., Olivares, K. G., Oreshkin, B. N., Garza Ramirez, F., Mergenthaler Canseco, M., & Dubrawski, A. "
                        "(2023). NHITS: Neural hierarchical interpolation for time series forecasting. Proceedings of the AAAI "
-                       "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854"),
-    "ansari2024": _ref("Ansari, A. F., Stella, L., Turkmen, C., Zhang, X., Mercado, P., Shen, H., et al. (2024). Chronos: Learning the "
-                       "language of time series. Transactions on Machine Learning Research.", "https://openreview.net/forum?id=gerNCVqqtR"),
+                       "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854", True),
+    "ansari2024": _ref("Ansari, A. F., Stella, L., Turkmen, A. C., Zhang, X., Mercado, P., Shen, H., et al. (2024). Chronos: Learning the "
+                       "language of time series. Transactions on Machine Learning Research.", "https://openreview.net/forum?id=gerNCVqqtR",
+                       True),
     "montero2021": _ref("Montero-Manso, P., & Hyndman, R. J. (2021). Principles and algorithms for forecasting groups of time series: locality "
                         "and globality. International Journal of Forecasting, 37(4), 1632–1653.",
                         "https://econpapers.repec.org/RePEc:eee:intfor:v:37:y:2021:i:4:p:1632-1653", True),
@@ -156,6 +157,15 @@ REFS = {
     "jolliffe2016": _ref("Jolliffe, I. T., & Cadima, J. (2016). Principal component analysis: a review and recent "
                          "developments. Philosophical Transactions of the Royal Society A, 374(2065), 20150202.",
                          "https://doi.org/10.1098/rsta.2015.0202", True),
+    "tsfeatures2023": _ref("Hyndman, R., Kang, Y., Montero-Manso, P., O'Hara-Wild, M., Talagala, T., Wang, E., & Yang, Y. "
+                           "(2023). tsfeatures: Time series feature extraction. R package version 1.1.1.",
+                           "https://CRAN.R-project.org/package=tsfeatures", True),
+    "hyndman2015": _ref("Hyndman, R. J., Wang, E., & Laptev, N. (2015). Large-scale unusual time series detection. 2015 "
+                        "IEEE International Conference on Data Mining Workshop (ICDMW), 1616–1619.",
+                        "https://doi.org/10.1109/ICDMW.2015.104", True),
+    "wang2006": _ref("Wang, X., Smith, K., & Hyndman, R. (2006). Characteristic-based clustering for time series data. "
+                     "Data Mining and Knowledge Discovery, 13(3), 335–364.",
+                     "https://doi.org/10.1007/s10618-005-0039-x", True),
 }
 
 

@@ -1,7 +1,8 @@
 // Runs tsfcore (WebAssembly) off the main thread. Messages from the page:
 //   { type: "load", bytes, name }        keep a .tsf file (in the module's in-memory file system) and report its summary
 //   { type: "series", index, token }     the values of one series of the loaded file (for the chart)
-//   { type: "features", token }          characteristics of every series of the loaded file and their PCA
+//   { type: "features", token, tsfeatures }   characteristics of every series of the loaded file and their PCA;
+//                                        tsfeatures adds that set (slower; "featuresProgress" messages report it)
 //   { type: "run", config, pilot }       tsf_run with the "key=value" lines in config; pilot > 0 first times that many
 //                                        series and reports it, so the page can show an estimate before the full run
 const V = self.location.search;   // "?v=<commit id>" from the page: the engine files are fetched with the same version
@@ -88,10 +89,16 @@ onmessage = async (event) => {
       // characteristics of every series and their principal components (features.js)
       const t0 = performance.now();
       const header = JSON.parse(core.UTF8ToString(core._tsf_io_header_json(handle)));
-      const f = TsfFeatures.compute(core, handle, header);
+      let f = TsfFeatures.compute(core, handle, header);
+      const sets = { basic: TsfFeatures.BASIC.length, catch22: f.columns.length - TsfFeatures.BASIC.length, tsfeatures: 0 };
+      if (m.tsfeatures) {
+        const t = TsfFeatures.tsfeatures(core, handle, header, (done, total) => postMessage({ type: "featuresProgress", token: m.token, done, total }));
+        sets.tsfeatures = t.columns.length;
+        f = TsfFeatures.join(f, t);
+      }
       let pca = null, pcaError = null;
       try { pca = TsfFeatures.pca(f.table, f.names.length, f.columns); } catch (err) { pcaError = String(err.message || err); }
-      postMessage({ type: "features", token: m.token, names: f.names, columns: f.columns, table: f.table, classes: f.classes, pca, pcaError,
+      postMessage({ type: "features", token: m.token, names: f.names, columns: f.columns, table: f.table, classes: f.classes, pca, pcaError, sets, tsfeatures: !!m.tsfeatures,
                     seconds: (performance.now() - t0) / 1000 });
     } else if (m.type === "run") {
       if (m.pilot > 0) {

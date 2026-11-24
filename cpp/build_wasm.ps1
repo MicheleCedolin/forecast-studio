@@ -40,7 +40,8 @@ foreach ($f in Get-ChildItem (Join-Path $root "cpp\src\catch22") -Filter *.c) {
 }
 $exports = "_malloc,_free,_tsf_version,_tsf_methods,_tsf_run,_tsf_forecast_batch,_tsf_io_open,_tsf_io_open_buffer,_tsf_io_close,_tsf_io_n_series," +
            "_tsf_io_n_attributes,_tsf_io_series,_tsf_io_attr,_tsf_io_header_json,_tsf_io_stats_json,_tsf_metrics_names," +
-           "_tsf_metrics_table,_tsf_metrics_summary,_tsf_primary_period,_tsf_catch22,_tsf_catch22_count,_tsf_catch22_name,_tsf_boxcox_lambda"
+           "_tsf_metrics_table,_tsf_metrics_summary,_tsf_primary_period,_tsf_catch22,_tsf_catch22_count,_tsf_catch22_name,_tsf_boxcox_lambda," +
+           "_tsf_tsfeat_new,_tsf_tsfeat_add,_tsf_tsfeat_columns,_tsf_tsfeat_table,_tsf_tsfeat_free,_tsf_tsfeat_startx"
 $runtime = "FS,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAPF64,HEAP64,HEAP32"
 $out = Join-Path $web "tsfcore.js"
 Write-Host "linking $out"

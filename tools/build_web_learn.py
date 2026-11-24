@@ -19,7 +19,7 @@ from tsfstudio.engines.cpp_engine import CppEngine  # noqa: E402
 from tsfstudio.metrics import ALL_METRICS, DEFAULT_METRICS  # noqa: E402
 
 
-# The series characteristics the page computes (tsfstudio.features: basic_features and catch22) and the map drawn from
+# The series characteristics the page computes (tsfstudio.features: basic_features, catch22, tsfeatures) and the map drawn from
 # them. The basic texts follow basic_features' definitions; the catch22 texts are the short descriptions of the catch22
 # documentation (feature overview table), matched to the names of the Rcatch22 0.1.13 code that tsfcore runs.
 BASIC_TEXT = {
@@ -59,6 +59,51 @@ CATCH22_TEXT = {
     "SC_FluctAnal_2_dfa_50_1_2_logi_prop_r1": "Detrended fluctuation analysis (low-scale scaling).",
     "SP_Summaries_welch_rect_centroid": "Centroid frequency of the power spectrum (the frequency that splits its power in half).",
     "FC_LocalSimple_mean3_stderr": "Error of a 3-point rolling mean forecast.",
+}
+# The tsfeatures set (tsfstudio.tsfeat, tsfcore's tsfeat.cpp), by the name of the column. The texts follow the
+# definitions in tsfeat.py and the documentation of the R package; a name ending in a number (seasonal_strength2) is
+# the same quantity for the second seasonal period of a series with several.
+TSFEATURES_TEXT = {
+    "mean": "Mean of the series (shown as tsf_mean next to the descriptive mean; the two are equal).",
+    "var": "Variance of the series (divisor n − 1). All the following characteristics are computed on the series scaled to mean 0 and "
+           "standard deviation 1.",
+    "max_kl_shift, time_kl_shift": "Largest change in the distribution of the values between two consecutive windows (Kullback-Leibler "
+                                   "divergence of kernel density estimates), and where in the series it occurs. The window is one "
+                                   "seasonal period long, or 10 observations for non-seasonal data.",
+    "max_level_shift, time_level_shift": "Largest change in the mean between two consecutive windows, and where it occurs.",
+    "max_var_shift, time_var_shift": "Largest change in the variance between two consecutive windows, and where it occurs.",
+    "x_acf1, x_acf10": "First autocorrelation of the series, and the sum of squares of its first ten autocorrelations.",
+    "diff1_acf1, diff1_acf10, diff2_acf1, diff2_acf10": "The same two numbers for the differenced and the twice-differenced series.",
+    "seas_acf1": "Autocorrelation at the first seasonal lag (seasonal data only).",
+    "ARCH.LM": "R² of a regression of the squared, mean-corrected series on its 12 previous values: how far the size of the "
+               "fluctuations depends on recent ones (Engle's test statistic for ARCH effects). For a series whose last values are all "
+               "equal the regression fits exactly and the value carries no information.",
+    "crossing_points": "Number of times the series crosses its median.",
+    "entropy": "Spectral entropy (0 to 1): close to 0 for a series dominated by trend or seasonality, close to 1 for one that "
+               "resembles noise. A measure of how forecastable the series is.",
+    "flat_spots": "Longest run of consecutive observations in the same tenth of the range of the series.",
+    "alpha, beta": "Smoothing parameters of Holt's linear trend method fitted to the series (level and trend).",
+    "hurst": "Hurst exponent, from the fractional differencing order of a fitted long-memory model (d + 0.5): above 0.5 for a series "
+             "with long memory.",
+    "lumpiness": "Variance of the variances of consecutive, non-overlapping windows: how unevenly the variability is spread.",
+    "stability": "Variance of the means of the same windows: how much the level moves.",
+    "nonlinearity": "Statistic of Teräsvirta's neural-network test for nonlinearity, scaled; large for series that a linear "
+                    "autoregression describes poorly.",
+    "x_pacf5, diff1x_pacf5, diff2x_pacf5": "Sum of squares of the first five partial autocorrelations of the series, of the differenced "
+                                           "and of the twice-differenced series.",
+    "seas_pacf": "Partial autocorrelation at the first seasonal lag (seasonal data only).",
+    "unitroot_kpss": "KPSS statistic for the hypothesis that the series is stationary around a level; large values point to a unit root.",
+    "unitroot_pp": "Phillips-Perron statistic for the hypothesis of a unit root; strongly negative values point to stationarity.",
+    "nperiods, seasonal_period": "Number of seasonal periods of the data and their lengths (the same for every series of a file).",
+    "trend": "Strength of the trend (0 to 1) in an STL decomposition: 1 − variance of the remainder / variance of the deseasonalised "
+             "series.",
+    "seasonal_strength": "Strength of the seasonality (0 to 1) in the same decomposition: 1 − variance of the remainder / variance "
+                         "of the detrended series (seasonal data only).",
+    "spike": "Variance of the leave-one-out variances of the remainder: large when a few observations are far from the rest.",
+    "linearity, curvature": "Coefficients of the linear and the quadratic term when an orthogonal quadratic is fitted to the trend "
+                            "component.",
+    "e_acf1, e_acf10": "First autocorrelation of the remainder, and the sum of squares of its first ten autocorrelations.",
+    "peak, trough": "Position within the seasonal cycle of the largest and of the smallest seasonal effect (seasonal data only).",
 }
 CLASS_TEXT = [
     ("smooth", "Demand in most periods, sizes that vary little (ADI below 1.32, CV² below 0.49)."),
@@ -114,6 +159,8 @@ def main() -> int:
         "class_refs": refs(["syntetos2005cat"]),
         "catch22": [{"id": c, "text": CATCH22_TEXT[c]} for c in F.CATCH22_NAMES],
         "catch22_refs": refs(["lubba2019"]),
+        "tsfeatures": [{"id": c, "text": t} for c, t in TSFEATURES_TEXT.items()],
+        "tsfeatures_refs": refs(["tsfeatures2023", "hyndman2015", "wang2006", "kang2017", "cleveland1990"]),
         "map": MAP_TEXT,
         "map_refs": refs(["jolliffe2016", "kang2017"]),
     }

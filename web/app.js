@@ -272,6 +272,14 @@
             "apart while overlapping little. Each is computed on the standardised series, so it describes the shape of the series, " +
             "not its level or scale. Series with fewer than 10 observations, constant series and series with missing values get no value.",
             ch.catch22, ch.catch22_refs);
+      if (ch.tsfeatures) {
+        block("tsfeatures (about 40 characteristics, optional)", "The characteristics of the R package tsfeatures, computed as in the " +
+              "ranking study this application comes from: on the scaled series, with the seasonal periods of the data's frequency. " +
+              "The page computes them when the box under “Data characteristics” is ticked; they take longer than the others. " +
+              "A characteristic that cannot be computed for some series of a file (the seasonal ones for a series shorter than two " +
+              "periods, for example) is left out for the whole file, and series with fewer than 4 observations get no values.",
+              ch.tsfeatures, ch.tsfeatures_refs);
+      }
       const d = el("details", {});
       d.appendChild(el("summary", { text: "How to read the map (principal components)" }));
       for (const t of ch.map) d.appendChild(el("p", { text: t }));
@@ -659,12 +667,14 @@
   });
 
   // ------------------------------------------------------------------------------------------- data characteristics
-  // As the desktop application's "Features" view: basic features + catch22 per series, and a PCA map of the series.
+  // As the desktop application's "Features" view: basic features + catch22 (and, when asked, the tsfeatures set) per
+  // series, and a PCA map of the series.
   const CLASSES = ["smooth", "intermittent", "erratic", "lumpy"];
   const PCA_CAT = { light: ["#2a78d6", "#eb6834", "#1baf7a"], dark: ["#3987e5", "#d95926", "#199e70"] };
   const PCA_SEQ = { light: ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"], dark: ["#1c5cab", "#2a78d6", "#5598e7", "#86b6ef", "#b7d3f6"] };
   const PCA_OTHER = "#898781";
   const AUTO_VALUES = 3e6;   // files up to this many observations are analysed without asking
+  const AUTO_TSF = 3e5;      // ... and up to this many with the (slower) tsfeatures set as well
   let feat = null;           // the worker's answer for the loaded file
   let featToken = 0;
   const pcaView = { ax: [0, 1], arrows: true, color: "class", focus: null, pts: [], colors: null };
@@ -676,17 +686,22 @@
     featToken++;
     $("charBody").hidden = true;
     $("charRun").hidden = true;
+    $("charTsfRow").hidden = true;
   }
   function requestFeatures() {
     $("charRun").hidden = true;
+    $("charTsfRow").hidden = false;
     $("charStatus").textContent = "Computing the characteristics of " + data.stats.n_series + " series…";
-    worker.postMessage({ type: "features", token: ++featToken });
+    worker.postMessage({ type: "features", token: ++featToken, tsfeatures: $("charTsf").checked });
   }
   $("charRun").addEventListener("click", requestFeatures);
+  $("charTsf").addEventListener("change", () => { if (data && $("charRun").hidden) requestFeatures(); });
 
   function afterLoadCharacteristics() {
     resetCharacteristics();
     const approx = data.stats.n_series * data.stats.len_median;
+    $("charTsf").checked = approx <= AUTO_TSF;
+    $("charTsfRow").hidden = false;
     if (approx <= AUTO_VALUES) { requestFeatures(); return; }
     $("charStatus").textContent = "This file has about " + (approx / 1e6).toFixed(1) + " million observations; analysing it can take a while.";
     $("charRun").hidden = false;
@@ -847,7 +862,8 @@
   function renderCharacteristics() {
     const n = feat.names.length;
     $("charStatus").textContent = n + " series analysed in " + (feat.seconds < 1 ? "under a second" : feat.seconds.toFixed(1) + " s") + ": " +
-      feat.columns.length + " characteristics per series (10 descriptive ones and the 22 of catch22).";
+      feat.columns.length + " characteristics per series (" + feat.sets.basic + " descriptive ones, the " + feat.sets.catch22 + " of catch22" +
+      (feat.tsfeatures ? (feat.sets.tsfeatures ? " and " + feat.sets.tsfeatures + " of tsfeatures" : "; the tsfeatures set gave no values for this file") : "") + ").";
     const counts = {};
     feat.classes.forEach((c) => { const key = c || "undefined"; counts[key] = (counts[key] || 0) + 1; });
     const tiles = $("classTiles");
@@ -999,6 +1015,8 @@
       if (msg.token === seriesToken && result) drawForecast(msg.values);
     } else if (msg.type === "features") {
       if (msg.token === featToken) { feat = msg; renderCharacteristics(); }
+    } else if (msg.type === "featuresProgress") {
+      if (msg.token === featToken) $("charStatus").textContent = "Computing the tsfeatures set: series " + msg.done + " of " + msg.total + "…";
     } else if (msg.type === "error") {
       if (msg.stage === "features") { $("charStatus").textContent = "The characteristics could not be computed: " + msg.message; $("charRun").hidden = false; }
       else if (msg.stage === "load") { $("dataInfo").textContent = msg.message; $("dataInfo").className = "note error"; }
