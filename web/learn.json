@@ -479,6 +479,105 @@
     "makridakis2022",
     "nixtla"
    ]
+  },
+  {
+   "id": "stm",
+   "name": "Standard Theta model (STM)",
+   "group": "yerel",
+   "summary": "The Theta method written as a state-space model, with the theta coefficient fixed at 2.",
+   "how": "The model of Fiorucci et al. (2016): a smoothed level plus (1 − 1/θ) times a linear trend fitted once to the whole series, θ = 2; the starting level and the smoothing parameter are chosen by minimising the in-sample squared error. Seasonality is removed first by classical decomposition when an autocorrelation test detects it.",
+   "use": "The state-space counterpart of the classical Theta method; the reference point for the optimised and dynamic variants.",
+   "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded). Without at least 2 periods of data the model is non-seasonal. Not the same code as the method 'theta' (R thetaf), so the two differ slightly.",
+   "refs": [
+    "fiorucci2016",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "otm",
+   "name": "Optimised Theta model (OTM)",
+   "group": "yerel",
+   "summary": "The standard Theta model with the theta coefficient estimated from the data instead of fixed at 2.",
+   "how": "As the standard Theta model, but θ ≥ 1 is optimised together with the starting level and the smoothing parameter (in-sample squared error). θ = 1 gives simple exponential smoothing, larger values give more weight to the long-run trend.",
+   "use": "Series whose trend is weaker or stronger than the fixed θ = 2 assumes; in M3 it improved on the standard Theta method.",
+   "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded). Without at least 2 periods of data the model is non-seasonal. One more parameter to estimate, so short series can overfit.",
+   "refs": [
+    "fiorucci2016",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "dstm",
+   "name": "Dynamic standard Theta model (DSTM)",
+   "group": "yerel",
+   "summary": "The standard Theta model (θ = 2) with a trend line that is re-estimated at every time point.",
+   "how": "As the standard Theta model, but the intercept and slope of the linear trend are updated recursively as each observation arrives, instead of being fitted once to the whole series.",
+   "use": "Series whose trend changes over time; the fixed-θ companion of DOTM.",
+   "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded). Without at least 2 periods of data the model is non-seasonal.",
+   "refs": [
+    "fiorucci2016",
+    "nixtla"
+   ]
+  },
+  {
+   "id": "bats",
+   "name": "BATS (non-seasonal)",
+   "group": "yerel",
+   "summary": "Exponential smoothing in state-space form with an optional Box-Cox transformation, ARMA errors, trend and damping.",
+   "how": "The model TBATS compares its seasonal candidates with (R: bats() on the series without a seasonal period): with and without Box-Cox transformation, trend and damped trend, each also with ARMA errors chosen by auto.arima on the residuals; the combination with the lowest AIC is kept.",
+   "use": "Trended series without seasonality whose variance grows with the level, or whose errors are autocorrelated; also shows what the seasonal part of TBATS adds on your data.",
+   "caution": "Seasonality is ignored: the seasonal BATS model is not offered here, use TBATS for seasonal data. Box-Cox is tried only when all values are positive. Slower than ETS (up to twelve fits per series).",
+   "refs": [
+    "delivera2011"
+   ]
+  },
+  {
+   "id": "struct_ts",
+   "name": "Structural time series (StructTS)",
+   "group": "yerel",
+   "summary": "A level, a slope and a seasonal component that each change randomly over time, estimated with the Kalman filter.",
+   "how": "The basic structural model of Harvey (1989): local level, local slope and a dummy-variable seasonal, each with its own disturbance variance plus observation noise; the variances are found by maximum likelihood (R: StructTS, optim L-BFGS-B). The seasonal component is used when the period is at most 24 and the series holds two full periods; otherwise the local linear trend model is fitted. It has no settings.",
+   "use": "An interpretable alternative to ETS and ARIMA whose components can be read directly; handles slowly changing trend and seasonality.",
+   "caution": "The likelihood is flat for many series, so the optimiser can stop at a boundary (a variance of 0) or at a local optimum. Cost grows with the cube of the period, which is why longer periods are fitted without a seasonal part.",
+   "refs": [
+    "harvey1989"
+   ]
+  },
+  {
+   "id": "dshw",
+   "name": "Double seasonal Holt-Winters (DSHW)",
+   "group": "yerel",
+   "summary": "Holt-Winters exponential smoothing with two multiplicative seasonal cycles, one nested in the other.",
+   "how": "Taylor's (2003) method: a level, a trend and two sets of multiplicative seasonal indices (for example the day within half-hourly data and the week), plus a first-order autoregressive correction of the errors. The five parameters minimise the in-sample squared error (R: dshw). With more than two periods the two shortest are used.",
+   "use": "Half-hourly or hourly series with a daily and a weekly cycle (electricity demand, call volumes), for short horizons.",
+   "caution": "Needs two seasonal periods where the longer is a whole multiple of the shorter (48 and 336, 24 and 168), strictly positive data and at least two of the longer periods; any other series falls back. Data with one period (monthly, NN5 daily) cannot use it.",
+   "refs": [
+    "taylor2003"
+   ]
+  },
+  {
+   "id": "nnetar",
+   "name": "Neural network autoregression (NNAR)",
+   "group": "yerel",
+   "summary": "A small feed-forward neural network per series that predicts the next value from its own lagged values.",
+   "how": "R nnetar(): the series is standardised; the inputs are the last p values (p chosen by an autoregression's AIC, on the seasonally adjusted series when there is a season) and the value one season back; one hidden layer of round((inputs + 1) / 2) logistic units and a linear output are fitted by least squares (BFGS, at most 100 iterations). 'repeats' networks from different random starting weights are averaged, and forecasts are fed back as inputs for the next step.",
+   "use": "Series with non-linear dynamics that linear models miss; a classical neural benchmark that needs no other series.",
+   "caution": "The networks often stop at the iteration limit and depend on the random starting weights, so the seed changes the forecast; results are reproducible for a given seed. No differencing is applied, so strongly trended series are extrapolated poorly. Short series give few training rows for many weights (overfitting).",
+   "refs": [
+    "fpp3"
+   ]
+  },
+  {
+   "id": "tslm",
+   "name": "Linear trend with seasonal dummies (TSLM)",
+   "group": "yerel",
+   "summary": "An ordinary least-squares regression of the series on a straight time trend and one dummy variable per season.",
+   "how": "y(t) = a + b·t + s(season of t) is fitted by least squares (R: tslm(y ~ trend + season)); the forecast extends the line and repeats the seasonal effects. Seasonal dummies are used when the period is at most 366 and the series holds two full periods; otherwise only the trend is fitted. It has no settings.",
+   "use": "A transparent benchmark for series with a steady trend and a fixed seasonal pattern; every coefficient has a direct reading.",
+   "caution": "The trend is one global straight line and the seasonal pattern never changes, so a level shift or a bend in the trend is extrapolated wrongly; errors grow with the horizon. A long period uses one coefficient per season (52 for weekly data), which overfits short series.",
+   "refs": [
+    "fpp3"
+   ]
   }
  ],
  "metrics": [
@@ -1040,6 +1139,16 @@
   "makridakis2022": {
    "text": "Makridakis, S., Spiliotis, E., & Assimakopoulos, V. (2022). M5 accuracy competition: Results, findings, and conclusions. International Journal of Forecasting, 38(4), 1346–1364.",
    "url": "https://doi.org/10.1016/j.ijforecast.2021.11.013",
+   "verified": true
+  },
+  "harvey1989": {
+   "text": "Harvey, A. C. (1989). Forecasting, Structural Time Series Models and the Kalman Filter. Cambridge University Press. (The publisher's record and RePEc give 1990 as the print year.)",
+   "url": "https://econpapers.repec.org/RePEc:cup:cbooks:9780521321969",
+   "verified": true
+  },
+  "taylor2003": {
+   "text": "Taylor, J. W. (2003). Short-term electricity demand forecasting using double seasonal exponential smoothing. Journal of the Operational Research Society, 54(8), 799–805.",
+   "url": "https://doi.org/10.1057/palgrave.jors.2601589",
    "verified": true
   },
   "hyndmankoehler2006": {

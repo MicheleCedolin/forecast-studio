@@ -173,7 +173,7 @@ def fake_sf(monkeypatch):
 def test_methods_list_follows_installed_statsforecast(fake_sf):
     ms = PythonEngine().methods()["local"]
     assert {"ets", "arima", "dhr_arima"} <= set(ms)
-    assert "tbats" not in ms                    # kullanıcı kararıyla devre dışı (2026-11-03)
+    assert "tbats" in ms                        # statsforecast AutoTBATS, offered again (user decision 2026-11-25)
 
 
 def test_ets_ignores_seasonality_above_24_like_r(fake_sf):
@@ -314,13 +314,10 @@ def test_cli_does_not_crash_on_cp1252_pipe(tmp_path):
     assert (tmp_path / "g.csv").is_file() and b"Written" in cp.stdout
 
 
-def test_tbats_is_not_offered_but_r_reference_row_reports_missing(fake_sf):
-    from tsfstudio.golden import compare, load_case
-    assert "tbats" not in PythonEngine().methods()["local"]
-    with pytest.raises(EngineError, match="does not support"):
-        PythonEngine().run(job("tbats"))
-    df = compare(PythonEngine(), load_case("nn5_weekly"), ["tbats"])
-    assert df.iloc[0]["status"] == "not in engine"
+def test_tbats_runs_through_the_statsforecast_adapter(fake_sf):
+    assert "tbats" in PythonEngine().methods()["local"]
+    res = PythonEngine().run(job("tbats"))
+    assert np.isfinite(res.forecasts).all() and not res.fallbacks
 
 
 

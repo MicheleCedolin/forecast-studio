@@ -33,8 +33,20 @@ def default_worker_path() -> Path:
 
 class REngine(Engine):
     name = "r"
-    LOCAL_METHODS = ("ses", "ets", "theta", "tbats", "arima", "dhr_arima", "snaive")
+    STUDY_LOCAL = ("ses", "ets", "theta", "tbats", "arima", "dhr_arima", "snaive")      # r/lib/local_models.R
+    # r/lib/extra_models.R (2026-11-25): R counterparts of methods the C++ and Python engines offer
+    EXTRA_LOCAL = ("naive", "drift", "historic_average", "naive2", "comb_shd", "holt_ets", "holt_winters", "stl_ets",
+                   "stl_arima", "bagged_ets", "thief", "mapa", "comb_eat", "comb_eat_median", "auto_ces",
+                   "croston_classic", "tslm", "croston_sba", "croston_optimized", "tsb", "imapa", "dotm", "scum",
+                   "stm", "otm", "dstm", "bats", "struct_ts", "dshw", "nnetar")
+    # R packages beyond forecast; the same table as `extra_packages` in extra_models.R (a test compares the two)
+    PACKAGES = {"thief": ("thief",), "mapa": ("MAPA",), "auto_ces": ("smooth",), "croston_sba": ("tsintermittent",),
+                "croston_optimized": ("tsintermittent",), "tsb": ("tsintermittent",), "imapa": ("tsintermittent",),
+                "dotm": ("forecTheta",), "scum": ("smooth", "forecTheta"),
+                "stm": ("forecTheta",), "otm": ("forecTheta",), "dstm": ("forecTheta",)}
+    LOCAL_METHODS = STUDY_LOCAL + EXTRA_LOCAL          # superset; `methods()` leaves out what the R library lacks
     GLOBAL_METHODS = ("pooled_regression", "catboost")
+    _installed: dict[str, frozenset[str] | None] = {}  # Rscript path -> installed R packages (None: could not ask)
 
     def __init__(self, rscript: str | None = None, worker: str | Path | None = None,
                  workdir: str | Path | None = None, keep_job_dir: bool = False):
@@ -54,6 +66,29 @@ class REngine(Engine):
             return True, (out.stderr or out.stdout).strip().splitlines()[0]
         except Exception as exc:  # noqa: BLE001
             return False, f"Rscript could not be run: {exc}"
+
+    def _packages(self) -> frozenset[str] | None:
+        """Names of the R packages this Rscript can load, asked once per interpreter; None when R cannot be asked."""
+        key = str(self.rscript)
+        if key not in REngine._installed:
+            found = None
+            if self.rscript:
+                try:
+                    out = subprocess.run([self.rscript, "--vanilla", "-e", "cat(rownames(installed.packages()), sep='\\n')"],
+                                         capture_output=True, text=True, timeout=120)
+                    if out.returncode == 0:
+                        found = frozenset(out.stdout.split())
+                except (OSError, subprocess.SubprocessError):
+                    found = None
+            REngine._installed[key] = found
+        return REngine._installed[key]
+
+    def methods(self) -> dict[str, tuple[str, ...]]:
+        """The methods that can run here: one whose R package is missing is left out (the worker would stop on it)."""
+        have = self._packages()
+        local = tuple(m for m in self.LOCAL_METHODS
+                      if have is None or all(p in have for p in self.PACKAGES.get(m, ())))
+        return {"local": local, "global": self.GLOBAL_METHODS}
 
     # ------------------------------------------------------------------ run
     def run(self, job: EngineJob, progress: ProgressFn | None = None,

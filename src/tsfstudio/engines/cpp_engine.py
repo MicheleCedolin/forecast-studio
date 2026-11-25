@@ -132,12 +132,16 @@ CPP_METHOD_PARAMS = {
     "tsb": {"alpha_d": _alpha, "alpha_p": _alpha},
     "dotm": {"decomposition_type": _choice("multiplicative", "additive")},
     "auto_theta": {"decomposition_type": _choice("multiplicative", "additive")},
+    "stm": {"decomposition_type": _choice("multiplicative", "additive")},
+    "otm": {"decomposition_type": _choice("multiplicative", "additive")},
+    "dstm": {"decomposition_type": _choice("multiplicative", "additive")},
     "auto_ces": {"model": _choice("Z", "N", "S", "P", "F", upper=True), "max_season": _int_in(2, 100000)},
     "auto_mfles": {"n_windows": _int_in(1, 1000), "metric": _choice("smape", "mape", "mse", "mae")},
     "window_average": {"window_size": _int_in(1)},
     "seasonal_window_average": {"window_size": _int_in(1)},
     "bagged_ets": {"n_boot": _int_in(1, 100000), "seed": _int_in(0, 2**31 - 1)},
     "scum": {"arima_max_season": _int_in(2, 100000)},
+    "nnetar": {"repeats": _int_in(1, 1000), "seed": _int_in(0, 2**31 - 1)},
 }
 
 
@@ -348,7 +352,8 @@ class CppEngine(Engine):
     LOCAL_METHODS = ("naive", "snaive", "drift", "ses", "theta", "naive2", "comb_shd", "ets", "holt_winters", "arima", "dhr_arima",
                      "croston_classic", "croston_sba", "croston_optimized", "tsb", "adida", "imapa", "dotm", "auto_ces", "scum", "comb_eat", "comb_eat_median", "auto_theta", "mstl", "auto_mfles", "tbats",
                      "holt_ets", "historic_average", "window_average", "seasonal_window_average", "seasonal_es", "zero_model",
-                     "stl_ets", "stl_arima", "bagged_ets", "thief", "mapa")
+                     "stl_ets", "stl_arima", "bagged_ets", "thief", "mapa", "tslm",
+                     "stm", "otm", "dstm", "bats", "struct_ts", "dshw", "nnetar")
     GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat", "lightgbm_direct")
 
     def methods(self) -> dict[str, tuple[str, ...]]:

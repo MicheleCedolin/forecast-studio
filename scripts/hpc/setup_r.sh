@@ -21,9 +21,10 @@ else
   conda clean -a -y >/dev/null 2>&1 || true
   source scripts/hpc/activate.sh
 fi
-# Optional packages of three methods (thief, mapa, auto_ces). Without one of them that method is not offered on the R
+# Optional packages of some methods (thief, mapa, auto_ces, the intermittent-demand methods, dotm / scum and the
+# Theta variants). Without one of them the methods that need it are not offered on the R
 # engine; the rest works. They are compiled from CRAN, which can fail on an old system: that is not an error here.
-Rscript -e 'need <- setdiff(c("thief", "MAPA", "smooth"), rownames(installed.packages())); if (length(need)) try(install.packages(need, repos = "https://cloud.r-project.org"))' || true
+Rscript -e 'need <- setdiff(c("thief", "MAPA", "smooth", "tsintermittent", "forecTheta"), rownames(installed.packages())); if (length(need)) try(install.packages(need, repos = "https://cloud.r-project.org"))' || true
 echo
-Rscript -e 'cat(R.version.string, "| forecast", as.character(packageVersion("forecast")), "\n"); for (p in c("thief", "MAPA", "smooth")) cat(p, if (requireNamespace(p, quietly = TRUE)) as.character(packageVersion(p)) else "not installed", "\n")'
+Rscript -e 'cat(R.version.string, "| forecast", as.character(packageVersion("forecast")), "\n"); for (p in c("thief", "MAPA", "smooth", "tsintermittent", "forecTheta")) cat(p, if (requireNamespace(p, quietly = TRUE)) as.character(packageVersion(p)) else "not installed", "\n")'
 python -m tsfstudio engines

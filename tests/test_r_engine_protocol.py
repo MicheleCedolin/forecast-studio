@@ -140,7 +140,7 @@ def test_cancel_terminates_worker(engine, monkeypatch, tmp_path):
 
 def test_unsupported_method_and_bad_jobs(engine):
     with pytest.raises(EngineError, match="does not support"):
-        engine.run(job(method="naive"))
+        engine.run(job(method="auto_mfles"))        # no R counterpart
     with pytest.raises(EngineError, match="lag"):
         engine.run(job(task="global", method="catboost"))
     with pytest.raises(EngineError, match="horizons"):

@@ -544,6 +544,21 @@ def test_auto_theta_matches_python_engine(case):
     np.testing.assert_allclose(f, ref, rtol=1e-11, atol=0, err_msg=name)
 
 
+@pytest.mark.parametrize("method", ["stm", "otm", "dstm"])
+def test_theta_variants_match_python_engine(case, method):
+    """C++ stm / otm / dstm = statsforecast Theta, OptimizedTheta and DynamicTheta (auto_theta with one model) on the
+    theta port used by dotm: equal to the Python engine to machine precision."""
+    import warnings
+    name, seas, h, train, _ = case
+    sub = train if name == "nn5_weekly" else train[:15]
+    f, flags, _ = C.forecast_batch(method, sub, h, seas)
+    assert not flags.any()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ref = np.vstack([forecast_one(method, y, h, seas, {}) for y in sub])
+    np.testing.assert_allclose(f, ref, rtol=1e-11, atol=0, err_msg=f"{method} {name}")
+
+
 @pytest.mark.parametrize("periods", [(7.0,), (7.0, 30.4)])
 def test_mstl_decomposition_matches_statsforecast(periods):
     """C++ mstl: the decomposition (trend + remainder, seasonal naive forecasts) equals statsforecast's mstl() with

@@ -27,6 +27,7 @@ suppressPackageStartupMessages({
   library(forecast)
 })
 source(file.path(r_dir, "lib", "local_models.R"))
+source(file.path(r_dir, "lib", "extra_models.R"))
 source(file.path(r_dir, "lib", "global_models.R"))
 
 
@@ -56,6 +57,7 @@ versions <- function() {
   v <- list(R = R.version.string,
             forecast = as.character(packageVersion("forecast")),
             jsonlite = as.character(packageVersion("jsonlite")))
+  for (p in unique(unlist(extra_packages))) if (p %in% loadedNamespaces()) v[[p]] <- as.character(packageVersion(p))
   v$catboost <- if (exists("failed_loading_catboost") && !failed_loading_catboost) as.character(packageVersion("catboost")) else NA_character_
   v
 }
@@ -78,6 +80,15 @@ run_local <- function(job, series) {
   }
   integer_conversion <- isTRUE(job$integer_conversion)
 
+  # Methods of lib/extra_models.R: (series, h, params); an error gives the series the seasonal naive forecast and is
+  # counted. A missing R package stops the job at once instead of turning every series into a fallback.
+  is_extra <- method %in% extra_methods
+  for (p in extra_packages[[method]]) {
+    if (!requireNamespace(p, quietly = TRUE))
+      stop(paste0("The method '", method, "' needs the R package '", p, "': install.packages(\"", p, "\")"))
+  }
+  params <- if (is.null(job$params)) list() else as.list(job$params)
+
   # DHR-ARIMA: Fourier terim sayısı (orijinal: K = 1)
   fourier_k <- if (is.null(job$params$fourier_k)) 1 else job$params$fourier_k
   K <- if (isTRUE(job$params$fourier_k_per_period)) rep(fourier_k, length(seasonality)) else fourier_k
@@ -87,7 +98,12 @@ run_local <- function(job, series) {
     h <- hs[i]
     ts_i <- forecast::msts(series[[i]], seasonal.periods = seasonality)
     f <- tryCatch({
-      if (method == "dhr_arima") fun(ts_i, h, K = K) else fun(ts_i, h)
+      if (is_extra) {
+        tryCatch(fun(ts_i, h, params), error = function(e) {
+          note_fallback(method, e)
+          get_snaive_forecasts(ts_i, h)
+        })
+      } else if (method == "dhr_arima") fun(ts_i, h, K = K) else fun(ts_i, h)
     }, error = function(e) {
       # Model işlevinin kendi yedeği de başarısız olduysa: son değeri taşı (orijinal kod burada çökerdi)
       note_fallback(paste0(method, "+naive"), e)

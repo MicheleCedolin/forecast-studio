@@ -120,7 +120,49 @@ double box_cox_lambda(const Vec& x, double lower, double upper, double freq) {
 
 // moduli of the eigenvalues of a real square matrix (elimination to Hessenberg form, then the shifted QR iteration of
 // Numerical Recipes' hqr); used only for the admissibility test max |lambda| < 1.01 (R: eigen(D)$values)
+//
+// Before that, eigenvalues that a permutation isolates are split off (the permutation step of EISPACK's balanc, which
+// LAPACK's dgebal applies inside R's eigen()): a row or a column of the active block whose off-diagonal elements are
+// all zero gives the eigenvalue on its diagonal. Without this step the QR iteration does not converge on the matrix
+// D of a model whose AR coefficients are still at their starting value 0: the shift rows of the AR states form a
+// nilpotent (defective) block, of size 5 for ARMA(5, 1) errors (NN5 daily T35, the candidate R selects).
 bool eigen_moduli_below(std::vector<Vec> a, double bound) {
+    {
+        int lo = 0, hi = static_cast<int>(a.size()) - 1;
+        auto exchange = [&](int j, int k) {
+            if (j == k) return;
+            std::swap(a[j], a[k]);
+            for (auto& row : a) std::swap(row[j], row[k]);
+        };
+        for (bool found = true; found && lo <= hi;) {
+            found = false;
+            for (int j = hi; j >= lo && !found; --j) {  // a row of zeros: its eigenvalue goes to the bottom
+                bool zero = true;
+                for (int i = lo; i <= hi && zero; ++i) if (i != j && a[j][i] != 0.0) zero = false;
+                if (zero) {
+                    if (!(std::fabs(a[j][j]) < bound)) return false;
+                    exchange(j, hi);
+                    --hi;
+                    found = true;
+                }
+            }
+            for (int j = lo; j <= hi && !found; ++j) {  // a column of zeros: its eigenvalue goes to the top
+                bool zero = true;
+                for (int i = lo; i <= hi && zero; ++i) if (i != j && a[i][j] != 0.0) zero = false;
+                if (zero) {
+                    if (!(std::fabs(a[j][j]) < bound)) return false;
+                    exchange(j, lo);
+                    ++lo;
+                    found = true;
+                }
+            }
+        }
+        if (lo > 0 || hi < static_cast<int>(a.size()) - 1) {            // keep the block that is left
+            std::vector<Vec> b;
+            for (int i = lo; i <= hi; ++i) b.emplace_back(a[i].begin() + lo, a[i].begin() + hi + 1);
+            a.swap(b);
+        }
+    }
     const int n = static_cast<int>(a.size());
     if (n == 0) return true;
     for (int m = 1; m < n - 1; ++m) {                  // elmhes

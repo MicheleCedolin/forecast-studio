@@ -14,4 +14,10 @@ Vec dotm_forecast(const Vec& y, int m, int h, bool multiplicative = true);
 // AutoTheta(season_length = m, decomposition_type): STM, OTM, DSTM and DOTM fitted, lowest in-sample mse kept.
 Vec auto_theta_forecast(const Vec& y, int m, int h, bool multiplicative = true);
 
+// StandardTheta, OptimizedTheta and DynamicTheta of statsforecast: the same code with one model fitted
+// (theta fixed at 2 for STM and DSTM), same seasonal step and engine rules as dotm.
+Vec stm_forecast(const Vec& y, int m, int h, bool multiplicative = true);
+Vec otm_forecast(const Vec& y, int m, int h, bool multiplicative = true);
+Vec dstm_forecast(const Vec& y, int m, int h, bool multiplicative = true);
+
 }  // namespace tsf

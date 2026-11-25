@@ -213,6 +213,11 @@ SPECS: dict[str, dict] = {
     # 2026-11-22: DOTM (Fiorucci vd. 2016), M4'te güçlü kıyas ve SCUM bileşeni. İmza 2.1.1'de doğrulandı:
     # DynamicOptimizedTheta(season_length=1, decomposition_type='multiplicative', alias, prediction_intervals).
     "dotm":              {"cls": "DynamicOptimizedTheta", "group": "classical", "params": {"decomposition_type": "multiplicative"}},
+    # 2026-11-25: the three other Theta variants on their own (signatures as DynamicOptimizedTheta, verified in 2.1.1;
+    # the standard theta model is the class `Theta`, i.e. auto_theta(model = "STM"))
+    "stm":               {"cls": "Theta","group": "classical", "params": {"decomposition_type": "multiplicative"}},
+    "otm":               {"cls": "OptimizedTheta", "group": "classical", "params": {"decomposition_type": "multiplicative"}},
+    "dstm":              {"cls": "DynamicTheta", "group": "classical", "params": {"decomposition_type": "multiplicative"}},
     "auto_ces":          {"cls": "AutoCES", "group": "classical", "params": {"model": "Z", "max_season": 24}},
     "holt_winters":      {"cls": "HoltWinters", "group": "classical", "params": {"error_type": "A", "max_season": 24}},
     "mstl":              {"cls": "MSTL", "group": "classical", "params": {}},
@@ -280,7 +285,7 @@ def forecast_spec(method: str, y: np.ndarray, h: int, m: int, periods: Sequence[
             return np.zeros(h)
         if method == "tsb":
             kw = {"alpha_d": _alpha(P, "alpha_d"), "alpha_p": _alpha(P, "alpha_p")}
-    elif method in ("auto_theta", "dotm"):
+    elif method in ("auto_theta", "dotm", "stm", "otm", "dstm"):
         dec = str(P["decomposition_type"])
         if dec not in ("multiplicative", "additive"):
             raise ValueError("decomposition_type must be 'multiplicative' or 'additive'")

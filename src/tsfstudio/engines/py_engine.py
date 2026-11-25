@@ -40,7 +40,9 @@ NATIVE_LOCAL = ("naive", "snaive", "ses", "theta",
 # bulmuyor (NN5 haftalık, 8 seri: ortanca tahmin farkı %3,1) ve amaç R'ı Python'a çevirmek değil. Orijinal R TBATS, R motorunda
 # kalır. Adaptör `py_sf.forecast_tbats` (düzeltilmiş imza) yeniden açmak için durur: SF_LOCAL'e "tbats": "AutoTBATS" ekleyip
 # `forecast_one`'a dalını geri koyun.
-SF_LOCAL = {"ets": "AutoETS", "arima": "AutoARIMA", "dhr_arima": "AutoARIMA",
+# 2026-11-25 (user decision): TBATS is offered again, so that every method of the C++ engine also has its Python library
+# counterpart. It is statsforecast's model, not R's: the note in models_info says so.
+SF_LOCAL = {"ets": "AutoETS", "arima": "AutoARIMA", "dhr_arima": "AutoARIMA", "tbats": "AutoTBATS",
             **{k: v["cls"] for k, v in S.SPECS.items()},      # C3: aralıklı talep + ek klasik modeller
             "scum": "DynamicOptimizedTheta",                   # 2026-11-22: ETS/CES/ARIMA/DOTM medyanı
             "stl_ets": "AutoETS", "stl_arima": "AutoARIMA",    # 2026-11-23: R stlf (R'ın STL ayarları)
@@ -113,6 +115,8 @@ def forecast_one(method: str, y: np.ndarray, h: int, seasonality: tuple[float, .
         return S.forecast_arima(y, h, m, int(params.get("arima_max_season", S.ARIMA_MAX_SEASON_DEFAULT)))
     if method == "dhr_arima":
         return S.forecast_dhr_arima(y, h, seasonality, params.get("fourier_k", 1))
+    if method == "tbats":
+        return S.forecast_tbats(y, h, seasonality)
     if method in S.SPECS:
         return S.forecast_spec(method, y, h, m, seasonality, params)
     raise ValueError(f"Unknown local method: {method}")

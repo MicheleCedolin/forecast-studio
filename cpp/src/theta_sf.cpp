@@ -195,4 +195,9 @@ Vec dotm_forecast(const Vec& y, int m, int h, bool multiplicative) { return thet
 Vec auto_theta_forecast(const Vec& y, int m, int h, bool multiplicative) {
     return theta_select(y, m, h, multiplicative, {STM, OTM, DSTM, DOTM});
 }
+
+// StandardTheta / OptimizedTheta / DynamicTheta: auto_theta(model = "STM" | "OTM" | "DSTM"), one model fitted.
+Vec stm_forecast(const Vec& y, int m, int h, bool multiplicative) { return theta_select(y, m, h, multiplicative, {STM}); }
+Vec otm_forecast(const Vec& y, int m, int h, bool multiplicative) { return theta_select(y, m, h, multiplicative, {OTM}); }
+Vec dstm_forecast(const Vec& y, int m, int h, bool multiplicative) { return theta_select(y, m, h, multiplicative, {DSTM}); }
 }  // namespace tsf

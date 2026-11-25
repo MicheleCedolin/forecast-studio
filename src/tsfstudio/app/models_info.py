@@ -128,6 +128,12 @@ REFS = {
                          "Models for optimising the theta method and their relationship to state space models. "
                          "International Journal of Forecasting, 32(4), 1151–1161.",
                          "https://doi.org/10.1016/j.ijforecast.2016.02.005", True),
+    "harvey1989": _ref("Harvey, A. C. (1989). Forecasting, Structural Time Series Models and the Kalman Filter. "
+                       "Cambridge University Press. (The publisher's record and RePEc give 1990 as the print year.)",
+                       "https://econpapers.repec.org/RePEc:cup:cbooks:9780521321969", True),
+    "taylor2003": _ref("Taylor, J. W. (2003). Short-term electricity demand forecasting using double seasonal "
+                       "exponential smoothing. Journal of the Operational Research Society, 54(8), 799–805.",
+                       "https://doi.org/10.1057/palgrave.jors.2601589", True),
     "holt2004": _ref("Holt, C. C. (2004). Forecasting seasonals and trends by exponentially weighted moving averages. "
                      "International Journal of Forecasting, 20(1), 5-10 (reprint of the 1957 ONR memorandum).",
                      "https://doi.org/10.1016/j.ijforecast.2003.09.015", True),
@@ -216,7 +222,7 @@ MODELS: dict[str, dict] = {
         "how": "The forecast equals the last value of the series and is flat over the horizon. It has no parameters.",
         "use": "The simplest benchmark. Hard to beat on series that behave like a random walk.",
         "caution": "Ignores seasonality and trend.",
-        "engines": {PY: "Built in (numpy). This method does not exist in the R engine."},
+        "engines": {PY: "Built in (numpy)."},
         "params": [], "refs": ["fpp3"], "cost": "Instant.",
     },
     "snaive": {
@@ -346,7 +352,9 @@ MODELS: dict[str, dict] = {
                "Periods may be fractional (e.g. 365.25).",
         "use": "When hourly/daily data have more than one seasonality.",
         "caution": "Very slow. NOT available in the Python engine: statsforecast AutoTBATS did not find the same model as R tbats() (disabled by user decision).",
-        "engines": {R: "forecast::tbats (R engine only)."},
+        "engines": {R: "forecast::tbats.",
+                    PY: "statsforecast AutoTBATS. Not the same model as R on many series (NN5 weekly, 8 series: median forecast "
+                        "difference 3.1%); for R's results use the R or the C++ engine."},
         "params": [], "refs": ["delivera2011"],
         "cost": "In your own study, NN5, 111 series: about 12 min weekly, about 13 min daily (R). A long run needs confirmation.",
     },
@@ -390,7 +398,7 @@ MODELS: dict[str, dict] = {
         "use": "Demand series with many zeros, such as spare parts.",
         "caution": "Produces a flat RATE (often below 1). If rounding to integers is on, it falls to 0: all forecasts can become 0. "
                    "Turn rounding off. Classic Croston is known to be biased upwards.",
-        "engines": {PY: "statsforecast CrostonClassic. Not in the R engine."},
+        "engines": {PY: "statsforecast CrostonClassic."},
         "params": [], "refs": ["croston1972", "syntetos2005"], "cost": "Very fast.",
     },
     "croston_sba": {
@@ -619,7 +627,120 @@ MODELS: dict[str, dict] = {
         "caution": "Only meaningful for intermittent series and for metrics that do not divide by the forecast; rounding has no effect on it.",
         "engines": {PY: "statsforecast ZeroModel."},
         "params": [], "refs": ["makridakis2022", "nixtla"], "cost": "Instant.",
-    },    "pooled_regression": {
+    },
+    "stm": {
+        "name": "Standard Theta model (STM)", "group": "yerel", "task": "local",
+        "summary": "The Theta method written as a state-space model, with the theta coefficient fixed at 2.",
+        "how": "The model of Fiorucci et al. (2016): a smoothed level plus (1 − 1/θ) times a linear trend fitted once to the whole series, "
+               "θ = 2; the starting level and the smoothing parameter are chosen by minimising the in-sample squared error. Seasonality is "
+               "removed first by classical decomposition when an autocorrelation test detects it.",
+        "use": "The state-space counterpart of the classical Theta method; the reference point for the optimised and dynamic variants.",
+        "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded). "
+                   "Without at least 2 periods of data the model is non-seasonal. Not the same code as the method 'theta' (R thetaf), so the two differ slightly.",
+        "engines": {PY: "statsforecast Theta (its standard theta model)."},
+        "params": [P("decomposition_type", "Decomposition", "choice", "multiplicative", "Type of seasonal decomposition.",
+                     choices=(("multiplicative", "Multiplicative"), ("additive", "Additive")))],
+        "refs": ["fiorucci2016", "nixtla"], "cost": "Fast.",
+    },
+    "otm": {
+        "name": "Optimised Theta model (OTM)", "group": "yerel", "task": "local",
+        "summary": "The standard Theta model with the theta coefficient estimated from the data instead of fixed at 2.",
+        "how": "As the standard Theta model, but θ ≥ 1 is optimised together with the starting level and the smoothing parameter "
+               "(in-sample squared error). θ = 1 gives simple exponential smoothing, larger values give more weight to the long-run trend.",
+        "use": "Series whose trend is weaker or stronger than the fixed θ = 2 assumes; in M3 it improved on the standard Theta method.",
+        "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded). "
+                   "Without at least 2 periods of data the model is non-seasonal. One more parameter to estimate, so short series can overfit.",
+        "engines": {PY: "statsforecast OptimizedTheta."},
+        "params": [P("decomposition_type", "Decomposition", "choice", "multiplicative", "Type of seasonal decomposition.",
+                     choices=(("multiplicative", "Multiplicative"), ("additive", "Additive")))],
+        "refs": ["fiorucci2016", "nixtla"], "cost": "Fast.",
+    },
+    "dstm": {
+        "name": "Dynamic standard Theta model (DSTM)", "group": "yerel", "task": "local",
+        "summary": "The standard Theta model (θ = 2) with a trend line that is re-estimated at every time point.",
+        "how": "As the standard Theta model, but the intercept and slope of the linear trend are updated recursively as each "
+               "observation arrives, instead of being fitted once to the whole series.",
+        "use": "Series whose trend changes over time; the fixed-θ companion of DOTM.",
+        "caution": "For series containing zero/negative values, additive decomposition is used instead of multiplicative (a note is recorded). "
+                   "Without at least 2 periods of data the model is non-seasonal.",
+        "engines": {PY: "statsforecast DynamicTheta."},
+        "params": [P("decomposition_type", "Decomposition", "choice", "multiplicative", "Type of seasonal decomposition.",
+                     choices=(("multiplicative", "Multiplicative"), ("additive", "Additive")))],
+        "refs": ["fiorucci2016", "nixtla"], "cost": "Fast.",
+    },
+    "bats": {
+        "name": "BATS (non-seasonal)", "group": "yerel", "task": "local",
+        "summary": "Exponential smoothing in state-space form with an optional Box-Cox transformation, ARMA errors, trend and damping.",
+        "how": "The model TBATS compares its seasonal candidates with (R: bats() on the series without a seasonal period): with and "
+               "without Box-Cox transformation, trend and damped trend, each also with ARMA errors chosen by auto.arima on the "
+               "residuals; the combination with the lowest AIC is kept.",
+        "use": "Trended series without seasonality whose variance grows with the level, or whose errors are autocorrelated; also "
+               "shows what the seasonal part of TBATS adds on your data.",
+        "caution": "Seasonality is ignored: the seasonal BATS model is not offered here, use TBATS for seasonal data. Box-Cox is tried "
+                   "only when all values are positive. Slower than ETS (up to twelve fits per series).",
+        "engines": {},
+        "params": [], "refs": ["delivera2011"], "cost": "M3 monthly, 1428 series: 23 s in C++, 18 min in R; NN5 daily, 111 series: 9 s and 3.4 min (measured on this machine).",
+    },
+    "struct_ts": {
+        "name": "Structural time series (StructTS)", "group": "yerel", "task": "local",
+        "summary": "A level, a slope and a seasonal component that each change randomly over time, estimated with the Kalman filter.",
+        "how": "The basic structural model of Harvey (1989): local level, local slope and a dummy-variable seasonal, each with its own "
+               "disturbance variance plus observation noise; the variances are found by maximum likelihood (R: StructTS, optim "
+               "L-BFGS-B). The seasonal component is used when the period is at most 24 and the series holds two full periods; "
+               "otherwise the local linear trend model is fitted. It has no settings.",
+        "use": "An interpretable alternative to ETS and ARIMA whose components can be read directly; handles slowly changing trend and seasonality.",
+        "caution": "The likelihood is flat for many series, so the optimiser can stop at a boundary (a variance of 0) or at a local "
+                   "optimum. Cost grows with the cube of the period, which is why longer periods are fitted without a seasonal part.",
+        "engines": {},
+        "params": [], "refs": ["harvey1989"], "cost": "M3 monthly, 1428 series: 18 s in C++, 5 min in R; NN5 daily, 111 series: 4.5 s and 51 s (measured on this machine). "
+                                              "Period 24 was not timed.",
+    },
+    "dshw": {
+        "name": "Double seasonal Holt-Winters (DSHW)", "group": "yerel", "task": "local",
+        "summary": "Holt-Winters exponential smoothing with two multiplicative seasonal cycles, one nested in the other.",
+        "how": "Taylor's (2003) method: a level, a trend and two sets of multiplicative seasonal indices (for example the day within "
+               "half-hourly data and the week), plus a first-order autoregressive correction of the errors. The five parameters "
+               "minimise the in-sample squared error (R: dshw). With more than two periods the two shortest are used.",
+        "use": "Half-hourly or hourly series with a daily and a weekly cycle (electricity demand, call volumes), for short horizons.",
+        "caution": "Needs two seasonal periods where the longer is a whole multiple of the shorter (48 and 336, 24 and 168), strictly "
+                   "positive data and at least two of the longer periods; any other series falls back. Data with one period (monthly, "
+                   "NN5 daily) cannot use it.",
+        "engines": {},
+        "params": [], "refs": ["taylor2003"], "cost": "M4 hourly, 414 series (700 to 960 values): 0.3 s in C++, 60 min in R (measured on this machine).",
+    },
+    "nnetar": {
+        "name": "Neural network autoregression (NNAR)", "group": "yerel", "task": "local",
+        "summary": "A small feed-forward neural network per series that predicts the next value from its own lagged values.",
+        "how": "R nnetar(): the series is standardised; the inputs are the last p values (p chosen by an autoregression's AIC, on the "
+               "seasonally adjusted series when there is a season) and the value one season back; one hidden layer of "
+               "round((inputs + 1) / 2) logistic units and a linear output are fitted by least squares (BFGS, at most 100 "
+               "iterations). 'repeats' networks from different random starting weights are averaged, and forecasts are fed back as "
+               "inputs for the next step.",
+        "use": "Series with non-linear dynamics that linear models miss; a classical neural benchmark that needs no other series.",
+        "caution": "The networks often stop at the iteration limit and depend on the random starting weights, so the seed changes the "
+                   "forecast; results are reproducible for a given seed. No differencing is applied, so strongly trended series "
+                   "are extrapolated poorly. Short series give few training rows for many weights (overfitting).",
+        "engines": {},
+        "params": [P("repeats", "Number of networks", "int", 20, "Networks fitted from different random starting weights and averaged "
+                     "(R's default 20).", min=1, max=1000, engines=(R,)),
+                   P("seed", "Random seed", "int", 0, "set.seed() value used before each series.", min=0, advanced=True, engines=(R,))],
+        "refs": ["fpp3"], "cost": "NN5 weekly, 111 series: 1.8 s in C++, 11 s in R; M3 monthly, 1428 series: 26 s and 2.9 min; NN5 daily (735 values, "
+                                   "about 420 weights per network): 3.6 min and 15 min (measured on this machine while other jobs ran).",
+    },
+    "tslm": {
+        "name": "Linear trend with seasonal dummies (TSLM)", "group": "yerel", "task": "local",
+        "summary": "An ordinary least-squares regression of the series on a straight time trend and one dummy variable per season.",
+        "how": "y(t) = a + b·t + s(season of t) is fitted by least squares (R: tslm(y ~ trend + season)); the forecast extends the line "
+               "and repeats the seasonal effects. Seasonal dummies are used when the period is at most 366 and the series holds two "
+               "full periods; otherwise only the trend is fitted. It has no settings.",
+        "use": "A transparent benchmark for series with a steady trend and a fixed seasonal pattern; every coefficient has a direct reading.",
+        "caution": "The trend is one global straight line and the seasonal pattern never changes, so a level shift or a bend in the "
+                   "trend is extrapolated wrongly; errors grow with the horizon. A long period uses one coefficient per season "
+                   "(52 for weekly data), which overfits short series.",
+        "engines": {},
+        "params": [], "refs": ["fpp3"], "cost": "Very fast.",
+    },
+    "pooled_regression": {
         "name": "Pooled regression", "group": "kuresel", "task": "global",
         "summary": "Learns a single linear model on the lagged values of all series.",
         "how": "Each series is divided by its own mean; rows made of (lag) lagged values are stacked from all series and a linear regression "
@@ -803,7 +924,10 @@ CPP_NOTES = {
     "tbats": "Native C++ port of R forecast::tbats; equals the study's R forecasts to rounding.",
     "stl_ets": _CPP_R, "stl_arima": _CPP_R,
     "bagged_ets": _CPP_R + " Any n_boot and seed (R's random number generator is reproduced).",
-    "thief": _CPP_R, "mapa": _CPP_R,
+    "thief": _CPP_R, "mapa": _CPP_R, "tslm": _CPP_R, "struct_ts": _CPP_R, "dshw": _CPP_R,
+    "bats": "Native C++ port of the R code. Equal to R to rounding on all NN5 weekly and daily series and on 1423 of 1428 M3 "
+            "monthly series; one M3 series ends with a different model (cpp/README.md, row 8c).",
+    "nnetar": _CPP_R + " Any repeats and seed (R's random number generator is reproduced).",
     "comb_eat": "Native C++: mean of the C++ ets and arima (both reproduce R, so the result differs slightly from the Python engine, which uses statsforecast) and theta.",
     "comb_eat_median": "Native C++: median of the C++ ets, arima and theta (R-based ETS / ARIMA, so it differs slightly from the Python engine).",
     "scum": "Native C++: median of the C++ ets, auto_ces, arima and dotm (R-based ETS / ARIMA, so it differs slightly from the Python SCUM).",
@@ -817,7 +941,7 @@ CPP_NOTES = {
 CPP_PARAMS = {"pooled_regression": {"max_obs"}, "catboost": {"max_obs"}, "lightgbm": None, "lightgbm_feat": None, "lightgbm_direct": None,
               "holt_winters": None, "holt_ets": None, "dhr_arima": {"fourier_k"}, "tsb": None, "dotm": None, "auto_theta": None,
               "auto_ces": None, "auto_mfles": None, "window_average": None, "seasonal_window_average": None, "bagged_ets": None,
-              "scum": None}  # None: all (each key must be in cpp_engine.CPP_METHOD_PARAMS; checked by a test)
+              "scum": None, "stm": None, "otm": None, "dstm": None, "nnetar": None}  # None: all (each key must be in cpp_engine.CPP_METHOD_PARAMS; checked by a test)
 
 
 def _wire_cpp() -> None:
@@ -833,6 +957,72 @@ def _wire_cpp() -> None:
 
 
 _wire_cpp()
+
+
+# ------------------------------------------------------------------------------------------------ R engine, added methods
+# r/lib/extra_models.R (2026-11-25): R counterparts of methods that the C++ and Python engines offer. _R_REF: the C++
+# method is a port of exactly this R call and was checked against it; _R_LIB: an R library function for the same
+# method, while the other engines follow statsforecast, so forecasts are close, not equal.
+_R_REF = " The C++ engine is a port of this call and reproduces it to rounding."
+_R_LIB = " The C++ and Python engines follow statsforecast's implementation, so forecasts are close to, not equal to, this one."
+R_NOTES = {
+    "naive": "forecast::naive.", "drift": "forecast::rwf(drift = TRUE).", "historic_average": "forecast::meanf.",
+    "naive2": "The official M4 benchmark code (forecast::naive on the seasonally adjusted series)." + _R_REF,
+    "comb_shd": "The official M4 benchmark code (forecast::ses and forecast::holt, damped and undamped). The C++ and Python "
+                "engines fit Holt with their own optimiser: mean accuracy within 1% of this, single series up to a few percent away.",
+    "holt_ets": "forecast::ets(model = \"AAN\"); error_type M runs \"MAN\"." + _R_REF,
+    "holt_winters": "forecast::ets(model = \"AAA\"); error_type M runs \"MAM\". ets accepts periods up to 24." + _R_REF,
+    "stl_ets": "forecast::stlf." + _R_REF, "stl_arima": "forecast::forecast(mstl(y), method = \"arima\")." + _R_REF,
+    "bagged_ets": "forecast::baggedETS after set.seed(seed)." + _R_REF,
+    "thief": "thief::thief(usemodel = \"ets\"); needs the R package thief." + _R_REF,
+    "mapa": "MAPA::mapa(comb = \"w.mean\", hybrid = TRUE, type = \"ets\"); needs the R package MAPA." + _R_REF,
+    "comb_eat": "Mean of forecast::ets, the study's auto.arima chain and forecast::thetaf.",
+    "comb_eat_median": "Median of forecast::ets, the study's auto.arima chain and forecast::thetaf.",
+    "auto_ces": "smooth::auto.ces; needs the R package smooth. A different implementation from the C++ and Python engines "
+                "(statsforecast's AutoCES): the selected model and the forecasts differ on many series (NN5 daily: mean MASE 0.96 against 0.91).",
+    "croston_classic": "forecast::croston(alpha = 0.1)." + _R_LIB,
+    "croston_sba": "tsintermittent::crost(type = \"sba\") with smoothing 0.1 and nothing optimised; needs the R package tsintermittent. "
+                   "Equal to the C++ and Python engines where the package runs (car parts, 80 series: 70 identical); it refuses a "
+                   "series with fewer than two demands, which then gets the fallback forecast.",
+    "croston_optimized": "tsintermittent::crost with the package's own optimisation of the smoothing parameters and initial values; "
+                         "needs the R package tsintermittent. Not the optimisation statsforecast uses, so forecasts differ.",
+    "tsb": "tsintermittent::tsb with smoothing 0.1 / 0.1 and nothing optimised; needs the R package tsintermittent. "
+           "The C++ and Python engines give the same forecasts to rounding (car parts, 80 series).",
+    "imapa": "tsintermittent::imapa (the package's defaults); needs the R package tsintermittent. Not statsforecast's IMAPA, so forecasts differ.",
+    "dotm": "forecTheta::dotm; needs the R package forecTheta." + _R_LIB,
+    "scum": "Median of forecast::ets, smooth::auto.ces, the study's auto.arima chain and forecTheta::dotm, the R functions of the "
+            "original paper; needs the R packages smooth and forecTheta.",
+    "tslm": "forecast::tslm(y ~ trend + season), or y ~ trend without a usable season." + _R_REF,
+    "bats": "forecast::bats on the series without a seasonal period. The C++ engine is a port of this call; it reproduces "
+            "it to rounding on nearly all series, with a different model on a rare one (cpp/README.md, row 8c).",
+    "struct_ts": "stats::StructTS (type \"BSM\", or \"trend\" without a usable season) and forecast::forecast." + _R_REF,
+    "dshw": "forecast::dshw with the two shortest periods." + _R_REF,
+    "nnetar": "forecast::nnetar (nnet::nnet) after set.seed(seed)." + _R_REF,
+    "stm": "forecTheta::stm; needs the R package forecTheta." + _R_LIB,
+    "otm": "forecTheta::otm; needs the R package forecTheta." + _R_LIB,
+    "dstm": "forecTheta::dstm; needs the R package forecTheta." + _R_LIB,
+}
+R_PARAMS = {"holt_ets": {"error_type"}, "holt_winters": {"error_type", "max_season"}, "bagged_ets": {"n_boot", "seed"},
+            "auto_ces": {"model", "max_season"}, "dotm": {"decomposition_type"}, "stm": {"decomposition_type"},
+            "otm": {"decomposition_type"}, "dstm": {"decomposition_type"},
+            "nnetar": {"repeats", "seed"}}   # parameters the R functions honour; any other is hidden for R
+
+
+def _wire_r() -> None:
+    from ..engines.r_engine import REngine
+    for mid in REngine.EXTRA_LOCAL:
+        if mid not in MODELS:
+            continue
+        MODELS[mid]["engines"].setdefault(R, R_NOTES[mid])
+        allowed = R_PARAMS.get(mid, set())
+        for p in MODELS[mid]["params"]:
+            if p["key"] in allowed and R not in p["engines"]:
+                p["engines"].append(R)
+            elif p["key"] not in allowed and R in p["engines"]:
+                p["engines"].remove(R)
+
+
+_wire_r()
 
 
 def build_catalog(engine_methods: dict[str, dict | None]) -> list[dict]:

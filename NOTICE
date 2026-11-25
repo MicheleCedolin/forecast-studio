@@ -18,7 +18,17 @@ R package "forecast" (GPL-3)
   helpers (cpp/src/tbats.cpp), stlf() / mstl() / forecast.stl() (cpp/src/stlf.cpp, src/tsfstudio/engines/py_sf.py),
   baggedETS() / bld.mbb.bootstrap() / MBB() / BoxCox.lambda() (cpp/src/bagged.cpp, src/tsfstudio/engines/r_boot.py),
   HoltWintersZZ() / zzhw(), forecast.ets()'s class3() and src/etspolyroot.c (R_cpolyroot) (cpp/src/ets.cpp,
-  cpp/src/cpoly.cpp).
+  cpp/src/cpoly.cpp), tslm() and forecast.lm() for y ~ trend + season (cpp/src/tslm.cpp), dshw(), par_dshw(),
+  dshw.mse() and seasindex() (cpp/src/dshw.cpp), nnetar() and forecast.nnetar() (cpp/src/nnetar.cpp).
+
+R package "nnet" 7.3-21 (GPL-2 | GPL-3)
+  Copyright (C) 1992-2022 W. N. Venables and B. D. Ripley. Translated: nnet.default() for one hidden layer with a
+  linear output, norm.net() / add.net(), and from src/nnet.c fpass(), bpass(), fminfn(), fmingr(), VR_dovm() and
+  VR_nntest() (cpp/src/nnetar.cpp).
+
+R package "zoo" (GPL-2 | GPL-3)
+  Copyright (C) Achim Zeileis, Gabor Grothendieck and contributors. Translated: rollmean() for a complete numeric
+  vector (cpp/src/dshw.cpp).
 
 R package "thief" (GPL-3)
   Copyright (C) Rob J Hyndman and Nikolaos Kourentzes. Translated: thief(), tsaggregates(), th.forecast(),
@@ -58,7 +68,11 @@ R "stats" package, part of R (GPL-2 or later)
   L-BFGS-B (src/appl/lbfgsb.c, after Zhu, Byrd, Lu & Nocedal), optim()'s lbfgsb driver and finite-difference
   gradient, LINPACK dpofa / dtrsl / dqrdc2 (cpp/src/lbfgsb.cpp, cpp/src/rlinpack.hpp);
   and from R's base sources the Mersenne-Twister seeding, unif_rand() and R_unif_index()
-  of src/main/RNG.c, mean() / colMeans() / var() summation (cpp/src/rstats.hpp, src/tsfstudio/engines/r_boot.py).
+  of src/main/RNG.c, mean() / colMeans() / var() summation (cpp/src/rstats.hpp, src/tsfstudio/engines/r_boot.py);
+  lm()'s model matrix for a trend and a treatment-coded factor and predict.lm()'s matrix product (cpp/src/tslm.cpp);
+  StructTS() and predict.StructTS() with KalmanLike / KalmanFore of arima.c and var() of cov.c (cpp/src/struct_ts.cpp);
+  ar.yw.default() with eureka.f (Levinson-Durbin), acf()'s autocovariances, scale(), runif() and optim()'s vmmin
+  with an analytic gradient as nnet calls it (cpp/src/nnetar.cpp); cumsum() (cpp/src/dshw.cpp).
 
 R package "urca" (GPL-2 or later)
   Copyright (C) Bernhard Pfaff. Translated: ur.kpss() test statistic (cpp/src/autoarima.cpp).
@@ -66,7 +80,7 @@ R package "urca" (GPL-2 or later)
 statsforecast (Apache License 2.0)
   Copyright (C) Nixtla. https://github.com/Nixtla/statsforecast
   Translated: intermittent-demand models and src/ses.cpp (cpp/src/intermittent.cpp), DynamicOptimizedTheta /
-  AutoTheta and src/theta.cpp (cpp/src/theta_sf.cpp), AutoCES and src/ces.cpp (cpp/src/ces_sf.cpp), the Nelder-Mead
+  AutoTheta (with Theta, OptimizedTheta, DynamicTheta) and src/theta.cpp (cpp/src/theta_sf.cpp), AutoCES and src/ces.cpp (cpp/src/ces_sf.cpp), the Nelder-Mead
   of include/statsforecast/nelder_mead.h (cpp/src/sf_common.hpp), MSTL (cpp/src/mstl_sf.cpp), MFLES / AutoMFLES and
   src/mfles.cpp (cpp/src/mfles_sf.cpp). Licensed under the Apache License, Version 2.0:
   http://www.apache.org/licenses/LICENSE-2.0

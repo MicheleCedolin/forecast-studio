@@ -40,6 +40,10 @@
 #include "fracdiff.hpp"
 #include "lapack_svd.hpp"
 #include "supsmu.hpp"
+#include "tslm.hpp"
+#include "struct_ts.hpp"
+#include "dshw.hpp"
+#include "nnetar.hpp"
 
 #if defined(_WIN32)
 #define TSF_API extern "C" __declspec(dllexport)
@@ -88,6 +92,16 @@ Vec m_stlf_arima(const Vec& y, int h, int, const Vec& per) { return tsf::stlf_ar
 Vec m_bagged_ets(const Vec& y, int h, int, const Vec& per) { return tsf::bagged_ets(y, per, h, 100, 0); }
 Vec m_thief(const Vec& y, int h, int, const Vec& per) { return tsf::thief_ets(y, per, h); }
 Vec m_mapa(const Vec& y, int h, int, const Vec& per) { return tsf::mapa_ets(y, per, h); }
+Vec m_tslm(const Vec& y, int h, int m, const Vec&) { return tsf::tslm_forecast(y, h, m); }
+// bats: R forecast::bats() on the series without a seasonal period (Box-Cox, ARMA errors, trend, damping by AIC), the
+// non-seasonal model inside the tbats port.
+Vec m_bats(const Vec& y, int h, int, const Vec&) { return tsf::tbats_forecast(y, Vec{}, h); }
+Vec m_struct_ts(const Vec& y, int h, int m, const Vec&) { return tsf::struct_ts_forecast(y, h, m); }
+Vec m_dshw(const Vec& y, int h, int, const Vec& per) { return tsf::dshw_forecast(y, per, h); }
+Vec m_nnetar(const Vec& y, int h, int m, const Vec&) { return tsf::nnetar_forecast(y, h, m, 20, 0); }
+Vec m_stm(const Vec& y, int h, int m, const Vec&) { return tsf::stm_forecast(y, m, h, true); }
+Vec m_otm(const Vec& y, int h, int m, const Vec&) { return tsf::otm_forecast(y, m, h, true); }
+Vec m_dstm(const Vec& y, int h, int m, const Vec&) { return tsf::dstm_forecast(y, m, h, true); }
 
 // SCUM (Petropoulos & Svetunkov 2020): pointwise median of ets, auto_ces, arima and dotm, as the Python engine's
 // forecast_scum (a failing or non-finite component is left out; fewer than two -> error). Components are the C++ ones:
@@ -172,6 +186,8 @@ const Entry METHODS[] = {
     {"holt_ets", m_holt_ets}, {"historic_average", m_hist}, {"window_average", m_wavg},
     {"seasonal_window_average", m_swavg}, {"seasonal_es", m_ses_seas}, {"zero_model", m_zero},
     {"stl_ets", m_stlf_ets}, {"stl_arima", m_stlf_arima}, {"bagged_ets", m_bagged_ets}, {"thief", m_thief}, {"mapa", m_mapa}, {"comb_eat", m_comb_eat}, {"comb_eat_median", m_comb_eat_med},
+    {"tslm", m_tslm}, {"stm", m_stm}, {"otm", m_otm}, {"dstm", m_dstm}, {"bats", m_bats}, {"struct_ts", m_struct_ts},
+    {"dshw", m_dshw}, {"nnetar", m_nnetar},
 };
 
 Fn find_method(const char* name) {
@@ -250,12 +266,19 @@ Vec p_bagged(const Vec& y, int h, int, const Vec& per, const Params& p) {
     return tsf::bagged_ets(y, per, h, p.i("n_boot", 100), static_cast<uint32_t>(p.i("seed", 0)));
 }
 Vec p_scum(const Vec& y, int h, int m, const Vec& per, const Params& p);
+Vec p_nnetar(const Vec& y, int h, int m, const Vec&, const Params& p) {
+    return tsf::nnetar_forecast(y, h, m, p.i("repeats", 20), static_cast<uint32_t>(p.i("seed", 0)));
+}
+Vec p_stm(const Vec& y, int h, int m, const Vec&, const Params& p) { return tsf::stm_forecast(y, m, h, is_multiplicative_decomposition(p)); }
+Vec p_otm(const Vec& y, int h, int m, const Vec&, const Params& p) { return tsf::otm_forecast(y, m, h, is_multiplicative_decomposition(p)); }
+Vec p_dstm(const Vec& y, int h, int m, const Vec&, const Params& p) { return tsf::dstm_forecast(y, m, h, is_multiplicative_decomposition(p)); }
 
 struct PEntry { const char* name; PFn fn; };
 const PEntry PMETHODS[] = {
     {"holt_winters", p_hw}, {"holt_ets", p_holt_ets}, {"dhr_arima", p_dhr}, {"tsb", p_tsb}, {"dotm", p_dotm},
     {"auto_theta", p_atheta}, {"auto_ces", p_ces}, {"auto_mfles", p_mfles}, {"window_average", p_wavg},
     {"seasonal_window_average", p_swavg}, {"bagged_ets", p_bagged}, {"scum", p_scum},
+    {"stm", p_stm}, {"otm", p_otm}, {"dstm", p_dstm}, {"nnetar", p_nnetar},
 };
 
 Vec p_scum(const Vec& y, int h, int m, const Vec&, const Params& p) { return scum(y, h, m, p.i("arima_max_season", 200)); }

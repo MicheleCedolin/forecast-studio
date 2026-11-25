@@ -49,7 +49,7 @@
     <div class="scroll"><table>
       <tr><th></th><th>Browser (phone, tablet, computer)</th><th>Desktop (Windows)</th></tr>
       <tr><td>Installation</td><td>None, open the link</td><td>Download and unzip one file</td></tr>
-      <tr><td>Methods</td><td>37 local and intermittent-demand methods</td><td>45: the same 37 plus 8 global models (pooled regression,
+      <tr><td>Methods</td><td>45 local and intermittent-demand methods</td><td>53: the same 45 plus 8 global models (pooled regression,
         CatBoost, three LightGBM variants, N-HiTS, N-BEATS, Chronos-Bolt)</td></tr>
       <tr><td>Engines</td><td>C++ (checked against R and Python)</td><td>C++, Python (statsforecast, LightGBM, CatBoost) and
         R (the original <code>forecast</code> package)</td></tr>
@@ -78,11 +78,14 @@
   <section>
     <h2>2 R, for the R engine <span class="tag">optional</span></h2>
     <p>Install R only if you want results from the original R code (the <code>forecast</code> package by Hyndman and colleagues)
-      rather than its C++ and Python counterparts. Nine methods can run on the R engine.</p>
+      rather than its C++ and Python counterparts. Thirty-nine methods can run on the R engine.</p>
     <ol>
       <li>Download R for Windows from <a href="https://cran.r-project.org/bin/windows/base/" target="_blank" rel="noopener">CRAN</a> and install it.</li>
       <li>Open R and install the two packages the engine uses:
-        <pre><code>install.packages(c("forecast", "jsonlite"))</code></pre></li>
+        <pre><code>install.packages(c("forecast", "jsonlite"))</code></pre>
+        Some methods need one more package (temporal hierarchies, MAPA, complex exponential smoothing, the intermittent-demand
+        methods, the Theta variants); without it the method is not offered on the R engine:
+        <pre><code>install.packages(c("thief", "MAPA", "smooth", "tsintermittent", "forecTheta"))</code></pre></li>
       <li>Tell Forecast Studio where R is. Open PowerShell and run, with your own R version and folder:
         <pre><code>setx TSFSTUDIO_RSCRIPT "C:\Program Files\R\R-4.6.2\bin\Rscript.exe"</code></pre>
         If you installed R without administrator rights, the folder is <code>%LOCALAPPDATA%\Programs\R\R-…\bin</code>.

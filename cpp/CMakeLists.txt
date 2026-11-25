@@ -9,7 +9,7 @@ endif()
 
 # catch22 (GPL-3), C sources taken from Rcatch22 v0.1.13.
 file(GLOB CATCH22_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/catch22/*.c)
-add_library(tsfcore SHARED src/util.cpp src/basic.cpp src/ets.cpp src/arima.cpp src/autoarima.cpp src/intermittent.cpp src/theta_sf.cpp src/ces_sf.cpp src/sf_common.cpp src/mstl_sf.cpp src/mfles_sf.cpp src/tbats.cpp src/global.cpp src/catboost_bridge.cpp src/lightgbm_bridge.cpp src/stlf.cpp src/bagged.cpp src/loess.cpp src/lbfgsb.cpp src/temporal.cpp src/cpoly.cpp src/simple_sf.cpp src/fracdiff.cpp src/supsmu.cpp src/lapack_svd.cpp src/capi.cpp src/tsfio.cpp src/metrics.cpp src/run.cpp src/tsfeat.cpp ${CATCH22_SOURCES})
+add_library(tsfcore SHARED src/util.cpp src/basic.cpp src/ets.cpp src/arima.cpp src/autoarima.cpp src/intermittent.cpp src/theta_sf.cpp src/ces_sf.cpp src/sf_common.cpp src/mstl_sf.cpp src/mfles_sf.cpp src/tbats.cpp src/global.cpp src/catboost_bridge.cpp src/lightgbm_bridge.cpp src/stlf.cpp src/bagged.cpp src/loess.cpp src/lbfgsb.cpp src/temporal.cpp src/cpoly.cpp src/simple_sf.cpp src/fracdiff.cpp src/supsmu.cpp src/lapack_svd.cpp src/tslm.cpp src/struct_ts.cpp src/dshw.cpp src/nnetar.cpp src/capi.cpp src/tsfio.cpp src/metrics.cpp src/run.cpp src/tsfeat.cpp ${CATCH22_SOURCES})
 target_include_directories(tsfcore PRIVATE src)
 set_target_properties(tsfcore PROPERTIES PREFIX "")        # tsfcore.dll / tsfcore.so (no "lib" prefix)
 

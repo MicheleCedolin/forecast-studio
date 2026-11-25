@@ -146,7 +146,7 @@ def test_estimate_and_param_validation(app):
     assert app.call("estimate", {"config": {**CFG, "method": "yok"}})[0] == 400
     assert app.call("estimate", {"config": {**CFG, "horizon": 0}})[0] == 400
     assert app.call("estimate", {"config": {**CFG, "metrics": ["SAHTE"]}})[0] == 400
-    assert app.call("estimate", {"config": {**CFG, "engine": "r", "method": "croston_sba"}})[0] == 400   # R'da yok
+    assert app.call("estimate", {"config": {**CFG, "engine": "r", "method": "auto_mfles"}})[0] == 400   # no R counterpart
 
 
 def test_params_are_written_explicitly_and_nested():

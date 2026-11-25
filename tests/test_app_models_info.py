@@ -95,8 +95,10 @@ def test_build_catalog_marks_availability():
     assert by["naive"]["engines"]["python"]["available"] is True
     assert by["naive"]["engines"]["r"]["available"] is False
     assert by["ses"]["engines"]["python"]["available"] is False
-    assert by["tbats"]["engines"]["python"]["supported"] is False        # TBATS is R-only
+    assert by["tbats"]["engines"]["python"]["supported"] is True         # statsforecast AutoTBATS (offered again 2026-11-25)
     assert by["tbats"]["engines"]["r"]["supported"] is True
+    assert by["nhits"]["engines"]["r"]["supported"] is False             # a deep model: Python only
+    assert by["stl_ets"]["engines"]["r"]["supported"] is True            # r/lib/extra_models.R
 
 
 @pytest.mark.parametrize("mid", [m for m in MI.MODELS if MI.MODELS[m]["group"] == "aralikli"])
