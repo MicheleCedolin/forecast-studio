@@ -72,6 +72,12 @@
   .tile span { font-size: 0.85rem; color: var(--ink2); }
   .chk { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; font-size: 0.9rem; color: var(--ink); }
   #pcaCanvas { display: block; width: 100%; touch-action: pan-y; cursor: crosshair; }
+  .seg { display: flex; align-items: center; margin: 4px 0 10px; }
+  .seg button:not(.plain) { font: inherit; min-width: 56px; padding: 7px 14px; border: 1px solid var(--axis); background: transparent; color: var(--ink); cursor: pointer; }
+  .seg button:not(.plain):first-child { border-radius: 6px 0 0 6px; }
+  .seg button:not(.plain):nth-child(2) { border-radius: 0 6px 6px 0; border-left: 0; }
+  .seg button[aria-pressed=true] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .seg button.plain { margin-left: 10px; }
   .pca-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 0.85rem; color: var(--ink2); margin-top: 8px; }
   .pca-legend button { font: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--axis);
                        border-radius: 14px; background: transparent; color: var(--ink); cursor: pointer; }
@@ -156,9 +162,13 @@
         <h3>Map of the series (principal components)</h3>
         <p id="pcaHint" class="note" style="margin-top:0"></p>
         <div id="pcaBox">
+          <div id="pcaDimRow" class="seg" role="group" aria-label="View of the map">
+            <button id="pca2d" type="button" aria-pressed="true">2D</button><button id="pca3d" type="button" aria-pressed="false">3D</button>
+            <button id="pcaReset" class="plain" type="button" hidden>Reset view</button>
+          </div>
           <div class="grid">
-            <div><label for="pcaX">Horizontal axis</label><select id="pcaX"></select></div>
-            <div><label for="pcaY">Vertical axis</label><select id="pcaY"></select></div>
+            <div id="pcaXBox"><label for="pcaX">Horizontal axis</label><select id="pcaX"></select></div>
+            <div id="pcaYBox"><label for="pcaY">Vertical axis</label><select id="pcaY"></select></div>
             <div><label for="pcaColor">Colour by</label><select id="pcaColor"></select></div>
           </div>
           <label class="chk"><input id="pcaArrows" type="checkbox" checked> Show the characteristics that pull the map (loadings)</label>

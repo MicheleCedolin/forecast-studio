@@ -757,7 +757,8 @@
   const AUTO_TSF = 3e5;      // ... and up to this many with the (slower) tsfeatures set as well
   let feat = null;           // the worker's answer for the loaded file
   let featToken = 0;
-  const pcaView = { ax: [0, 1], arrows: true, color: "class", focus: null, pts: [], colors: null };
+  const PCA_3D = { yaw: -0.6, pitch: 0.35, zoom: 1 };
+  const pcaView = Object.assign({ ax: [0, 1], arrows: true, color: "class", focus: null, pts: [], colors: null, dim: 2 }, PCA_3D);
   const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const themeMode = () => (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
@@ -867,16 +868,110 @@
     if (lg.missing) host.appendChild(el("span", {}, el("i", { class: "sw hollow" }), " no value " + lg.missing));
   }
 
-  function drawPca() {
+  // The three first components as a cloud that can be turned: PC1 to the right, PC2 up, PC3 into the screen, each
+  // scaled to its own range (as the flat map scales its two axes), drawn back to front with a mild perspective.
+  // quick: while the cloud is being turned, a large one is thinned so that it follows the finger.
+  function drawPca3d(g, W, H, d, quick) {
+    const k = d.k, n = feat.names.length;
+    const ink = cssVar("--ink"), muted = cssVar("--muted"), grid = cssVar("--line"), axis = cssVar("--axis"), surf = cssVar("--panel");
+    const rng = [0, 1, 2].map((c) => {
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < n; i++) { const v = d.scores[i * k + c]; if (v < lo) lo = v; if (v > hi) hi = v; }
+      return { mid: (lo + hi) / 2, half: ((hi - lo) / 2 || 1) * 1.05 };
+    });
+    const unit = (c, v) => (v - rng[c].mid) / rng[c].half;
+    const cosY = Math.cos(pcaView.yaw), sinY = Math.sin(pcaView.yaw), cosP = Math.cos(pcaView.pitch), sinP = Math.sin(pcaView.pitch);
+    const S = Math.min(W, H) * 0.3 * pcaView.zoom, cx = W / 2, cy = H / 2;
+    const proj = (x, y, z) => {
+      const x1 = x * cosY + z * sinY, z1 = -x * sinY + z * cosY, y2 = y * cosP - z1 * sinP, z2 = y * sinP + z1 * cosP, s = 4 / (4 - z2);
+      return [cx + x1 * S * s, cy - y2 * S * s, z2, s];
+    };
+    // the box of the data, then its three edges from the low corner as the axes
+    g.lineWidth = 1; g.strokeStyle = grid;
+    for (let c = 0; c < 8; c++) for (let b = 0; b < 3; b++) {
+      if (c & (1 << b)) continue;
+      const p = proj(c & 1 ? 1 : -1, c & 2 ? 1 : -1, c & 4 ? 1 : -1), e = c | (1 << b), q = proj(e & 1 ? 1 : -1, e & 2 ? 1 : -1, e & 4 ? 1 : -1);
+      g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke();
+    }
+    const o = proj(-1, -1, -1);
+    g.strokeStyle = axis; g.fillStyle = muted; g.textBaseline = "middle";
+    for (let c = 0; c < 3; c++) {
+      const q = proj(c === 0 ? 1 : -1, c === 1 ? 1 : -1, c === 2 ? 1 : -1);
+      g.lineWidth = 1.5; g.beginPath(); g.moveTo(o[0], o[1]); g.lineTo(q[0], q[1]); g.stroke();
+      const label = "PC" + (c + 1) + " (" + (100 * d.explained[c]).toFixed(1) + "%)", tw = g.measureText(label).width;
+      const dx = q[0] - o[0], dy = q[1] - o[1], len = Math.hypot(dx, dy) || 1;
+      const lx = Math.max(tw / 2 + 2, Math.min(W - tw / 2 - 2, q[0] + (dx / len) * (tw / 2 + 6))), ly = Math.max(8, Math.min(H - 8, q[1] + (dy / len) * 12));
+      g.textAlign = "center";
+      g.lineWidth = 3; g.strokeStyle = surf; g.lineJoin = "round"; g.strokeText(label, lx, ly);
+      g.fillText(label, lx, ly);
+      g.strokeStyle = axis;
+    }
+
+    const lg = pcaView.colors.legend, col = pcaView.colors.col, cd = pcaView.colorData;
+    const focusItem = pcaView.focus && lg.kind === "cat" ? lg.items.find((t) => t.key === pcaView.focus) : null;
+    const focused = (i) => !focusItem || (focusItem.members ? focusItem.members.includes(cd.values[i]) : cd.values[i] === pcaView.focus);
+    const step = quick && n > 2500 ? Math.ceil(n / 2500) : 1, pts = [];
+    for (let i = 0; i < n; i += step) {
+      const p = proj(unit(0, d.scores[i * k]), unit(1, d.scores[i * k + 1]), unit(2, d.scores[i * k + 2]));
+      pts.push({ i, x: p[0], y: p[1], z: p[2], s: p[3] });
+    }
+    pts.sort((u, v) => u.z - v.z);                         // far points first, near ones on top
+    const r = n > 1500 ? 2.5 : n > 400 ? 3.2 : 4;
+    for (const on of [false, true]) {
+      for (const p of pts) {
+        if (focused(p.i) !== on) continue;
+        g.globalAlpha = on ? 1 : 0.15;
+        g.beginPath(); g.arc(p.x, p.y, Math.max(1.5, r * p.s * Math.sqrt(pcaView.zoom)), 0, 2 * Math.PI);
+        if (col[p.i]) { g.fillStyle = col[p.i]; g.fill(); g.lineWidth = 1; g.strokeStyle = surf; g.stroke(); }
+        else { g.lineWidth = 1.2; g.strokeStyle = muted; g.stroke(); }
+      }
+    }
+    g.globalAlpha = 1;
+    if (pcaView.arrows) {
+      const z = [0, 1, 2].map((c) => unit(c, 0));           // where the origin of the components sits in the box
+      // the strongest characteristics, leaving out those that point the same way as one already drawn (level, spread,
+      // minimum and maximum of a series pull together and would cover each other)
+      const all = d.features.map((f, j) => [f, d.loadings[j * k], d.loadings[j * k + 1], d.loadings[j * k + 2]])
+        .sort((u, v) => Math.hypot(v[1], v[2], v[3]) - Math.hypot(u[1], u[2], u[3]));
+      const ld = [];
+      for (const t of all) {
+        if (ld.length >= (W < 480 ? 4 : 6)) break;
+        const nt = Math.hypot(t[1], t[2], t[3]);
+        if (nt > 0 && ld.every((u) => (t[1] * u[1] + t[2] * u[2] + t[3] * u[3]) / (nt * Math.hypot(u[1], u[2], u[3])) < 0.9)) ld.push(t);
+      }
+      const m = Math.max(...ld.map((t) => Math.hypot(t[1], t[2], t[3])), 1e-9);
+      const fit = 0.8;              // the longest arrow, in half box widths; arrows may leave the box, the labels stay on the canvas
+      const c0 = proj(z[0], z[1], z[2]);
+      g.strokeStyle = ink; g.fillStyle = ink; g.textBaseline = "middle";
+      for (const [f, u, v, w] of ld) {
+        const e = proj(z[0] + (u / m) * fit, z[1] + (v / m) * fit, z[2] + (w / m) * fit);
+        g.lineWidth = 1.5; g.strokeStyle = ink;
+        g.beginPath(); g.moveTo(c0[0], c0[1]); g.lineTo(e[0], e[1]); g.stroke();
+        const label = W < 480 && f.length > 18 ? f.slice(0, 17) + "…" : f, tw = g.measureText(label).width;
+        const right = e[0] >= c0[0] ? e[0] + 4 + tw <= W - 2 : e[0] - 4 - tw < 2;
+        g.textAlign = right ? "left" : "right";
+        g.lineWidth = 3; g.strokeStyle = surf; g.lineJoin = "round";
+        const ty = Math.max(8, Math.min(H - 8, e[1]));
+        g.strokeText(label, e[0] + (right ? 4 : -4), ty);
+        g.fillText(label, e[0] + (right ? 4 : -4), ty);
+      }
+    }
+    pcaView.pts = pts;
+  }
+
+  function drawPca(quick) {
     if (!feat || !feat.pca || !pcaView.colors) return;
     const cv = $("pcaCanvas"), d = feat.pca, k = d.k;
-    const W = Math.max(260, cv.parentElement.clientWidth), H = Math.round(Math.min(480, Math.max(280, W * 0.7))), dpr = window.devicePixelRatio || 1;
+    const three = pcaView.dim === 3 && k >= 3;
+    const W = Math.max(260, cv.parentElement.clientWidth), dpr = window.devicePixelRatio || 1;
+    const H = Math.round(three ? Math.min(520, Math.max(300, W * 0.85)) : Math.min(480, Math.max(280, W * 0.7)));
     cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px";
     const g = cv.getContext("2d");
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     const ink = cssVar("--ink"), muted = cssVar("--muted"), grid = cssVar("--line"), axis = cssVar("--axis"), surf = cssVar("--panel");
     g.font = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    if (three) { drawPca3d(g, W, H, d, quick === true); return; }
     const [a, b] = pcaView.ax, L = 46, R = 14, T = 12, B = 40, n = feat.names.length;
     const xs = new Array(n), ys = new Array(n);
     for (let i = 0; i < n; i++) { xs[i] = d.scores[i * k + a]; ys[i] = d.scores[i * k + b]; }
@@ -978,6 +1073,8 @@
       pcaView.ax[which] = Math.min(pcaView.ax[which], d.k - 1);
       sel.value = String(pcaView.ax[which]);
     }
+    $("pcaDimRow").hidden = d.k < 3;                       // a third component needs at least three usable characteristics
+    setPcaDim(d.k < 3 ? 2 : pcaView.dim, true);
     const lt = $("loadTable");
     lt.textContent = "";
     const head = el("tr", {});
@@ -1005,17 +1102,76 @@
     pcaView.colorData = pcaColorData();
     pcaView.colors = pcaColors(pcaView.colorData);
     pcaView.focus = null;
-    $("pcaCanvas").setAttribute("aria-label", "Scatter of " + feat.names.length + " series on two principal components, coloured by " + pcaView.colorData.label + ".");
-    $("pcaNote").textContent = (pcaView.colorData.partial ? "Series outside the last run have no value and are drawn hollow. " : "") +
+    const three = pcaView.dim === 3 && feat.pca.k >= 3;
+    $("pcaCanvas").setAttribute("aria-label", "Scatter of " + feat.names.length + " series on " + (three ? "three" : "two") +
+      " principal components, coloured by " + pcaView.colorData.label + ".");
+    $("pcaNote").textContent = (three ? "Drag to turn the map, pinch (or Ctrl and the mouse wheel) to zoom. " : "") +
+      (pcaView.colorData.partial ? "Series outside the last run have no value and are drawn hollow. " : "") +
       (result ? "Tap a point to see that series in the forecast chart below." : "After a run you can also colour the map by the error of each series.");
     renderPcaLegend();
     drawPca();
   }
+
+  function setPcaDim(dim, quiet) {
+    pcaView.dim = dim;
+    const three = dim === 3;
+    $("pca2d").setAttribute("aria-pressed", String(!three));
+    $("pca3d").setAttribute("aria-pressed", String(three));
+    $("pcaReset").hidden = !three;
+    $("pcaXBox").hidden = three;
+    $("pcaYBox").hidden = three;
+    $("pcaCanvas").style.touchAction = three ? "none" : "pan-y";     // in 3D a finger on the map turns it
+    $("pcaCanvas").style.cursor = three ? "grab" : "crosshair";
+    $("pcaTip").hidden = true;
+    if (!quiet) updatePcaColor();
+  }
+  $("pca2d").addEventListener("click", () => setPcaDim(2));
+  $("pca3d").addEventListener("click", () => setPcaDim(3));
+  $("pcaReset").addEventListener("click", () => { Object.assign(pcaView, PCA_3D); drawPca(); });
+
+  // turning and zooming the 3D map
+  const pcaDrag = { at: new Map(), moved: 0, pinch: 0, frame: 0 };
+  const pcaSoon = () => { if (!pcaDrag.frame) pcaDrag.frame = requestAnimationFrame(() => { pcaDrag.frame = 0; drawPca(pcaDrag.at.size > 0); }); };
+  const pcaSpan = () => { const p = [...pcaDrag.at.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); };
+  $("pcaCanvas").addEventListener("pointerdown", (ev) => {
+    if (pcaView.dim !== 3) return;
+    try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch (e) { /* the pointer is already gone */ }
+    pcaDrag.at.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pcaDrag.at.size === 1) pcaDrag.moved = 0;
+    if (pcaDrag.at.size === 2) pcaDrag.pinch = pcaSpan();
+  });
+  function pcaTurn(ev) {            // -> true when the pointer is turning or zooming the map
+    const was = pcaDrag.at.get(ev.pointerId);
+    if (pcaView.dim !== 3 || !was) return false;
+    const dx = ev.clientX - was.x, dy = ev.clientY - was.y;
+    pcaDrag.at.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    pcaDrag.moved += Math.abs(dx) + Math.abs(dy);
+    if (pcaDrag.at.size >= 2) {
+      const span = pcaSpan();
+      if (pcaDrag.pinch > 0 && span > 0) pcaView.zoom = Math.max(0.5, Math.min(4, (pcaView.zoom * span) / pcaDrag.pinch));
+      pcaDrag.pinch = span;
+      pcaDrag.moved += 10;
+    } else {
+      pcaView.yaw += dx * 0.01;
+      pcaView.pitch = Math.max(-1.5, Math.min(1.5, pcaView.pitch + dy * 0.01));
+    }
+    if (pcaDrag.moved > 4) { $("pcaTip").hidden = true; pcaSoon(); }
+    return pcaDrag.moved > 4;
+  }
+  for (const type of ["pointerup", "pointercancel"]) $("pcaCanvas").addEventListener(type, (ev) => {
+    if (pcaDrag.at.delete(ev.pointerId) && !pcaDrag.at.size && pcaDrag.moved > 4) pcaSoon();     // the full cloud again
+  });
+  $("pcaCanvas").addEventListener("wheel", (ev) => {
+    if (pcaView.dim !== 3 || !ev.ctrlKey) return;
+    ev.preventDefault();
+    pcaView.zoom = Math.max(0.5, Math.min(4, pcaView.zoom * Math.exp(-ev.deltaY * 0.002)));
+    pcaSoon();
+  }, { passive: false });
   $("pcaColor").addEventListener("change", (e) => { pcaView.color = e.target.value; updatePcaColor(); });
   $("pcaX").addEventListener("change", (e) => { pcaView.ax[0] = parseInt(e.target.value, 10); drawPca(); });
   $("pcaY").addEventListener("change", (e) => { pcaView.ax[1] = parseInt(e.target.value, 10); drawPca(); });
   $("pcaArrows").addEventListener("change", (e) => { pcaView.arrows = e.target.checked; drawPca(); });
-  window.addEventListener("resize", () => { clearTimeout(drawPca.timer); drawPca.timer = setTimeout(drawPca, 150); });
+  window.addEventListener("resize", () => { clearTimeout(drawPca.timer); drawPca.timer = setTimeout(() => drawPca(), 150); });
   if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updatePcaColor);
 
   function nearestPoint(ev) {
@@ -1030,16 +1186,18 @@
     const i = hit.best.i, d = feat.pca, c = pcaView.colorData, v = c.values[i];
     tip.textContent = "";
     tip.appendChild(el("b", { text: feat.names[i] }));
-    tip.appendChild(el("div", { text: [0, 1].map((w) => "PC" + (pcaView.ax[w] + 1) + " " + d.scores[i * d.k + pcaView.ax[w]].toFixed(2)).join("   ") }));
+    const axes = pcaView.dim === 3 && d.k >= 3 ? [0, 1, 2] : pcaView.ax;
+    tip.appendChild(el("div", { text: axes.map((c) => "PC" + (c + 1) + " " + d.scores[i * d.k + c].toFixed(2)).join("   ") }));
     tip.appendChild(el("div", { text: c.label + ": " + (v == null || (typeof v === "number" && !Number.isFinite(v)) ? "no value" : typeof v === "number" ? fmt(v) : v) }));
     tip.hidden = false;
     tip.style.left = Math.max(0, Math.min(hit.width - tip.offsetWidth, hit.x + (hit.x > hit.width / 2 ? -tip.offsetWidth - 12 : 12))) + "px";
     tip.style.top = Math.max(0, hit.y - 10) + "px";
     return i;
   }
-  $("pcaCanvas").addEventListener("pointermove", pcaHover);
+  $("pcaCanvas").addEventListener("pointermove", (ev) => { if (!pcaTurn(ev)) pcaHover(ev); });
   $("pcaCanvas").addEventListener("pointerleave", () => { $("pcaTip").hidden = true; });
   $("pcaCanvas").addEventListener("click", (ev) => {
+    if (pcaView.dim === 3 && pcaDrag.moved > 4) return;       // the end of a turn, not a tap on a point
     const i = pcaHover(ev);
     if (i === null || !result) return;
     for (let r = 1; r < result.errors.length; r++) {
