@@ -10,6 +10,8 @@
     --bg: #f9f9f7; --panel: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781; --line: #e1e0d9; --axis: #c3c2b7;
     --accent: #1c5cab; --on-accent: #ffffff; --series-1: #2a78d6; --band: rgba(42, 120, 214, 0.07);
     --warn: #7a5200; --bad: #b02a2a;
+    --warm: #eb6834; --tint: rgba(42, 120, 214, 0.09); --tint-line: rgba(42, 120, 214, 0.35);
+    --pi80: rgba(42, 120, 214, 0.26); --pi95: rgba(42, 120, 214, 0.13);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -17,6 +19,8 @@
       --bg: #0d0d0d; --panel: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781; --line: #2c2c2a; --axis: #383835;
       --accent: #86b6ef; --on-accent: #0b0b0b; --series-1: #3987e5; --band: rgba(57, 135, 229, 0.10);
       --warn: #fab219; --bad: #e66767;
+      --warm: #d95926; --tint: rgba(57, 135, 229, 0.14); --tint-line: rgba(57, 135, 229, 0.45);
+      --pi80: rgba(57, 135, 229, 0.32); --pi95: rgba(57, 135, 229, 0.16);
     }
   }
   * { box-sizing: border-box; }
@@ -73,11 +77,24 @@
   .chk { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; font-size: 0.9rem; color: var(--ink); }
   #pcaCanvas { display: block; width: 100%; touch-action: pan-y; cursor: crosshair; }
   .seg { display: flex; align-items: center; margin: 4px 0 10px; }
-  .seg button:not(.plain) { font: inherit; min-width: 56px; padding: 7px 14px; border: 1px solid var(--axis); background: transparent; color: var(--ink); cursor: pointer; }
+  .seg button:not(.plain) { font: inherit; min-width: 56px; padding: 7px 14px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
   .seg button:not(.plain):first-child { border-radius: 6px 0 0 6px; }
   .seg button:not(.plain):nth-child(2) { border-radius: 0 6px 6px 0; border-left: 0; }
-  .seg button[aria-pressed=true] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .seg button[aria-pressed=true] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
   .seg button.plain { margin-left: 10px; }
+  .seg.wide { align-items: stretch; }
+  .seg.wide button { flex: 1 1 0; padding: 9px 10px; }
+  @media (min-width: 560px) { .seg.wide { max-width: 420px; } }
+  /* colour: numbered steps, tinted buttons, a band above the title */
+  body::before { content: ""; display: block; height: 5px; background: linear-gradient(90deg, var(--accent), var(--series-1) 45%, var(--warm)); }
+  h2 .num { display: inline-flex; align-items: center; justify-content: center; width: 1.55em; height: 1.55em; margin-right: 8px; border-radius: 50%;
+            background: var(--accent); color: var(--on-accent); font-size: 0.85em; font-weight: 600; vertical-align: 1px; }
+  button.tint { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--tint-line); background: var(--tint); color: var(--accent); font-weight: 600; cursor: pointer; }
+  .chart-head > .pair { display: flex; gap: 8px; flex: 1 1 200px; max-width: 520px; }
+  .pair button { flex: 1 1 0; white-space: nowrap; }
+  .tile { border-top: 3px solid var(--series-1); }
+  .legend { flex-wrap: wrap; row-gap: 4px; }
+  .legend i.box { height: 10px; border: 0; border-radius: 2px; }
   .pca-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 0.85rem; color: var(--ink2); margin-top: 8px; }
   .pca-legend button { font: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--axis);
                        border-radius: 14px; background: transparent; color: var(--ink); cursor: pointer; }
@@ -114,7 +131,7 @@
 
   <div id="panel-run" role="tabpanel" aria-labelledby="tab-run">
     <section>
-      <h2>1 Data</h2>
+      <h2><span class="num">1</span>Data</h2>
       <label for="example">A small example dataset</label>
       <select id="example"><option value="">loading…</option></select>
       <label for="file" style="margin-top:12px">or your own file: Excel (.xlsx), CSV or Monash .tsf</label>
@@ -147,7 +164,7 @@
     </section>
 
     <section>
-      <h2>2 Data characteristics</h2>
+      <h2><span class="num">2</span>Data characteristics</h2>
       <p id="charStatus" class="note" style="margin-top:0">Choose a dataset to see what its series look like.</p>
       <label id="charTsfRow" class="chk" hidden><input id="charTsf" type="checkbox"> Also compute the tsfeatures set (about 40 more
         characteristics per series: trend and seasonal strength, autocorrelations, entropy, unit-root statistics; slower)</label>
@@ -184,10 +201,15 @@
     </section>
 
     <section>
-      <h2>3 Model and settings</h2>
+      <h2><span class="num">3</span>Model and settings</h2>
+      <label id="purposeLabel">What do you want to do?</label>
+      <div class="seg wide" role="group" aria-labelledby="purposeLabel">
+        <button id="modeTest" type="button" aria-pressed="true">Test a method</button><button id="modeFuture" type="button" aria-pressed="false">Forecast the future</button>
+      </div>
+      <p id="modeNote" class="note" style="margin:0 0 12px"></p>
       <div class="grid">
         <div><label for="method">Method</label><select id="method" disabled><option>loading…</option></select></div>
-        <div><label for="horizon">Horizon (blank = file's)</label><input id="horizon" type="number" min="1" inputmode="numeric"></div>
+        <div><label id="horizonLabel" for="horizon">Horizon (blank = file's)</label><input id="horizon" type="number" min="1" inputmode="numeric"></div>
         <div><label for="maxSeries">Series to run (blank = all)</label><input id="maxSeries" type="number" min="1" inputmode="numeric" value="50"></div>
         <div><label for="missing">Missing values</label>
           <select id="missing"><option value="error">Stop and tell me</option><option value="locf">Carry last value forward</option>
@@ -200,27 +222,33 @@
     </section>
 
     <section id="results" hidden>
-      <h2>4 Results</h2>
+      <h2><span class="num">4</span>Results</h2>
       <p id="runInfo" class="note"></p>
       <div id="warnings"></div>
 
-      <h3>Summary of the error measures</h3>
-      <div class="scroll"><table id="summary"></table></div>
+      <div id="summaryBlock">
+        <h3>Summary of the error measures</h3>
+        <div class="scroll"><table id="summary"></table></div>
+      </div>
 
       <h3 id="fcTitle">Actual values and forecast</h3>
       <div class="chart-head">
         <div><label for="seriesSel">Series</label><select id="seriesSel"></select></div>
-        <button id="prevSeries" class="plain" type="button" aria-label="Previous series">‹ Previous</button>
-        <button id="nextSeries" class="plain" type="button" aria-label="Next series">Next ›</button>
+        <div class="pair">
+          <button id="prevSeries" class="tint" type="button" aria-label="Previous series">‹ Previous</button>
+          <button id="nextSeries" class="tint" type="button" aria-label="Next series">Next ›</button>
+        </div>
       </div>
-      <div class="legend"><span><i style="border-color:var(--ink2)"></i>Actual</span><span><i style="border-color:var(--series-1)"></i>Forecast</span></div>
+      <div id="fcLegend" class="legend"></div>
       <div id="fcChart" class="chart"></div>
       <p id="fcNote" class="note"></p>
 
-      <h3 id="histTitle">How the error is spread over the series</h3>
-      <div class="chart-head"><div><label for="metricSel">Error measure</label><select id="metricSel"></select></div></div>
-      <div id="histChart" class="chart"></div>
-      <p id="histNote" class="note"></p>
+      <div id="histBlock">
+        <h3 id="histTitle">How the error is spread over the series</h3>
+        <div class="chart-head"><div><label for="metricSel">Error measure</label><select id="metricSel"></select></div></div>
+        <div id="histChart" class="chart"></div>
+        <p id="histNote" class="note"></p>
+      </div>
 
       <h3>Result files</h3>
       <div class="row" style="margin-top:4px"><button id="downloadAll" class="act" type="button">Download all (.zip)</button></div>
@@ -236,6 +264,12 @@
         compared with the test part, one error value per series for each measure.</p>
       <p>Series too short for the split are left out and listed in the result. When a method fails on a series, that series
         receives the seasonal naive forecast instead; these fallbacks are counted and reported, never hidden.</p>
+      <p><b>Forecast the future</b> skips the test: the method sees the whole series and forecasts the steps after its last
+        observation, so there is nothing to compare the forecast with and no error is computed. With ten series or more the
+        page also gives 80% and 95% prediction intervals. They are split conformal intervals: the same method is fitted once
+        more without the last <i>horizon</i> observations, its errors on those observations (scaled per series, pooled over
+        the series, one set per step ahead) say how far off such a forecast usually is, and that spread is placed around the
+        new forecast. They assume the future errs like the recent past.</p>
       <p>Nothing on this tab runs a computation. The texts are the ones the desktop application shows for the same methods
         and measures.</p>
     </section>

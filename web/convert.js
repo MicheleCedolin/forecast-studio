@@ -746,7 +746,7 @@
     return build(interpret(rows, opt), name, opt);
   }
 
-  const api = { FREQUENCIES, ConvertError, isTsf, convert, parseDate, parseNumber };
+  const api = { FREQUENCIES, ConvertError, isTsf, convert, parseDate, parseNumber, advance, shortDate };
   root.TsfConvert = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof self !== "undefined" ? self : globalThis);

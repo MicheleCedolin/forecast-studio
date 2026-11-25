@@ -126,7 +126,7 @@
   function onLoaded(msg) {
     const info = pendingLoad.info, st = msg.stats;
     data = { name: msg.name, id: info ? info.id : msg.name.replace(/\.tsf$/i, ""), integer: !!(info && info.integer_conversion),
-             stats: st, header: msg.header };
+             stats: st, header: msg.header, noDates: !!pendingLoad.noDates };
     const len = st.len_min === st.len_max ? st.len_min + " observations each" : st.len_min + "–" + st.len_max + " observations";
     $("dataInfo").textContent = (info ? info.title + ": " : "") + st.n_series + " " + (st.frequency || "") + " series, " + len + ", " +
       pendingLoad.mb.toFixed(2) + " MB" + (st.missing_share > 0 ? ", " + (100 * st.missing_share).toFixed(1) + "% missing" : "") +
@@ -187,6 +187,7 @@
       $("convSave").hidden = false;
       const bytes = new TextEncoder().encode(r.text).buffer;
       sendFile(r.name, bytes, null);
+      pendingLoad.noDates = !!r.report.noDates;      // a table without dates: forecasts are numbered, not dated
     } catch (err) {
       if (table !== mine) return;
       converted = null;
@@ -395,21 +396,47 @@
   // ------------------------------------------------------------------------------------------- run
   const PILOT = 5;   // series timed first, to estimate the full run
 
+  const PI_MIN_SERIES = 10;   // prediction intervals pool the calibration errors over the series; fewer give no usable spread
+  let purpose = "test";       // "test": hold the last values back and measure the error; "future": forecast beyond the data
+
+  function setPurpose(p) {
+    purpose = p;
+    const future = p === "future";
+    $("modeTest").setAttribute("aria-pressed", String(!future));
+    $("modeFuture").setAttribute("aria-pressed", String(future));
+    $("horizonLabel").textContent = future ? "Steps ahead to forecast" : "Horizon (blank = file's)";
+    $("modeNote").textContent = future
+      ? "The method sees the whole of each series and forecasts the steps after its last observation. No error is computed, since " +
+        "there is nothing to compare with yet. With " + PI_MIN_SERIES + " series or more you also get 80% and 95% prediction intervals " +
+        "(the run then takes about twice as long)."
+      : "The last values of each series are held back, the method forecasts them from the rest, and the forecast is compared " +
+        "with what really happened. Use this to see how well a method works on your data.";
+    $("run").textContent = future ? "Forecast" : "Start run";
+  }
+  $("modeTest").addEventListener("click", () => setPurpose("test"));
+  $("modeFuture").addEventListener("click", () => setPurpose("future"));
+  setPurpose("test");
+
   $("run").addEventListener("click", () => {
+    const future = purpose === "future";
+    const h = $("horizon").value ? parseInt($("horizon").value, 10) : 0;
+    if (future && !(h >= 1)) { status("Enter how many steps ahead to forecast.", true); $("horizon").focus(); return; }
     const config = ["method=" + $("method").value, "missing_policy=" + $("missing").value, "threads=1", "eol=lf",
                     "dataset_id=" + data.id, "integer_conversion=" + (data.integer ? 1 : 0)];
-    if (learn) config.push("metrics=" + learn.metrics.map((x) => x.id).join(","));
-    if ($("horizon").value) config.push("horizon=" + parseInt($("horizon").value, 10));
+    if (learn) config.push("metrics=" + (future ? "MAE" : learn.metrics.map((x) => x.id).join(",")));
+    if (h >= 1) config.push("horizon=" + h);
     const limit = $("maxSeries").value ? Math.min(parseInt($("maxSeries").value, 10), data.stats.n_series) : data.stats.n_series;
     if ($("maxSeries").value) config.push("max_series=" + limit);
+    const intervals = future && limit >= PI_MIN_SERIES;
+    if (intervals) config.push("intervals=80,95");
     const pilot = limit > 4 * PILOT ? PILOT : 0;
     running = true;
     refresh();
-    pendingRun = { limit, started: performance.now(), estimate: null, timer: null };
+    pendingRun = { limit, started: performance.now(), estimate: null, timer: null, future, intervals };
     $("progress").hidden = false;
     $("progress").firstElementChild.style.width = "0";
-    status(pilot ? "Timing " + pilot + " series to estimate the run…" : "Running " + limit + " series…");
-    worker.postMessage({ type: "run", config, pilot });
+    status(pilot ? "Timing " + pilot + " series to estimate the run…" : (future ? "Forecasting " : "Running ") + limit + " series…");
+    worker.postMessage({ type: "run", config, pilot, future: future ? h : 0 });
   });
 
   function onEstimate(msg) {
@@ -434,7 +461,102 @@
   }
 
   // ------------------------------------------------------------------------------------------- results
+  // The date of a position in a series (0 = its first observation), from the series' start timestamp; null without one.
+  function stepDate(start, position, frequency) {
+    const t = start ? TsfConvert.parseDate(start) : null;
+    if (t == null || !TsfConvert.FREQUENCIES.includes(frequency)) return null;
+    return TsfConvert.shortDate(TsfConvert.advance(t, position, frequency), frequency);
+  }
+
+  // A forecast of the future: the run's forecasts (and bounds) without anything that compares them with stand-in values.
+  function showFuture(msg) {
+    const run = msg.files;
+    const manifest = JSON.parse(run["manifest.json"].replace(/\bNaN\b|-?\bInfinity\b/g, "null"));
+    const fc = run["forecasts.csv"].split("\n").filter((l) => l);
+    const excluded = new Set(manifest.split.excluded.map((e) => e.index));
+    const limit = manifest.config.max_series || manifest.dataset.n_series_total;
+    const origIndex = [];
+    for (let i = 0; i < limit; i++) if (!excluded.has(i)) origIndex.push(i);
+    const H = manifest.split.horizon, frequency = data.header.frequency, dated = !data.noDates;
+    const rows = fc.slice(1).map((l) => parseCsv(l)[0]);
+    const names = rows.map((r) => r[0]);
+    // bounds: intervals.csv holds one block of series rows per quantile
+    let bounds = null;
+    if (run["intervals.csv"]) {
+      bounds = {};
+      for (const r of parseCsv(run["intervals.csv"]).slice(1)) {
+        const q = String(Number(r[1]));
+        if (r.length > 2) (bounds[q] = bounds[q] || []).push(r.slice(2).map(num));
+      }
+      if (!["0.025", "0.1", "0.9", "0.975"].every((q) => bounds[q] && bounds[q].length === rows.length)) bounds = null;
+    }
+    const start = (r) => msg.info.starts[origIndex[r]], length = (r) => msg.info.lengths[origIndex[r]];
+    const date = (r, h) => (dated ? stepDate(start(r), length(r) + h, frequency) : null);     // h = 0 .. H-1
+    const anyDate = dated && rows.length > 0 && date(0, 0) !== null;
+    const lines = ["series,step" + (anyDate ? ",date" : "") + ",forecast" + (bounds ? ",lower_95,lower_80,upper_80,upper_95" : "")];
+    rows.forEach((r, i) => {
+      for (let h = 0; h < H; h++) {
+        const cells = [csvCell(r[0]), String(h + 1)];
+        if (anyDate) cells.push(date(i, h) || "");
+        cells.push(r[h + 1]);
+        if (bounds) for (const q of ["0.025", "0.1", "0.9", "0.975"]) cells.push(Number.isFinite(bounds[q][i][h]) ? String(bounds[q][i][h]) : "");
+        lines.push(cells.join(","));
+      }
+    });
+    const info = {
+      purpose: "forecast beyond the end of the data", dataset: manifest.dataset.id, method: manifest.config.method, frequency, horizon: H,
+      series_forecast: rows.length, series_in_file: manifest.dataset.n_series_total,
+      left_out: manifest.split.excluded.map((e) => ({ name: e.name, reason: /missing/.test(e.reason) ? e.reason : "too short for this horizon" })),
+      missing_values: manifest.config.missing_policy,
+      prediction_intervals: bounds ? "80% and 95%, split conformal: calibrated on the last " + H + " observations of the series" : null,
+      engine: manifest.engine || null, warnings: manifest.warnings,
+    };
+    const files = { "forecast_table.csv": lines.join("\n") + "\n", "forecasts.csv": run["forecasts.csv"],
+                    "forecast_info.json": JSON.stringify(info, null, 2) + "\n" };
+    if (run["fallbacks.csv"] && run["fallbacks.csv"].split("\n").filter((l) => l).length > 1) files["fallbacks.csv"] = run["fallbacks.csv"];
+    result = { future: true, files, manifest, fc, bounds, origIndex, H, date, anyDate, errors: [["series"]].concat(names.map((n) => [n])),
+               estimate: pendingRun && pendingRun.estimate, zipName: manifest.run_id + "_forecast" };
+
+    const span = anyDate ? " (" + date(0, 0) + (H > 1 ? " to " + date(0, H - 1) : "") + " for " + names[0] + ")" : "";
+    $("runInfo").textContent = manifest.dataset.id + ", " + manifest.config.method + ": forecast of " + rows.length + " of " +
+      manifest.dataset.n_series_total + " series, " + H + " step" + (H > 1 ? "s" : "") + " after the last observation" + span +
+      ". Time on this device: " + msg.seconds.toFixed(1) + " s.";
+    const w = $("warnings");
+    w.textContent = "";
+    if (manifest.split.excluded.length)
+      w.appendChild(el("p", { class: "warning", text: manifest.split.excluded.length + " series were left out (too short for this horizon" +
+        (bounds ? " with prediction intervals" : "") + ", or without values): " +
+        manifest.split.excluded.slice(0, 5).map((e) => e.name).join(", ") + (manifest.split.excluded.length > 5 ? ", …" : "") + "." }));
+    for (const text of manifest.warnings) if (/fallback/i.test(text)) w.appendChild(el("p", { class: "warning", text }));
+    if (!bounds) w.appendChild(el("p", { class: "note", text: pendingRun && pendingRun.intervals
+      ? "Prediction intervals could not be computed for this run."
+      : "No prediction intervals: they need at least " + PI_MIN_SERIES + " series, because the spread is learned from the errors of all series together." }));
+    showCommon(files, names);
+  }
+
+  // What both kinds of result share: which blocks show, the series list, the files.
+  function showCommon(files, names) {
+    const future = !!result.future;
+    $("summaryBlock").hidden = future;
+    $("histBlock").hidden = future;
+    const sSel = $("seriesSel");
+    sSel.textContent = "";
+    names.forEach((n, i) => sSel.appendChild(el("option", { value: String(i), text: n })));
+    const list = $("files");
+    list.textContent = "";
+    for (const name of Object.keys(files).sort()) {
+      const a = el("a", { download: name, text: name });
+      a.href = URL.createObjectURL(new Blob([files[name]], { type: name.endsWith(".json") ? "application/json" : "text/csv" }));
+      list.appendChild(a);
+    }
+    $("results").hidden = false;
+    requestSeries(0);
+    if (!future) drawHistogram();
+    updatePcaColor();              // the map can now be coloured by this run's errors
+  }
+
   function showResults(msg) {
+    if (msg.future) { showFuture(msg); return; }
     const files = msg.files;
     const manifest = JSON.parse(files["manifest.json"].replace(/\bNaN\b|-?\bInfinity\b/g, "null"));
     const fc = files["forecasts.csv"].split("\n").filter((l) => l), ac = files["test_actuals.csv"].split("\n").filter((l) => l);
@@ -463,26 +585,12 @@
       table.appendChild(tr);
     });
 
-    const sSel = $("seriesSel");
-    sSel.textContent = "";
-    for (let i = 1; i < errors.length; i++) sSel.appendChild(el("option", { value: String(i - 1), text: errors[i][0] }));
     const mSel = $("metricSel");
     mSel.textContent = "";
     errors[0].slice(1).forEach((name, j) => mSel.appendChild(el("option", { value: String(j + 1), text: name })));
     const mase = errors[0].indexOf("MASE");
     if (mase > 0) mSel.value = String(mase);
-
-    const list = $("files");
-    list.textContent = "";
-    for (const name of Object.keys(files).sort()) {
-      const a = el("a", { download: name, text: name });
-      a.href = URL.createObjectURL(new Blob([files[name]], { type: name.endsWith(".json") ? "application/json" : "text/csv" }));
-      list.appendChild(a);
-    }
-    $("results").hidden = false;
-    requestSeries(0);
-    drawHistogram();
-    updatePcaColor();              // the map can now be coloured by this run's errors
+    showCommon(files, errors.slice(1).map((r) => r[0]));
   }
 
   // ---- forecast chart
@@ -525,18 +633,28 @@
   }
 
   function drawForecast(values) {
-    const H = result.H, row = result.row;
+    const H = result.H, row = result.row, future = !!result.future;
     const name = parseCsv(result.fc[row + 1])[0][0];
     const forecast = parseCsv(result.fc[row + 1])[0].slice(1).map(num);
-    const actual = parseCsv(result.ac[row + 1])[0].slice(1).map(num);
-    const train = Array.from(values.subarray(0, values.length - H));
+    const actual = future ? [] : parseCsv(result.ac[row + 1])[0].slice(1).map(num);
+    const train = future ? Array.from(values) : Array.from(values.subarray(0, values.length - H));
     const shown = Math.min(train.length, Math.max(3 * H, 36));
     const hist = train.slice(train.length - shown);
-    $("fcTitle").textContent = "Actual values and forecast: " + name;
+    const pi = future && result.bounds ? { lo95: result.bounds["0.025"][row], lo80: result.bounds["0.1"][row],
+                                           hi80: result.bounds["0.9"][row], hi95: result.bounds["0.975"][row] } : null;
+    $("fcTitle").textContent = (future ? "Forecast of the future: " : "Actual values and forecast: ") + name;
+    const legend = $("fcLegend");
+    legend.textContent = "";
+    legend.appendChild(el("span", {}, el("i", { style: "border-color:var(--ink2)" }), document.createTextNode(future ? "Observed" : "Actual")));
+    legend.appendChild(el("span", {}, el("i", { style: "border-color:var(--series-1)" }), document.createTextNode("Forecast")));
+    if (pi) {
+      legend.appendChild(el("span", {}, el("i", { class: "box", style: "background:var(--pi80)" }), document.createTextNode("80% interval")));
+      legend.appendChild(el("span", {}, el("i", { class: "box", style: "background:var(--pi95)" }), document.createTextNode("95% interval")));
+    }
 
     result.values = values;
     const W = chartWidth($("fcChart")), Hh = W < 480 ? 230 : 270, m = { l: 48, r: 12, t: 10, b: 30 };
-    const all = hist.concat(actual, forecast).filter(Number.isFinite);
+    const all = hist.concat(actual, forecast, pi ? pi.lo95.concat(pi.hi95) : []).filter(Number.isFinite);
     let lo = Math.min(...all), hi = Math.max(...all);
     if (lo === hi) { lo -= 1; hi += 1; }
     const pad = (hi - lo) * 0.06;
@@ -547,8 +665,11 @@
     const y = (v) => m.t + (Hh - m.t - m.b) * (1 - (v - y0) / (y1 - y0));
 
     const root = svg("svg", { viewBox: "0 0 " + W + " " + Hh, role: "img",
-                              "aria-label": "Line chart of series " + name + ": the last " + shown + " training values, the " + H +
-                                            " actual test values and the forecast." });
+                              "aria-label": future
+                                ? "Line chart of series " + name + ": its last " + shown + " observations and the forecast of the next " + H + " steps" +
+                                  (pi ? " with 80% and 95% prediction intervals." : ".")
+                                : "Line chart of series " + name + ": the last " + shown + " training values, the " + H +
+                                  " actual test values and the forecast." });
     for (const v of ty.values) {
       root.appendChild(svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "var(--line)", "stroke-width": 1 }));
       root.appendChild(svg("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end", text: fmt(v) }));
@@ -568,6 +689,15 @@
 
     const pts = (arr, offset) => arr.map((v, i) => (Number.isFinite(v) ? [x(offset + i), y(v)] : null));
     const last = Number.isFinite(hist[shown - 1]) ? [[x(shown - 1), y(hist[shown - 1])]] : [null];
+    if (pi) {       // the wider band first; both fan out from the last observation
+      for (const [lo, hi, fill] of [[pi.lo95, pi.hi95, "var(--pi95)"], [pi.lo80, pi.hi80, "var(--pi80)"]]) {
+        const up = [], down = [];
+        for (let h = 0; h < H; h++) if (Number.isFinite(lo[h]) && Number.isFinite(hi[h])) { up.push([x(shown + h), y(hi[h])]); down.push([x(shown + h), y(lo[h])]); }
+        if (!up.length) continue;
+        const ring = (last[0] ? [last[0]] : []).concat(up, down.reverse());
+        root.appendChild(svg("path", { d: ring.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join("") + "Z", fill }));
+      }
+    }
     root.appendChild(svg("path", { d: linePath(pts(hist, 0).concat(pts(actual, shown))), fill: "none", stroke: "var(--ink2)", "stroke-width": 2,
                                    "stroke-linejoin": "round", "stroke-linecap": "round" }));
     root.appendChild(svg("path", { d: linePath(last.concat(pts(forecast, shown))), fill: "none", stroke: "var(--series-1)", "stroke-width": 2,
@@ -594,13 +724,18 @@
       cross.setAttribute("visibility", "visible");
       tip.textContent = "";
       if (i < shown) {
-        tip.appendChild(el("b", { text: (shown - i) + " before the forecast start" }));
-        tip.appendChild(el("div", { text: "Actual " + fmt(hist[i]) }));
+        const when = future && result.anyDate ? result.date(row, i - shown) : null;
+        tip.appendChild(el("b", { text: when || (shown - i) + " before the forecast start" }));
+        tip.appendChild(el("div", { text: (future ? "Observed " : "Actual ") + fmt(hist[i]) }));
       } else {
-        const h = i - shown;
-        tip.appendChild(el("b", { text: "Step +" + (h + 1) }));
-        tip.appendChild(el("div", { text: "Actual " + fmt(actual[h]) }));
+        const h = i - shown, when = future && result.anyDate ? result.date(row, h) : null;
+        tip.appendChild(el("b", { text: "Step +" + (h + 1) + (when ? " · " + when : "") }));
+        if (!future) tip.appendChild(el("div", { text: "Actual " + fmt(actual[h]) }));
         tip.appendChild(el("div", { text: "Forecast " + fmt(forecast[h]) }));
+        if (pi) {
+          tip.appendChild(el("div", { text: "80%: " + fmt(pi.lo80[h]) + " to " + fmt(pi.hi80[h]) }));
+          tip.appendChild(el("div", { text: "95%: " + fmt(pi.lo95[h]) + " to " + fmt(pi.hi95[h]) }));
+        }
       }
       tip.hidden = false;
       const left = ((x(i) / W) * r.width);
@@ -611,6 +746,13 @@
     root.addEventListener("pointerdown", move);
     root.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
 
+    if (future) {
+      const d0 = result.anyDate ? result.date(row, 0) : null, d1 = result.anyDate ? result.date(row, H - 1) : null;
+      $("fcNote").textContent = "Showing the last " + shown + " of " + train.length + " observations and the forecast of the next " + H + " step" +
+        (H > 1 ? "s" : "") + (d0 ? " (" + d0 + (H > 1 ? " to " + d1 : "") + ")" : "") + "." +
+        (pi ? " The bands say how far such forecasts were off on the last " + H + " observations of the series; they are a guide, not a guarantee." : "");
+      return;
+    }
     const e = result.errors[row + 1], head = result.errors[0];
     $("fcNote").textContent = "Showing the last " + shown + " of " + train.length + " training values. This series: " +
       head.slice(1, 5).map((nm, j) => nm + " " + fmt(num(e[j + 1]))).join(", ") + ".";
@@ -618,7 +760,7 @@
 
   // ---- distribution of a measure over the series
   function drawHistogram() {
-    if (!result) return;
+    if (!result || result.future) return;
     const col = parseInt($("metricSel").value, 10), name = result.errors[0][col];
     const raw = result.errors.slice(1).map((r) => num(r[col]));
     const vals = raw.filter(Number.isFinite).sort((a, b) => a - b);
@@ -738,7 +880,7 @@
   }
   $("downloadAll").addEventListener("click", () => {
     if (!result) return;
-    const a = el("a", { download: result.manifest.run_id + ".zip" });
+    const a = el("a", { download: (result.zipName || result.manifest.run_id) + ".zip" });
     a.href = URL.createObjectURL(zip(feat ? Object.assign({ "characteristics.csv": featuresCsv() }, result.files) : result.files));
     document.body.appendChild(a);
     a.click();
@@ -798,7 +940,7 @@
     const sel = $("pcaColor"), keep = pcaView.color;
     sel.textContent = "";
     sel.appendChild(el("option", { value: "class", text: "Demand pattern" }));
-    if (result) {
+    if (result && !result.future) {
       const og = el("optgroup", { label: "Error of the last run (" + result.manifest.config.method + ")" });
       result.errors[0].slice(1).forEach((m) => og.appendChild(el("option", { value: "run:" + m, text: m })));
       sel.appendChild(og);
@@ -814,7 +956,7 @@
   function pcaColorData() {
     const [kind, rest] = pcaView.color.split(/:(.*)/);
     if (kind === "feature") return { kind: "num", label: rest, values: column(rest) };
-    if (kind === "run" && result) {
+    if (kind === "run" && result && !result.future) {
       const j = result.errors[0].indexOf(rest), by = new Map();
       for (let i = 1; i < result.errors.length; i++) by.set(result.errors[i][0], num(result.errors[i][j]));
       return { kind: "num", label: rest + " of " + result.manifest.config.method, values: feat.names.map((n) => (by.has(n) ? by.get(n) : NaN)),
@@ -1107,7 +1249,7 @@
       " principal components, coloured by " + pcaView.colorData.label + ".");
     $("pcaNote").textContent = (three ? "Drag to turn the map, pinch (or Ctrl and the mouse wheel) to zoom. " : "") +
       (pcaView.colorData.partial ? "Series outside the last run have no value and are drawn hollow. " : "") +
-      (result ? "Tap a point to see that series in the forecast chart below." : "After a run you can also colour the map by the error of each series.");
+      (result ? "Tap a point to see that series in the forecast chart below." : "After a test run you can also colour the map by the error of each series.");
     renderPcaLegend();
     drawPca();
   }

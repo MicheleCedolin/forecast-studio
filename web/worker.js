@@ -3,8 +3,9 @@
 //   { type: "series", index, token }     the values of one series of the loaded file (for the chart)
 //   { type: "features", token, tsfeatures }   characteristics of every series of the loaded file and their PCA;
 //                                        tsfeatures adds that set (slower; "featuresProgress" messages report it)
-//   { type: "run", config, pilot }       tsf_run with the "key=value" lines in config; pilot > 0 first times that many
-//                                        series and reports it, so the page can show an estimate before the full run
+//   { type: "run", config, pilot, future }   tsf_run with the "key=value" lines in config; pilot > 0 first times that
+//                                        many series and reports it, so the page can show an estimate before the full
+//                                        run; future > 0 forecasts that many steps beyond the data (writeFutureCopy)
 const V = self.location.search;   // "?v=<commit id>" from the page: the engine files are fetched with the same version
 importScripts("tsfcore.js" + V, "features.js" + V);
 
@@ -55,10 +56,54 @@ function series(index) {
   }
 }
 
+// Forecasting beyond the end of the data with tsf_run, which always sets the last `horizon` values of a series aside:
+// a copy of the file in which every series is followed by `horizon` stand-in values (its last known value). The run
+// then trains on the whole real series and its forecast is the forecast of the future; the stand-ins are only the
+// "test part", whose errors the page throws away. With intervals, the calibration window is the last `horizon` real
+// values, so the bounds come from real errors.
+const FUTURE_PATH = "/data/__future.tsf";
+function writeFutureCopy(horizon) {
+  const text = core.FS.readFile(dataPath, { encoding: "utf8" });
+  const out = [];
+  let inData = false;
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    if (!inData || !line.trim() || line[0] === "#") {
+      out.push(line);
+      if (/^@data\b/i.test(line.trim())) inData = true;
+      continue;
+    }
+    const cut = line.lastIndexOf(":");
+    const values = line.slice(cut + 1).split(",");
+    let last = "0";
+    for (let i = values.length - 1; i >= 0; i--) { const v = values[i].trim(); if (v && v !== "?") { last = v; break; } }
+    out.push(line + ("," + last).repeat(horizon));
+  }
+  core.FS.writeFile(FUTURE_PATH, out.join("\n"));
+}
+
+// Start timestamp and length of every series of the loaded file (for the dates of a forecast of the future).
+function seriesInfo() {
+  const header = JSON.parse(core.UTF8ToString(core._tsf_io_header_json(handle)));
+  const stats = JSON.parse(core.UTF8ToString(core._tsf_io_stats_json(handle)));
+  const startAttr = header.attributes.findIndex((a) => a[0] === "start_timestamp");
+  const starts = [], lengths = [], lenPtr = core._malloc(8);
+  try {
+    for (let i = 0; i < stats.n_series; i++) {
+      core._tsf_io_series(handle, BigInt(i), lenPtr);
+      lengths.push(Number(core.HEAP64[lenPtr >> 3]));
+      starts.push(startAttr >= 0 ? core.UTF8ToString(core._tsf_io_attr(handle, BigInt(i), startAttr)) : "");
+    }
+  } finally {
+    core._free(lenPtr);
+  }
+  return { starts, lengths };
+}
+
 // One tsf_run; returns { name: text } of the files it wrote and removes them from the in-memory file system.
-function runOnce(lines) {
+function runOnce(lines, path) {
   const runDir = core._malloc(1024), msg = core._malloc(2048);
-  const pPath = cstr(dataPath), pOut = cstr("/runs"), pCfg = cstr(lines.join("\n"));
+  const pPath = cstr(path || dataPath), pOut = cstr("/runs"), pCfg = cstr(lines.join("\n"));
   try {
     const rc = core._tsf_run(pPath, pOut, pCfg, runDir, 1024, msg, 2048);
     if (rc !== 0) throw new Error(core.UTF8ToString(msg) || "The run failed (code " + rc + ").");
@@ -101,14 +146,21 @@ onmessage = async (event) => {
       postMessage({ type: "features", token: m.token, names: f.names, columns: f.columns, table: f.table, classes: f.classes, pca, pcaError, sets, tsfeatures: !!m.tsfeatures,
                     seconds: (performance.now() - t0) / 1000 });
     } else if (m.type === "run") {
-      if (m.pilot > 0) {
-        const t0 = performance.now();
-        runOnce(m.config.filter((l) => !l.startsWith("max_series=")).concat("max_series=" + m.pilot));
-        postMessage({ type: "estimate", seconds: (performance.now() - t0) / 1000, series: m.pilot });
+      const path = m.future > 0 ? FUTURE_PATH : null;
+      if (path) writeFutureCopy(m.future);
+      try {
+        if (m.pilot > 0) {
+          const t0 = performance.now();
+          runOnce(m.config.filter((l) => !l.startsWith("max_series=")).concat("max_series=" + m.pilot), path);
+          postMessage({ type: "estimate", seconds: (performance.now() - t0) / 1000, series: m.pilot });
+        }
+        const started = performance.now();
+        const files = runOnce(m.config, path);
+        postMessage({ type: "done", files, seconds: (performance.now() - started) / 1000, future: m.future || 0,
+                      info: path ? seriesInfo() : null });
+      } finally {
+        if (path) { try { core.FS.unlink(path); } catch (e) { /* gone */ } }
       }
-      const started = performance.now();
-      const files = runOnce(m.config);
-      postMessage({ type: "done", files, seconds: (performance.now() - started) / 1000 });
     }
   } catch (err) {
     postMessage({ type: "error", stage: m.type, message: String(err && err.message ? err.message : err) });
