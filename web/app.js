@@ -1131,7 +1131,19 @@
 
   // turning and zooming the 3D map
   const pcaDrag = { at: new Map(), moved: 0, pinch: 0, frame: 0 };
-  const pcaSoon = () => { if (!pcaDrag.frame) pcaDrag.frame = requestAnimationFrame(() => { pcaDrag.frame = 0; drawPca(pcaDrag.at.size > 0); }); };
+  // one redraw per animation frame; the timer covers a frame the browser drops (a page in the background), which
+  // would otherwise leave the map waiting for it for good
+  const pcaSoon = () => {
+    if (pcaDrag.frame) return;
+    const run = () => {
+      if (!pcaDrag.frame) return;
+      cancelAnimationFrame(pcaDrag.frame); clearTimeout(pcaDrag.timer);
+      pcaDrag.frame = 0;
+      drawPca(pcaDrag.at.size > 0);
+    };
+    pcaDrag.frame = requestAnimationFrame(run);
+    pcaDrag.timer = setTimeout(run, 150);
+  };
   const pcaSpan = () => { const p = [...pcaDrag.at.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); };
   $("pcaCanvas").addEventListener("pointerdown", (ev) => {
     if (pcaView.dim !== 3) return;
