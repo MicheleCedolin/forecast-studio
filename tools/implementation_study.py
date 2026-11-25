@@ -39,10 +39,10 @@ LOCAL = ["snaive", "ses", "theta", "ets", "arima", "dhr_arima", "tbats"]
 GLOBAL = ["pooled_regression", "catboost"]
 DATASETS = ["m1_yearly", "m1_quarterly", "m1_monthly", "m3_yearly", "m3_quarterly", "m3_monthly", "m3_other",
             "tourism_yearly", "tourism_quarterly", "tourism_monthly", "fred_md", "nn5_weekly", "hospital",
-            "car_parts", "m4_weekly"]
-# headers without @horizon: the horizon of the Monash archive's own evaluation (cif_2016 is left out: its horizon
-# differs from series to series)
-HORIZON = {"fred_md": 12}
+            "car_parts", "m4_weekly", "cif_2016"]
+# headers without @horizon: the prediction length of the Monash archive on Hugging Face (Monash-University/monash_tsf).
+# cif_2016 gives each series its own horizon (57 series 12, 15 series 6); Hugging Face uses 12 for all, and so do we.
+HORIZON = {"fred_md": 12, "cif_2016": 12}
 SCALING_N = [100, 1000, 10000, 48000]
 SCALING_METHODS = ["ets", "theta", "arima"]
 TIMEOUT = 3 * 3600
