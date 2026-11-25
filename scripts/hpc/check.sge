@@ -1,0 +1,17 @@
+#!/bin/bash
+# Agreement checks of the C++ build on a compute node (SGE): the same tests as on the development machine.
+#   qsub scripts/hpc/check.sge      then read sge-tsf-check.<job id>.log
+#$ -N tsf-check
+#$ -S /bin/bash
+#$ -cwd
+#$ -q all.q
+#$ -pe smp 8
+#$ -j y
+#$ -o sge-$JOB_NAME.$JOB_ID.log
+cd "${SGE_O_WORKDIR:-$PWD}"
+source scripts/hpc/activate.sh || exit 1
+export TSFSTUDIO_CPP_THREADS="${NSLOTS:-8}" OMP_NUM_THREADS="${NSLOTS:-8}" OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+echo "host $(hostname) | $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2) | glibc $(ldd --version | head -1 | awk '{print $NF}')"
+python -m tsfstudio engines
+python -m pytest tests/test_cpp_engine.py tests/test_golden_nn5.py tests/test_sweep.py -q -p no:cacheprovider
+echo "pytest exit code: $?  (0 = every check agrees; otherwise the failing lines above name the method and the difference)"

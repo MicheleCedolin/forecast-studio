@@ -18,10 +18,24 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(tsfcore PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3 -Wall -Wextra>)
   # catch22 is compiled like R builds Rcatch22 (-O2, warnings off: the code is kept verbatim).
   target_compile_options(tsfcore PRIVATE $<$<COMPILE_LANGUAGE:C>:-O2 -std=gnu99 -w>)
+  # Linux: -DTSF_STATIC_RUNTIME=ON puts libstdc++ / libgcc inside tsfcore.so. Needed when the compiler is newer than the
+  # system's (an old cluster with a conda or devtoolset compiler): the library then loads without that compiler's
+  # C++ runtime. libquadmath stays a shared library (see below); a conda compiler records its folder in the run path.
+  option(TSF_STATIC_RUNTIME "Link libstdc++ and libgcc statically (non-Windows)" OFF)
+  if(TSF_STATIC_RUNTIME AND NOT MINGW)
+    target_link_options(tsfcore PRIVATE -static-libgcc -static-libstdc++)
+  endif()
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # correctly rounded sin / cos for R's Fourier terms (autoarima.cpp)
-    find_library(QUADMATH_LIB quadmath)
-    if(QUADMATH_LIB)
+    # A link test, not find_library: on Linux libquadmath lives in GCC's own directory, which find_library does not
+    # search, while autoarima.cpp uses sinq / cosq whenever <quadmath.h> exists (unresolved symbol at load time).
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_LIBRARIES quadmath)
+    check_cxx_source_compiles("#include <quadmath.h>
+int main(int argc, char**) { return static_cast<int>(sinq(static_cast<__float128>(argc))); }" HAVE_QUADMATH)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    if(HAVE_QUADMATH)
+      # always the shared libquadmath: its static archive is not position independent and cannot go into tsfcore.so
       target_link_libraries(tsfcore PRIVATE quadmath)
     endif()
   endif()

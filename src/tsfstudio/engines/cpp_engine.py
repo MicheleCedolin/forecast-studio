@@ -6,6 +6,10 @@ Each method follows its Python counterpart (py_models.py) step by step; tests/te
 
 Library lookup: $TSFSTUDIO_CPP_LIB, else src/tsfstudio/native/tsfcore.dll (.so on Linux). If it is missing the engine
 reports itself unavailable; the Python engine keeps working.
+
+Threads: `workers` > 1 gives that many threads, otherwise all CPU cores of the machine. $TSFSTUDIO_CPP_THREADS, when set,
+fixes the number exactly (1 included) for the local methods, LightGBM and CatBoost. A batch job needs it: the library
+counts the cores of the node, not those the scheduler granted, and a timing is only comparable at a known thread count.
 """
 from __future__ import annotations
 
@@ -41,7 +45,7 @@ def load_lib():
             return _LIB
         p = _lib_path()
         if not p.is_file():
-            _LIB_ERR = f"native library not found: {p} (build it with cpp/build.ps1)"
+            _LIB_ERR = f"native library not found: {p} (build it with cpp/build.ps1, or cpp/build.sh on Linux)"
             return None
         try:
             lib = ctypes.CDLL(str(p))
@@ -73,6 +77,20 @@ def load_lib():
         except OSError as exc:
             _LIB_ERR = f"could not load {p}: {exc}"
         return _LIB
+
+
+def fixed_threads() -> int | None:
+    """The thread count set by $TSFSTUDIO_CPP_THREADS, or None."""
+    env = os.environ.get("TSFSTUDIO_CPP_THREADS", "").strip()
+    if not env:
+        return None
+    try:
+        n = int(env)
+    except ValueError:
+        raise EngineError(f"TSFSTUDIO_CPP_THREADS must be a whole number >= 1, got {env!r}") from None
+    if n < 1:
+        raise EngineError(f"TSFSTUDIO_CPP_THREADS must be a whole number >= 1, got {env!r}")
+    return n
 
 
 def _ptr(a: np.ndarray, ctype):
@@ -269,6 +287,8 @@ def lightgbm(train: list[np.ndarray], lag: int, h: int, max_obs: int | None = No
         p = lightgbm_params(params, workers)
     except ValueError as exc:
         raise EngineError(str(exc)) from exc
+    if fixed_threads() is not None:
+        p["num_threads"] = fixed_threads()
     rounds = p.pop("num_iterations")
     n = len(train)
     lens = np.array([len(s) for s in train], dtype=np.int64)
@@ -299,6 +319,8 @@ def lightgbm_feat(train: list[np.ndarray], lag: int, h: int, m: int, max_obs: in
         p = lightgbm_params(params, workers)
     except ValueError as exc:
         raise EngineError(str(exc)) from exc
+    if fixed_threads() is not None:
+        p["num_threads"] = fixed_threads()
     rounds = p.pop("num_iterations")
     n = len(train)
     lens = np.array([len(s) for s in train], dtype=np.int64)
@@ -360,6 +382,7 @@ class CppEngine(Engine):
                     raise EngineError("The C++ catboost uses CatBoost's defaults (RMSE, random seed 0); custom CatBoost "
                                       "parameters need the Python engine.")
                 threads = int(job.workers) if job.workers and int(job.workers) > 1 else -1
+                threads = fixed_threads() or threads
                 f = catboost(list(job.train), int(job.lag), job.horizon, max_obs, threads)
             elif job.method == "lightgbm":
                 f = lightgbm(list(job.train), int(job.lag), job.horizon, max_obs, (job.params or {}).get("lightgbm"),
@@ -389,6 +412,7 @@ class CppEngine(Engine):
         if progress:
             progress("forecasting", 0, n)
         threads = int(job.workers) if job.workers and int(job.workers) > 1 else 0      # 0 = all CPU cores
+        threads = fixed_threads() or threads
         f, flags, msg = forecast_batch(spec, list(job.train), job.horizon, job.seasonality, job.horizons, threads)
         if job.integer_conversion:
             f = np.round(f)
