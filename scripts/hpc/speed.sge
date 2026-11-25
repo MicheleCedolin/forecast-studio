@@ -1,0 +1,20 @@
+#!/bin/bash
+# Engine speed study on SGE (Grid Engine), one node, 32 slots. See docs/HPC_SPEED.md.
+#
+#   qsub scripts/hpc/speed.sge                                        # C++ on 1,2,4,8,16,32 threads; Python and R on 1 and 32
+#   qsub -v SPEED_ENGINES=cpp scripts/hpc/speed.sge                   # the C++ engine only
+#   qsub -v SPEED_EXTRA=--dry-run scripts/hpc/speed.sge               # print the plan into the log and stop
+#   SPEED_DATASETS=nn5_weekly,m3_monthly qsub -V scripts/hpc/speed.sge   # values with commas: export, then -V
+#
+# Submit from the repository root. Submitting again continues where the last job stopped.
+# For times that go into a paper the node should do nothing else: ask for all its slots (edit "-pe smp" to the
+# node's slot count and set SPEED_CORES=32 if the node has more), or state that the node was shared.
+#$ -N tsf-speed
+#$ -S /bin/bash
+#$ -cwd
+#$ -q all.q
+#$ -pe smp 32
+#$ -j y
+#$ -o sge-$JOB_NAME.$JOB_ID.log
+cd "${SGE_O_WORKDIR:-$PWD}"
+exec bash scripts/hpc/run_speed.sh
