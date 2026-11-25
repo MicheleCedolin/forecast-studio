@@ -15,7 +15,7 @@ Michele Cedolin
 
 ## Abstract
 
-Forecast Studio is an open-source platform that makes time-series forecasting available to users who do not program. Data are loaded from an Excel sheet or a Monash `.tsf` file, a method is chosen from a list in which every entry is explained, and forecasts, accuracy measures and charts are returned together with a record of how they were produced. The platform has two editions: a desktop application with 45 methods, and a browser edition that needs no installation and runs on a phone, with the data never leaving the device. Both are built on tsfcore, a C++17 library in which the forecasting methods are implemented, among them ports of the automatic ETS, ARIMA and TBATS procedures of the R forecast package. The ports agree with their reference implementations to numerical precision and run SPEEDUP_ABSTRACT, which turns batch forecasting of thousands of series into an interactive task.
+Forecast Studio is an open-source platform that makes time-series forecasting available to users who do not program. Data are loaded from an Excel sheet or a Monash `.tsf` file, a method is chosen from a list in which every entry is explained, and forecasts, accuracy measures and charts are returned together with a record of how they were produced. The platform has two editions: a desktop application with 53 methods, and a browser edition that needs no installation and runs on a phone, with the data never leaving the device. Both are built on tsfcore, a C++17 library in which the forecasting methods are implemented, among them ports of the automatic ETS, ARIMA and TBATS procedures of the R forecast package. The ports agree with their reference implementations to numerical precision and run, on one processor core, about 14 times faster than R for ETS and ARIMA and about 40 times faster for TBATS, which turns batch forecasting of thousands of series into an interactive task.
 
 **Keywords:** time series forecasting; no-code software; C++; WebAssembly; open-source software; reproducibility
 
@@ -77,13 +77,13 @@ The repository holds 404 automated test cases covering the data format, the meas
 
 **Data.** A catalogue of 43 files of the Monash archive [9] with default horizons, any `.tsf` file, or an Excel workbook: a template is provided, and the converter reports input errors by cell address. Before any method is run, the platform reports frequency, number and length of series, shares of missing and zero values and the demand-pattern classes of Syntetos et al. [10], and can compute the catch22 [11] and tsfeatures [12] characteristics and draw a principal-component map of the series.
 
-**Methods.** The desktop edition offers 45 methods (Table 2): 42 on the C++ engine, all 45 on the Python engine, and 25 on the R engine, which calls the functions of the R packages forecast, thief, MAPA and smooth directly. Running a method on the C++ engine and on its R or Python counterpart is therefore a matter of changing one setting. The browser edition offers the 37 local and intermittent-demand methods. A method whose engine is not installed is marked and cannot be started.
+**Methods.** The desktop edition offers 53 methods (Table 2): 50 on the C++ engine, 48 on the Python engine and 39 on the R engine. The R and Python engines call the functions of the established libraries directly (in R the packages forecast, thief, MAPA, smooth, tsintermittent and forecTheta; in Python StatsForecast and the gradient-boosting libraries), so running a method on the C++ engine and on its library counterpart is a matter of changing one setting. The browser edition offers the 45 local and intermittent-demand methods. A method whose engine is not installed is marked and cannot be started.
 
 **Table 2.** Methods by group.
 
 | Group | Count | Examples |
 |:--|--:|:--|
-| Local (one model per series) | 30 | naive benchmarks, SES, Holt, Holt-Winters, Theta [13], automatic ETS and ARIMA [1], TBATS [14], dynamic harmonic regression, STL-based methods, bagged ETS [15], temporal aggregation (THieF [16], MAPA [17]), CES, MFLES, combinations |
+| Local (one model per series) | 38 | naive benchmarks, SES, Holt, Holt-Winters, Theta [13] and its variants, automatic ETS and ARIMA [1], TBATS and BATS [14], dynamic harmonic regression, STL-based methods, bagged ETS [15], temporal aggregation (THieF [16], MAPA [17]), CES, MFLES, structural time series, double seasonal Holt-Winters, neural network autoregression, regression on trend and season, combinations |
 | Intermittent demand | 7 | Croston variants, SBA, TSB, ADIDA, IMAPA, zero forecast |
 | Global (one model for all series) | 8 | pooled regression, CatBoost [8], three LightGBM variants [7], N-HiTS [18], N-BEATS [19], Chronos-Bolt [20] |
 
@@ -106,6 +106,20 @@ The repository holds 404 automated test cases covering the data format, the meas
 | LightGBM, CatBoost | Python packages | bit-identical |
 | Theta variants, MFLES | StatsForecast 2.1.1 | within $1.3\times10^{-14}$ |
 
+Table 4 extends the check from two datasets to 16 datasets of the Monash archive (84,286 series in total: M1, M3, Tourism, FRED-MD, NN5 Weekly, Hospital, Car Parts, M4 Weekly and CIF 2016), with every method run once on each engine. For ETS the C++ forecasts are identical to R's on every series of every dataset; for ARIMA, dynamic harmonic regression and TBATS a small share of series differs, and no series by more than 1%. The same study shows why a port was needed and an independent implementation would not do: the R and StatsForecast versions of ETS give the same forecast on only 6.5% of the series (median over datasets) and their ARIMA versions on 26%, although the mean accuracy of the two differs by less than 0.25%.
+
+**Table 4.** Agreement of tsfcore with the implementation it ports, on 16 datasets. A series counts as identical when its forecasts differ by less than $10^{-6}$ percent on average over the horizon; the values are medians over the datasets (ARIMA: 15 datasets, see Section 3).
+
+| Method | Reference | Series with identical forecasts | Series within 1% |
+|:--|:--|--:|--:|
+| ETS | R forecast 9.0.2 | 100% | 100% |
+| ARIMA (automatic) | R forecast 9.0.2 | 90.6% | 100% |
+| Dynamic harmonic regression | R forecast 9.0.2 | 96.0% | 100% |
+| TBATS | R forecast 9.0.2 | 99.4% | 100% |
+| SES | StatsForecast 2.1.1 | 99.9% | 100% |
+| Theta | StatsForecast 2.1.1 | 99.7% | 100% |
+| Seasonal naive, pooled regression, CatBoost | R and Python | 100% | 100% |
+
 The WebAssembly build was compared with the native build on 27 runs: 22 produced byte-identical result files, and the rest differed at relative magnitudes between $10^{-15}$ and $10^{-6}$, traced to the mathematical library. [TODO: these browser figures come from development notes; re-run and record them in the repository.]
 
 ## 3. Illustrative examples
@@ -114,17 +128,40 @@ The WebAssembly build was compared with the native build on 27 runs: 22 produced
 
 [Figure 2 about here. Browser edition on a phone-sized screen: data characteristics, method selection and results of a run.]
 
-**Speed.** Table 4 compares the run time of the same method on the three engines of the desktop edition, on a six-core laptop processor (Intel Core i5-8400, 8 GB of memory). The times are those of the forecasting step of an ordinary run started from the command line. R and Python were given one process and six processes, tsfcore one thread and six threads.
+**Speed.** The study behind Table 4 also recorded the time each engine spent fitting and forecasting, on a six-core desktop processor (Intel Core i5-8400, 8 GB of memory) with every engine restricted to one core. Table 5 gives the median over the datasets of the time per series. On one core tsfcore is about 14 times faster than R for ETS and ARIMA, 33 times for dynamic harmonic regression and 42 times for TBATS, and between 5 times (ETS) and more than 200 times (Theta) faster than the Python library for the methods both offer. For CatBoost all engines spend their time in the same library, and the times are alike.
 
-SPEED_TABLE
+**Table 5.** Time per series in milliseconds, one core per engine: median over 16 datasets. The R times include starting the R process (about one second per dataset).
 
-SPEED_TEXT
+| Method | C++ (tsfcore) | Python | R |
+|:--|--:|--:|--:|
+| Theta | 0.01 | 2.6 | 6.1 |
+| ETS | 10.7 | 54.5 | 151 |
+| ARIMA | 27.2 | 681 | 372 |
+| Dynamic harmonic regression | 5.1 | 455 | 171 |
+| TBATS | 42.1 | not offered in this run | 1,784 |
+| CatBoost (global) | 13.0 | 11.4 | 27.6 |
+
+Table 6 shows what this means for a large collection, the 48,000 monthly series of the M4 competition. Theta forecasts for all of them take 1.3 s in tsfcore against 145 s and 381 s. ETS for all 48,000 series takes 54 minutes on one core, where R needs more than two hours for the first 10,000. ARIMA is the most expensive method on every engine; on the first 100 series, which are among the longest, tsfcore was no faster than the Python library. The desktop edition spreads the series over all cores, which these single-core figures do not include.
+
+**Table 6.** Engine time in seconds on the first *n* series of M4 Monthly, one core per engine. A dash marks a run that was not started because its projected time exceeded three hours.
+
+| Method | Series | C++ (tsfcore) | Python | R |
+|:--|--:|--:|--:|--:|
+| Theta | 48,000 | 1.3 | 145 | 381 |
+| ETS | 1,000 | 84 | 294 | 922 |
+| ETS | 10,000 | 725 | 2,281 | 8,120 |
+| ETS | 48,000 | 3,223 | – | – |
+| ARIMA | 100 | 261 | 229 | 934 |
+| ARIMA | 1,000 | 898 | 1,691 | 4,978 |
+| ARIMA | 10,000 | 6,156 | – | – |
+
+These times were taken while several runs shared the machine, and each cell was run once: the ratios between engines are more reliable than the absolute values. On M4 Weekly ARIMA exceeded the three-hour limit on all three engines, which is why Table 4 reports ARIMA for 15 datasets. [TODO: repeat on an idle machine, and add the multi-thread scaling measured on the 32-core cluster.]
 
 [Figure 3 about here. Desktop interface: the Results step of one of these runs, with the summary table, a sample-series chart and the run record.]
 
 ## 4. Impact
 
-*Access.* The platform removes the three preconditions of current forecasting software: programming skill, an installed environment, and a computer. A planner can forecast from an Excel sheet; a lecturer can have a class run and inspect forecasts on their own phones; an analyst working under data-protection rules can use it because the data stay on the device. The explanations attached to every method and measure, and the Learn section of the browser edition, are written so that the platform can be used for teaching as well as for producing forecasts.
+*Access.* The platform removes the three preconditions of current forecasting software: programming skill, an installed environment, and a computer. The browser edition is a download of about 1.25 MB and the native core library is 4.6 MB. The same methods need, in Python, 44 installed packages of 922 MB, and in R an installation of 181 MB plus 32 further packages for forecast alone, all to be installed and kept consistent. A planner can forecast from an Excel sheet; a lecturer can have a class run and inspect forecasts on their own phones; an analyst working under data-protection rules can use it because the data stay on the device. The explanations attached to every method and measure, and the Learn section of the browser edition, are written so that the platform can be used for teaching as well as for producing forecasts.
 
 *Speed.* With run times of seconds instead of minutes, forecasting a collection of series becomes interactive: a user can try several methods, horizons or settings in one sitting, and procedures that multiply the number of model fits (rolling origins, conformal intervals, bagging, temporal aggregation) become practical on a laptop. The same speed is what makes execution inside a browser feasible at all.
 
@@ -152,7 +189,7 @@ The author declares no known competing financial interests or personal relations
 
 ## Data availability
 
-The example datasets are from the Monash Time Series Forecasting Archive (CC BY 4.0) and are distributed with the browser edition. The validation fixtures and the script behind Table 4 (`tools/engine_speed_study.py`) are in the repository.
+The example datasets are from the Monash Time Series Forecasting Archive (CC BY 4.0) and are distributed with the browser edition. The validation fixtures and the script behind Tables 4 to 6 (`tools/implementation_study.py`) are in the repository.
 
 ## References
 
@@ -190,6 +227,6 @@ The example datasets are from the Monash Time Series Forecasting Archive (CC BY 
 2. **Relation to the ranking manuscript.** This paper is independent and does not cite it. The ranking manuscript (`manuscript/Manuscript_v2.md`, Section 6) cites this paper for the description of the software; update that citation when this paper is submitted. The ranking commands of the package (`rank`, `reliability`, `instability`) are deliberately not described here.
 3. **Figures.** Figure 1 (architecture diagram) and Figures 2 and 3 (screenshots of the two editions) are still to be made.
 4. **Numbers to re-run at the release:** test count and pass status (404 collected on 2026-11-24, not executed for this draft); Table 3 (from `cpp/README.md`; the bagged ETS row is the weaker of its weekly and daily figures); the browser-versus-native comparison (from development notes).
-5. **Table 4** was measured on 2026-11-25 with tsfcore 0.4.0 by `tools/engine_speed_study.py` (one run per cell, not repeated). Repeat it at the release, preferably three times with the median reported.
+5. **Tables 4 to 6** come from `tools/implementation_study.py` (outputs in `runs/implementation_study/`, not in git: `forecast_differences.csv`, `accuracy_and_time.csv`, `scaling.csv`; the numbers were recomputed from these files on 2026-11-25). The runs shared the machine with four or five other jobs and each cell ran once; repeat the timing on an idle machine before submission. The footprint figures in Section 4 come from `tools/footprint.py` (`python tools/footprint.py --rscript <Rscript>`; measured 2026-11-25 by the session that ran the study): tsfcore.wasm 1.18 MB + tsfcore.js 0.07 MB, tsfcore.dll 4.63 MB (the two file sizes were checked for this draft), Python core + engine libraries 44 distributions / 922 MB (with the deep-learning extras 102 / 1,869 MB), base R 181 MB, forecast + jsonlite 32 packages outside base / 61 MB. Re-run it at the release: the library grows with every ported model. The cluster study (`tools/engine_speed_study.py`, 1 to 32 threads) has not been run yet. The same output folder holds ranking tables; they are deliberately not used here.
 6. **Repository state reviewers will see:** `README.md` still describes phases D and E as not started and omits the C++ engine and the browser edition; several documents under `docs/` are in Turkish. SoftwareX reviewers assess the repository and its documentation.
 7. **Front matter:** affiliation, e-mail, ORCID, highlights (SoftwareX asks for three to five), AI-use statement, reference check.
