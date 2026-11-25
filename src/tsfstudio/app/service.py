@@ -66,6 +66,11 @@ def clean(obj):
     return obj
 
 
+def _is_text(col: pd.Series) -> bool:
+    """A text (categorical) column: object dtype, or the dedicated string dtype pandas 3 infers for text."""
+    return pd.api.types.is_object_dtype(col.dtype) or pd.api.types.is_string_dtype(col.dtype)
+
+
 def _safe_name(name: str) -> str:
     s = re.sub(r"[^A-Za-z0-9_.\-]", "_", Path(name).stem)
     return s.strip("._") or "veri"
@@ -639,7 +644,7 @@ class AppService:
             if rest not in df.columns:
                 raise AppError(f"Unknown feature: {rest}")
             col = df[rest]
-            if col.dtype == object:
+            if _is_text(col):
                 return {"kind": "cat", "label": rest, "values": [None if pd.isna(v) else str(v) for v in col]}
             return {"kind": "num", "label": rest, "values": col.to_numpy(float).tolist()}
         if kind == "run":
@@ -691,7 +696,7 @@ class AppService:
         except ValueError as exc:
             raise AppError(f"PCA not possible: {exc}") from None
         runs = [r for r in self.runs()["runs"] if r.get("dataset") == ds_id]
-        cat_cols = [c for c in df.columns if df[c].dtype == object]
+        cat_cols = [c for c in df.columns if _is_text(df[c])]
         return clean({
             "status": "ready", "names": [str(i) for i in df.index], "scores": res["scores"].round(6).tolist(),
             "explained": res["explained"].tolist(), "features": res["features"], "dropped": res["dropped"],
