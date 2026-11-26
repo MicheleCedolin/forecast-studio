@@ -490,6 +490,17 @@
       }
       if (!["0.025", "0.1", "0.9", "0.975"].every((q) => bounds[q] && bounds[q].length === rows.length)) bounds = null;
     }
+    // When the method erred to one side on the calibration window, a conformal bound can fall on the wrong side of the
+    // forecast. The band is then widened to hold the forecast, so that an interval never excludes its own forecast.
+    let widened = 0;
+    if (bounds) rows.forEach((r, i) => {
+      for (let h = 0; h < H; h++) {
+        const f = num(r[h + 1]);
+        if (!Number.isFinite(f)) continue;
+        for (const q of ["0.025", "0.1"]) if (bounds[q][i][h] > f) { bounds[q][i][h] = f; widened++; }
+        for (const q of ["0.9", "0.975"]) if (bounds[q][i][h] < f) { bounds[q][i][h] = f; widened++; }
+      }
+    });
     const start = (r) => msg.info.starts[origIndex[r]], length = (r) => msg.info.lengths[origIndex[r]];
     const date = (r, h) => (dated ? stepDate(start(r), length(r) + h, frequency) : null);     // h = 0 .. H-1
     const anyDate = dated && rows.length > 0 && date(0, 0) !== null;
@@ -509,6 +520,7 @@
       left_out: manifest.split.excluded.map((e) => ({ name: e.name, reason: /missing/.test(e.reason) ? e.reason : "too short for this horizon" })),
       missing_values: manifest.config.missing_policy,
       prediction_intervals: bounds ? "80% and 95%, split conformal: calibrated on the last " + H + " observations of the series" : null,
+      bounds_moved_to_the_forecast: bounds ? widened : null,
       engine: manifest.engine || null, warnings: manifest.warnings,
     };
     const files = { "forecast_table.csv": lines.join("\n") + "\n", "forecasts.csv": run["forecasts.csv"],
@@ -528,6 +540,8 @@
         (bounds ? " with prediction intervals" : "") + ", or without values): " +
         manifest.split.excluded.slice(0, 5).map((e) => e.name).join(", ") + (manifest.split.excluded.length > 5 ? ", …" : "") + "." }));
     for (const text of manifest.warnings) if (/fallback/i.test(text)) w.appendChild(el("p", { class: "warning", text }));
+    if (widened) w.appendChild(el("p", { class: "note", text: "On the last " + H + " observations the method erred mostly to one side, so " +
+      widened + " interval bounds fell on the wrong side of the forecast; those were moved to the forecast (the bands there are one-sided)." }));
     if (!bounds) w.appendChild(el("p", { class: "note", text: pendingRun && pendingRun.intervals
       ? "Prediction intervals could not be computed for this run."
       : "No prediction intervals: they need at least " + PI_MIN_SERIES + " series, because the spread is learned from the errors of all series together." }));

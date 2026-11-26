@@ -269,7 +269,9 @@
         page also gives 80% and 95% prediction intervals. They are split conformal intervals: the same method is fitted once
         more without the last <i>horizon</i> observations, its errors on those observations (scaled per series, pooled over
         the series, one set per step ahead) say how far off such a forecast usually is, and that spread is placed around the
-        new forecast. They assume the future errs like the recent past.</p>
+        new forecast. They assume the future errs like the recent past. When the method
+        erred to one side on those observations, a bound can land on the wrong side of the forecast; the page then moves it
+        to the forecast and says so.</p>
       <p>Nothing on this tab runs a computation. The texts are the ones the desktop application shows for the same methods
         and measures.</p>
     </section>
