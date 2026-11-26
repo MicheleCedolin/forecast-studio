@@ -17,4 +17,8 @@
 #$ -j y
 #$ -o sge-$JOB_NAME.$JOB_ID.log
 cd "${SGE_O_WORKDIR:-$PWD}"
+# The node as the job sees it (also saved by the study as node.json, node_lscpu.txt and node_qhost.txt).
+echo "job $JOB_ID on $(hostname), queue ${QUEUE:-?}, $NSLOTS slots; PE host file:"; cat "${PE_HOSTFILE:-/dev/null}" 2>/dev/null
+echo "nproc in the job: $(nproc); load average: $(cut -d' ' -f1-3 /proc/loadavg)"
+command -v lscpu >/dev/null 2>&1 && lscpu | grep -E '^(Model name|Socket|Core|Thread|CPU\(s\))'
 exec bash scripts/hpc/run_speed.sh

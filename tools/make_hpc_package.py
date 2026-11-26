@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KEEP = ("src/", "cpp/", "tools/", "tests/", "scripts/hpc/", "docs/HPC", "docs/METRICS.md", "pyproject.toml", "LICENSE",
         "NOTICE", "README.md", ".gitattributes")
 EXTRA = ["tools/engine_speed_study.py", "tools/make_hpc_package.py", "scripts/hpc/run_speed.sh", "scripts/hpc/speed.sge",
-         "scripts/hpc/speed.sbatch", "scripts/hpc/setup_r.sh", "docs/HPC_SPEED.md"]
+         "scripts/hpc/speed.sbatch", "scripts/hpc/setup_r.sh", "scripts/hpc/preflight.sh", "docs/HPC_SPEED.md"]
 LF = (".sh", ".sge", ".sbatch", ".py", ".R", ".yaml", ".yml", ".txt", ".md", ".toml", ".cpp", ".hpp", ".c", ".h")
 EXEC = (".sh", ".sge", ".sbatch")
 TOP = "forecast-studio"

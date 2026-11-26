@@ -17,7 +17,7 @@ cd "$root"
 env_name="${TSF_CONDA_ENV:-tsfstudio}"
 
 if ! command -v conda >/dev/null 2>&1; then
-  for d in "${TSF_CONDA_ROOT:-}" "$HOME/miniforge3" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anaconda3"; do
+  for d in "${TSF_CONDA_ROOT:-}" "$HOME/miniforge3" "$HOME/miniforge3_research" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anaconda3"; do
     if [ -n "$d" ] && [ -f "$d/etc/profile.d/conda.sh" ]; then source "$d/etc/profile.d/conda.sh"; break; fi
   done
 fi

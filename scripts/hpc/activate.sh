@@ -7,7 +7,7 @@ else
   # `conda activate` needs conda's shell function. A job submitted with `qsub -V` from a shell where conda is active
   # inherits PATH (so the conda program is found) but not the function: load it unless it is already defined.
   if [ "$(type -t conda)" != "function" ]; then
-    for d in "${TSF_CONDA_ROOT:-}" "${CONDA_EXE:+$(dirname "$(dirname "$CONDA_EXE")")}" "$HOME/miniforge3" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anaconda3"; do
+    for d in "${TSF_CONDA_ROOT:-}" "${CONDA_EXE:+$(dirname "$(dirname "$CONDA_EXE")")}" "$HOME/miniforge3" "$HOME/miniforge3_research" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anaconda3"; do
       if [ -n "$d" ] && [ -f "$d/etc/profile.d/conda.sh" ]; then source "$d/etc/profile.d/conda.sh"; break; fi
     done
   fi

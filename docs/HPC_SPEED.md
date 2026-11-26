@@ -5,6 +5,26 @@ on the Python and R engines with 1 and 32 worker processes. The result is the sp
 (`manuscript/software_paper`). General cluster notes (set-up details, SGE and SLURM, agreement checks) are in
 `docs/HPC.md`; this page is the short path for the speed study.
 
+## 0. Short path: SGE cluster, quick subset (Tables 5 and 6 of the paper)
+
+Four datasets (nn5_weekly, nn5_daily, m3_monthly, m4_hourly), five methods (ses, theta, ets, arima, tbats), C++ on 1, 8
+and 32 threads (three repetitions), Python and R on 1 and 32 workers (one repetition), one node, the three engines one
+after the other. Steps, from the repository root on the login node:
+
+1. `bash scripts/hpc/preflight.sh 2>&1 | tee preflight.txt` — tools, cores, free space, reach of conda-forge / Zenodo /
+   CRAN, conda environments, data files. Changes nothing.
+2. If needed: `bash scripts/hpc/setup_conda.sh` (new environment `tsfstudio`; an existing environment such as
+   `clrp_env` is not touched) and `bash scripts/hpc/setup_r.sh` (R into the same environment). About 2.5 GB together.
+3. Smoke test: `SPEED_DATASETS=nn5_weekly SPEED_METHODS=ses,theta SPEED_THREADS=1,8,32 SPEED_OUT=results/speed_smoke
+   qsub -V scripts/hpc/speed.sge` (a few minutes).
+4. The study: `SPEED_DATASETS=nn5_weekly,nn5_daily,m3_monthly,m4_hourly SPEED_METHODS=ses,theta,ets,arima,tbats
+   SPEED_THREADS=1,8,32 SPEED_REPEATS=3 SPEED_REF_REPEATS=1 SPEED_OUT=results/speed_quick qsub -V scripts/hpc/speed.sge`.
+   The single-worker R runs take longest (about 80 minutes together); 1 to 2 hours in all, more on old hardware.
+
+The data files needed in `data/tsf/`: `nn5_weekly_dataset.tsf`, `nn5_daily_dataset_without_missing_values.tsf`,
+`m3_monthly_dataset.tsf`, `m4_hourly_dataset.tsf` (byte counts as in `src/tsfstudio/data/catalog.yaml`; the study stops
+at the start if one is missing or has another size).
+
 ## 1. Upload and unpack
 
 On your computer the archive is built with `python tools/make_hpc_package.py` (`dist/forecast-studio-hpc-speed-<date>.tar.gz`,
@@ -100,10 +120,16 @@ into the same output folder. Submitting the same command again continues where t
 
 ```
 results/speed/
-  speed_table.md     the table: one row per dataset and method, one column per engine and thread count (seconds)
+  speed_table.md     the table: one row per dataset and method, one column per engine and thread count (seconds);
+                     below it A. ms per series, median over the datasets (the layout of Table 5), and B. C++ speed-up
   summary.csv        median, minimum and maximum time per cell, ms per series, speed-up against one C++ thread
-  runs.csv           every repetition, with its state (ok, skipped, timeout, failed) and message
-  node.json          host, CPU model, cores, granted slots, engine versions
+  runs.csv           every repetition, with its state (ok, skipped, timeout, failed), the 1-minute load average when it
+                     started (load1_start) and message
+  ratios.csv         every ratio from the medians: C++ speed-up and parallel efficiency per thread count, Python / C++
+                     and R / C++ on 1 and on the largest level, Python and R speed-up on the largest level, R / Python
+  node.json          host, CPU model, logical and physical cores (sockets x cores x threads per core), CPUs the job
+                     may use, memory, load average at the start and the end, granted slots, engine versions
+  node_lscpu.txt     lscpu of the compute node;  node_qhost.txt: qhost of the cluster and of this host (SGE only)
   runs/<dataset>/<method>/<engine>_x<level>/<run id>/
                      forecasts.csv (one row per series), test_actuals.csv, errors_per_series.csv, summary.csv,
                      fallbacks.csv, manifest.json of every cell

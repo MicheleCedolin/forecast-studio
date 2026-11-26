@@ -57,7 +57,7 @@ PLAN = {
 REF_DATASETS = ["nn5_weekly", "nn5_daily", "m3_monthly", "m4_hourly"]
 ENGINES = ["cpp", "python", "r"]
 FIELDS = ["dataset", "method", "engine", "parallel", "rep", "status", "n_series", "horizon", "engine_sec", "wall_sec",
-          "fallbacks", "mase_mean", "message"]
+          "fallbacks", "mase_mean", "load1_start", "message"]
 
 
 def sh(cmd: list[str], env: dict | None = None, timeout: float | None = None) -> subprocess.CompletedProcess:
@@ -100,14 +100,67 @@ def cpu_model() -> str:
     return platform.processor() or platform.machine()
 
 
-def node_info(avail: dict[str, str], a) -> dict:
+def _text(cmd: list[str]) -> str:
+    """Output of a system command, or "" when it is not there (qhost outside SGE, lscpu on a minimal system)."""
+    if not shutil.which(cmd[0]):
+        return ""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        return p.stdout if p.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def load1() -> str:
+    try:
+        return Path("/proc/loadavg").read_text().split()[0]
+    except OSError:
+        return ""
+
+
+def hardware(lscpu: str) -> dict:
+    """Sockets, physical cores and hardware threads from lscpu: 32 slots may be 16 cores with two threads each."""
+    kv = {}
+    for line in lscpu.splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            kv[k.strip()] = v.strip()
+    hw = {k: kv.get(k, "") for k in ("Model name", "CPU(s)", "Socket(s)", "Core(s) per socket", "Thread(s) per core",
+                                      "NUMA node(s)", "CPU max MHz", "L3 cache")}
+    try:
+        hw["physical_cores"] = int(kv["Socket(s)"]) * int(kv["Core(s) per socket"])
+    except (KeyError, ValueError):
+        hw["physical_cores"] = ""
+    try:
+        hw["affinity_cpus"] = len(os.sched_getaffinity(0))        # what the scheduler lets this job use
+    except (AttributeError, OSError):
+        hw["affinity_cpus"] = ""
+    try:
+        mem = [ln for ln in Path("/proc/meminfo").read_text().splitlines() if ln.startswith("MemTotal")][0]
+        hw["mem_total_gb"] = round(int(mem.split()[1]) / 1024 ** 2, 1)
+    except (OSError, IndexError, ValueError):
+        hw["mem_total_gb"] = ""
+    return hw
+
+
+def node_info(avail: dict[str, str], a, out: Path) -> dict:
     commit = ""
     for f in (ROOT / "VERSION",):
         if f.is_file():
             commit = f.read_text(encoding="utf-8").strip()
-    return {"host": platform.node(), "platform": platform.platform(), "cpu": cpu_model(), "cpu_count": os.cpu_count(),
+    lscpu = _text(["lscpu"])
+    qhost = _text(["qhost"])
+    host = platform.node()
+    qhost_me = _text(["qhost", "-h", host.split(".")[0], "-q"]) if qhost else ""
+    # the raw outputs go next to node.json, so the paper can quote them
+    for name, txt in (("node_lscpu.txt", lscpu), ("node_qhost.txt", qhost + ("\n--- this host ---\n" + qhost_me if qhost_me else ""))):
+        if txt:
+            (out / name).write_text(txt, encoding="utf-8")
+    return {"host": host, "platform": platform.platform(), "cpu": cpu_model(), "cpu_count": os.cpu_count(),
+            "hardware": hardware(lscpu), "load1_start": load1(),
             "granted": os.environ.get("NSLOTS") or os.environ.get("SLURM_CPUS_PER_TASK") or "",
-            "job": os.environ.get("JOB_ID") or os.environ.get("SLURM_JOB_ID") or "", "python": platform.python_version(),
+            "job": os.environ.get("JOB_ID") or os.environ.get("SLURM_JOB_ID") or "",
+            "queue": os.environ.get("QUEUE") or "", "python": platform.python_version(),
             "engines": avail, "source": commit, "started": time.strftime("%Y-%m-%d %H:%M:%S"),
             "threads": a.threads, "repeats": a.repeats, "ref_repeats": a.ref_repeats, "timeout_min": a.timeout_min}
 
@@ -155,7 +208,7 @@ def one_run(dataset: str, method: str, engine: str, par: int, work: Path, timeou
     else:
         shutil.rmtree(new[0], ignore_errors=True)
     return {"status": "ok", "n_series": man["dataset"]["n_series_run"], "horizon": man["split"]["horizon"],
-            "engine_sec": round(man["timing"]["engine_wall_sec"], 4), "wall_sec": wall,
+            "engine_sec": round(man["timing"]["engine_wall_sec"], 6), "wall_sec": wall,
             "fallbacks": man["fallbacks"]["count"], "mase_mean": mase, "message": ""}
 
 
@@ -168,11 +221,15 @@ def read_runs(path: Path) -> list[dict]:
 
 def append(path: Path, row: dict) -> None:
     new = not path.is_file()
+    fields = FIELDS
+    if not new:                                          # keep the header of a file written by an earlier version
+        with open(path, newline="", encoding="utf-8") as f:
+            fields = next(csv.reader(f), FIELDS) or FIELDS
     with open(path, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=FIELDS)
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         if new:
             w.writeheader()
-        w.writerow({k: row.get(k, "") for k in FIELDS})
+        w.writerow({k: row.get(k, "") for k in fields})
 
 
 def levels(engine: str, threads: list[int]) -> list[int]:
@@ -204,9 +261,9 @@ def report(out: Path) -> None:
         refs = [statistics.median(v) for (d2, m2, e2, _), v in cells.items() if d2 == ds and m2 == m and e2 != "cpp"]
         summ.append({"dataset": ds, "method": m, "engine": e, "parallel": par, "status": "ok" if t else r["status"],
                      "n_series": r.get("n_series", ""), "repetitions": len(t or []),
-                     "engine_sec_median": "" if med is None else round(med, 4),
-                     "engine_sec_min": "" if not t else round(min(t), 4), "engine_sec_max": "" if not t else round(max(t), 4),
-                     "ms_per_series": "" if med is None or not r.get("n_series") else round(1000 * med / int(r["n_series"]), 4),
+                     "engine_sec_median": "" if med is None else round(med, 6),
+                     "engine_sec_min": "" if not t else round(min(t), 6), "engine_sec_max": "" if not t else round(max(t), 6),
+                     "ms_per_series": "" if med is None or not r.get("n_series") else round(1000 * med / int(r["n_series"]), 5),
                      "speedup_vs_cpp_1_thread": "" if med is None or not cpp1 or e != "cpp" else round(statistics.median(cpp1) / med, 2),
                      "best_reference_sec_over_this": "" if med is None or not refs or e != "cpp" or med <= 0 else round(min(refs) / med, 1),
                      "mase_mean": r.get("mase_mean", ""), "fallbacks": r.get("fallbacks", ""), "message": r.get("message", "")})
@@ -236,10 +293,87 @@ def report(out: Path) -> None:
     if node.is_file():
         nd = json.loads(node.read_text(encoding="utf-8"))
         lines += ["", f"Node: {nd.get('host')}, {nd.get('cpu')}, {nd.get('cpu_count')} logical cores"
-                      f"{', ' + str(nd['granted']) + ' granted' if nd.get('granted') else ''}. Engines: "
+                      f"{', ' + str(nd['granted']) + ' granted' if nd.get('granted') else ''}"
+                      f"{', ' + str(nd['hardware'].get('physical_cores')) + ' physical cores (' + str(nd['hardware'].get('Socket(s)')) + ' sockets x ' + str(nd['hardware'].get('Core(s) per socket')) + ', ' + str(nd['hardware'].get('Thread(s) per core')) + ' threads per core)' if (nd.get('hardware') or {}).get('physical_cores') else ''}"
+                      f", load average {nd.get('load1_start', '?')} at the start, {nd.get('load1_end', '?')} at the end. Engines: "
                       + "; ".join(f"{k}: {v}" for k, v in (nd.get("engines") or {}).items())]
+    lines += ratios(out, summ, order, names)
     (out / "speed_table.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"written: {out / 'summary.csv'}, {out / 'speed_table.md'}", flush=True)
+    print(f"written: {out / 'summary.csv'}, {out / 'ratios.csv'}, {out / 'speed_table.md'}", flush=True)
+
+
+def ratios(out: Path, summ: list[dict], order: dict, names: dict) -> list[str]:
+    """Ratios between engines and thread counts, from the medians of summary.csv; written to ratios.csv (one row per
+    dataset, method and ratio) and returned as two further tables for speed_table.md:
+      A. ms per series, median over the datasets, per method and engine, on 1 unit and on the largest level
+         (the layout of the paper's Table 5), with the median over datasets of the per-dataset ratio to C++;
+      B. C++ speed-up against one thread and parallel efficiency (speed-up / threads), per dataset and method."""
+    med = {(s["dataset"], s["method"], s["engine"], s["parallel"]): float(s["engine_sec_median"])
+           for s in summ if s["status"] == "ok" and s["engine_sec_median"] != ""}
+    nser = {(s["dataset"], s["method"]): int(s["n_series"]) for s in summ if s.get("n_series")}
+    pairs = sorted({(d, m) for d, m, _, _ in med}, key=lambda k: (order.get(k[0], 99), k[0], k[1]))
+    cpp_lv = sorted({p for _, _, e, p in med if e == "cpp"})
+    top = max([p for *_, p in med] or [1])
+    rows = []
+
+    def add(ds, m, name, num, den):
+        if num in med and den in med and med[den] > 0:
+            rows.append({"dataset": ds, "method": m, "ratio": name, "numerator_sec": med[num],
+                         "denominator_sec": med[den], "value": round(med[num] / med[den], 3)})
+
+    for ds, m in pairs:
+        for p in cpp_lv:
+            if p > 1:
+                add(ds, m, f"cpp_speedup_x{p}", (ds, m, "cpp", 1), (ds, m, "cpp", p))
+        for e in ("python", "r"):
+            add(ds, m, f"{e}_over_cpp_x1", (ds, m, e, 1), (ds, m, "cpp", 1))
+            add(ds, m, f"{e}_over_cpp_x{top}", (ds, m, e, top), (ds, m, "cpp", top))
+            add(ds, m, f"{e}_speedup_x{top}", (ds, m, e, 1), (ds, m, e, top))
+        add(ds, m, f"r_over_python_x1", (ds, m, "r", 1), (ds, m, "python", 1))
+    for r in rows:                                   # efficiency of a speed-up: speed-up / parallel units
+        if "_speedup_x" in r["ratio"]:
+            r["efficiency"] = round(r["value"] / int(r["ratio"].rsplit("x", 1)[1]), 3)
+    if rows:
+        with open(out / "ratios.csv", "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["dataset", "method", "ratio", "numerator_sec", "denominator_sec", "value",
+                                              "efficiency"])
+            w.writeheader()
+            w.writerows(rows)
+    by_ratio: dict[tuple, list[float]] = {}
+    for r in rows:
+        by_ratio.setdefault((r["method"], r["ratio"]), []).append(r["value"])
+    methods = sorted({m for _, m in pairs})
+    lines = []
+    for lvl in sorted({1, top}):
+        engines = [e for e in ENGINES if any(k[2] == e and k[3] == lvl for k in med)]
+        if not engines:
+            continue
+        lines += ["", f"A. Time per series in ms on {lvl} {'thread / worker' if lvl == 1 else 'threads / workers'}: "
+                      f"median over the datasets (number of datasets in brackets); last columns: median over the "
+                      f"datasets of the per-dataset ratio to C++.", "",
+                  "| Method | " + " | ".join(names[e] for e in engines) + "".join(
+                      f" | {names[e]} / C++" for e in engines if e != "cpp") + " |",
+                  "|:--|" + "--:|" * (len(engines) + len([e for e in engines if e != "cpp"]))]
+        for m in methods:
+            cells = []
+            for e in engines:
+                v = [1000 * med[(d, m, e, lvl)] / nser[(d, m)] for d, m2 in pairs if m2 == m and (d, m, e, lvl) in med]
+                cells.append(f"{statistics.median(v):.3g} ({len(v)})" if v else "")
+            for e in engines:
+                if e != "cpp":
+                    v = by_ratio.get((m, f"{e}_over_cpp_x{lvl}"))
+                    cells.append(f"{statistics.median(v):.3g}" if v else "")
+            lines.append(f"| {m} | " + " | ".join(cells) + " |")
+    if any(p > 1 for p in cpp_lv):
+        hi = [p for p in cpp_lv if p > 1]
+        lines += ["", "B. C++ speed-up against one thread (parallel efficiency = speed-up / threads in brackets).", "",
+                  "| Dataset | Method | " + " | ".join(f"x{p}" for p in hi) + " |", "|:--|:--|" + "--:|" * len(hi)]
+        val = {(r["dataset"], r["method"], r["ratio"]): r for r in rows}
+        for ds, m in pairs:
+            c = [val.get((ds, m, f"cpp_speedup_x{p}")) for p in hi]
+            lines.append(f"| {ds} | {m} | " + " | ".join(f"{r['value']:.2f} ({r['efficiency']:.2f})" if r else ""
+                                                         for r in c) + " |")
+    return lines
 
 
 def main() -> int:
@@ -278,6 +412,15 @@ def main() -> int:
     if not engines:
         sys.exit("no engine available: `python -m tsfstudio engines` shows why")
     data_dir = Path(base_env()["TSFSTUDIO_DATA_DIR"])
+    sys.path.insert(0, str(ROOT / "src"))
+    from tsfstudio.catalog import availability, load_catalog
+    cat = load_catalog()
+    entries = {e.id: e for e in (cat.entries.values() if isinstance(cat.entries, dict) else cat.entries)}
+    bad = [f"{d}: {entries[d].file} {availability(entries[d], data_dir)}" if d in entries else f"{d}: not in the catalogue"
+           for d in datasets if d not in entries or availability(entries[d], data_dir) != "ok"]
+    if bad and not a.dry_run:
+        sys.exit(f"data files in {data_dir} not usable (expected bytes in src/tsfstudio/data/catalog.yaml):\n  "
+                 + "\n  ".join(bad))
     plan = []
     for ds in datasets:
         for m in (only or PLAN.get(ds) or ["ses", "theta", "ets", "arima"]):
@@ -292,7 +435,8 @@ def main() -> int:
         for ds, m, e, lv in plan:
             print(f"  {ds:14s} {m:8s} {e:7s} levels {lv}  x {a.repeats if e == 'cpp' else a.ref_repeats}")
         return 0
-    (out / "node.json").write_text(json.dumps(node_info(avail, a), indent=2), encoding="utf-8")
+    node = node_info(avail, a, out)
+    (out / "node.json").write_text(json.dumps(node, indent=2), encoding="utf-8")
     runs_csv, work = out / "runs.csv", out / "_work"
     timeout = a.timeout_min * 60
     if "python" in engines:      # statsforecast compiles with numba on first use; do that before anything is timed
@@ -316,7 +460,8 @@ def main() -> int:
                     else:
                         keep = rep == 1 and not a.discard_runs
                         dest = out / "runs" / ds / m / f"{e}_x{par}" if keep else work
-                        r = one_run(ds, m, e, par, dest, timeout, keep)
+                        l1 = load1()
+                        r = {**one_run(ds, m, e, par, dest, timeout, keep), "load1_start": l1}
                     r = {"dataset": ds, "method": m, "engine": e, "parallel": par, "rep": rep, **r}
                     append(runs_csv, r)
                     print(f"{ds:14s} {m:8s} {e:7s} x{par:<3d} rep {rep}: {r['status']:8s} "
@@ -328,6 +473,8 @@ def main() -> int:
                 if r["status"] != "ok":
                     break                               # no further repetitions of a cell that did not run
     shutil.rmtree(work, ignore_errors=True)
+    node.update(finished=time.strftime("%Y-%m-%d %H:%M:%S"), load1_end=load1())
+    (out / "node.json").write_text(json.dumps(node, indent=2), encoding="utf-8")
     report(out)
     return 0
 
