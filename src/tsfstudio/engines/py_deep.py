@@ -7,7 +7,13 @@ chronos  Chronos-Bolt (Ansari et al., 2024) via chronos-forecasting: a pretraine
          the forecast is the median of its quantile forecast. The weights are downloaded once from Hugging Face
          (amazon/chronos-bolt-small by default). Its pretraining corpus includes public benchmark data (M4 and Monash
          datasets among them), so scores on those datasets may be optimistic (data leakage) and should be reported as such.
-Both run on the CPU.
+lstm     LSTM, rnn (Elman RNN), gru: recurrent networks of neuralforecast (LSTM, RNN, GRU classes), trained the same way
+         as nhits: one global network, input window = the job's lag, robust scaling, deterministic seed. The recurrent
+         encoder reads the window and an MLP decoder gives the whole horizon at once (neuralforecast's default,
+         recurrent=False).
+deepar   DeepAR (Salinas et al., 2020) via neuralforecast's DeepAR class: an autoregressive LSTM with a Student-t output
+         distribution (neuralforecast's default loss); the point forecast is the median of its sampled trajectories.
+All run on the CPU.
 """
 from __future__ import annotations
 
@@ -56,6 +62,30 @@ def nbeats_forecast(train: list[np.ndarray], H: int, input_size: int, params: di
     return _neural_forecast("NBEATS", train, H, input_size, params, seed, workers)
 
 
+def lstm_forecast(train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
+                  workers: int) -> np.ndarray:
+    """LSTM (Hochreiter and Schmidhuber, 1997) via neuralforecast.models.LSTM."""
+    return _neural_forecast("LSTM", train, H, input_size, params, seed, workers)
+
+
+def rnn_forecast(train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
+                 workers: int) -> np.ndarray:
+    """Elman RNN (Elman, 1990) via neuralforecast.models.RNN (tanh activation)."""
+    return _neural_forecast("RNN", train, H, input_size, params, seed, workers)
+
+
+def gru_forecast(train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
+                 workers: int) -> np.ndarray:
+    """GRU (Cho et al., 2014) via neuralforecast.models.GRU."""
+    return _neural_forecast("GRU", train, H, input_size, params, seed, workers)
+
+
+def deepar_forecast(train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
+                    workers: int) -> np.ndarray:
+    """DeepAR (Salinas et al., 2020) via neuralforecast.models.DeepAR; the median of the sampled paths."""
+    return _neural_forecast("DeepAR", train, H, input_size, params, seed, workers)
+
+
 def _neural_forecast(kind: str, train: list[np.ndarray], H: int, input_size: int, params: dict | None, seed: int,
                      workers: int) -> np.ndarray:
     import logging
@@ -63,7 +93,7 @@ def _neural_forecast(kind: str, train: list[np.ndarray], H: int, input_size: int
     import pandas as pd
     import torch
     from neuralforecast import NeuralForecast
-    from neuralforecast.models import NBEATS, NHITS
+    from neuralforecast import models as M
 
     p = dict(params or {})
     for name in ("lightning", "pytorch_lightning", "lightning.pytorch", "lightning_fabric"):
@@ -78,13 +108,22 @@ def _neural_forecast(kind: str, train: list[np.ndarray], H: int, input_size: int
                   learning_rate=float(p.get("learning_rate", 1e-3)), scaler_type="robust", random_seed=int(seed),
                   start_padding_enabled=True, enable_progress_bar=False, enable_model_summary=False, logger=False,
                   accelerator="cpu", devices=1)
-    model = NHITS(**common) if kind == "NHITS" else NBEATS(**common)
+    if kind in ("LSTM", "RNN", "GRU", "DeepAR"):
+        common["batch_size"] = int(p.get("batch_size", 32))
+    if kind in ("LSTM", "RNN", "GRU"):
+        common["encoder_hidden_size"] = int(p.get("hidden_size", 128))
+        common["encoder_n_layers"] = int(p.get("n_layers", 2))
+    elif kind == "DeepAR":
+        common["lstm_hidden_size"] = int(p.get("hidden_size", 128))
+        common["lstm_n_layers"] = int(p.get("n_layers", 2))
+    model = getattr(M, kind)(**common)
     nf = NeuralForecast(models=[model], freq=1)
     nf.fit(df=df)
     fc = nf.predict()
     if "unique_id" not in fc.columns:
         fc = fc.reset_index()
-    col = [c for c in fc.columns if c not in ("unique_id", "ds")][0]
+    cols = [c for c in fc.columns if c not in ("unique_id", "ds")]
+    col = f"{kind}-median" if f"{kind}-median" in cols else (kind if kind in cols else cols[0])
     out = np.full((len(train), H), np.nan)
     for uid, g in fc.groupby("unique_id", sort=False):
         out[int(uid), :] = g.sort_values("ds")[col].to_numpy(dtype=np.float64)[:H]

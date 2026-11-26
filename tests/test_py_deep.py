@@ -47,3 +47,30 @@ def test_nbeats_global_forecast():
                     params={"nbeats": {"max_steps": 30}}, seed=3)
     f = eng.run(job).forecasts
     assert f.shape == (20, 6) and np.isfinite(f).all()
+
+
+@pytest.mark.skipif(not D.nhits_available(), reason="torch / neuralforecast not installed")
+@pytest.mark.parametrize("method,steps", [("lstm", 300), ("rnn", 300), ("gru", 300), ("deepar", 150)])
+def test_recurrent_global_forecast(method, steps):
+    """LSTM, RNN, GRU and DeepAR (neuralforecast): shape, determinism for a seed, and they learn the seasonal pattern."""
+    eng = get_engine("python")
+    assert method in eng.methods()["global"]
+    job = EngineJob(task="global", method=method, train=_series(), horizon=6, seasonality=(12.0,), lag=24,
+                    params={method: {"max_steps": steps}}, seed=3)
+    res = eng.run(job)
+    f = res.forecasts
+    assert f.shape == (20, 6) and np.isfinite(f).all()
+    assert any("neuralforecast" in n for n in res.notes)
+    truth = np.array([50 + 10 * np.sin(2 * np.pi * np.arange(60, 66) / 12 + i) for i in range(20)])
+    assert np.mean(np.abs(f - truth)) < 2.5                    # a flat forecast at the mean is about 6.4 off
+    if method != "deepar":                                     # DeepAR samples paths; checked for shape and accuracy only
+        np.testing.assert_allclose(f, eng.run(job).forecasts, rtol=1e-5)
+
+
+def test_recurrent_models_are_described():
+    from tsfstudio.app.models_info import MODELS, REFS
+    for m in ("lstm", "rnn", "gru", "deepar"):
+        info = MODELS[m]
+        assert info["task"] == "global" and set(info["engines"]) == {"python"}
+        assert all(r in REFS for r in info["refs"])
+        assert {p["key"] for p in info["params"]} >= {f"{m}.max_steps", f"{m}.hidden_size", f"{m}.n_layers"}

@@ -100,6 +100,19 @@ REFS = {
     "challu2023": _ref("Challu, C., Olivares, K. G., Oreshkin, B. N., Garza Ramirez, F., Mergenthaler Canseco, M., & Dubrawski, A. "
                        "(2023). NHITS: Neural hierarchical interpolation for time series forecasting. Proceedings of the AAAI "
                        "Conference on Artificial Intelligence, 37(6), 6989–6997.", "https://doi.org/10.1609/aaai.v37i6.25854", True),
+    "hochreiter1997": _ref("Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. Neural Computation, 9(8), 1735–1780.",
+                           "https://doi.org/10.1162/neco.1997.9.8.1735"),
+    "elman1990": _ref("Elman, J. L. (1990). Finding structure in time. Cognitive Science, 14(2), 179–211.",
+                      "https://doi.org/10.1207/s15516709cog1402_1"),
+    "cho2014": _ref("Cho, K., van Merriënboer, B., Gulcehre, C., Bahdanau, D., Bougares, F., Schwenk, H., & Bengio, Y. (2014). Learning "
+                    "phrase representations using RNN encoder–decoder for statistical machine translation. Proceedings of EMNLP 2014, "
+                    "1724–1734.", "https://doi.org/10.3115/v1/D14-1179"),
+    "salinas2020": _ref("Salinas, D., Flunkert, V., Gasthaus, J., & Januschowski, T. (2020). DeepAR: Probabilistic forecasting with "
+                        "autoregressive recurrent networks. International Journal of Forecasting, 36(3), 1181–1191.",
+                        "https://doi.org/10.1016/j.ijforecast.2019.07.001"),
+    "hewamalage2021": _ref("Hewamalage, H., Bergmeir, C., & Bandara, K. (2021). Recurrent neural networks for time series forecasting: "
+                           "current status and future directions. International Journal of Forecasting, 37(1), 388–427.",
+                           "https://doi.org/10.1016/j.ijforecast.2020.06.008"),
     "ansari2024": _ref("Ansari, A. F., Stella, L., Turkmen, A. C., Zhang, X., Mercado, P., Shen, H., et al. (2024). Chronos: Learning the "
                        "language of time series. Transactions on Machine Learning Research.", "https://openreview.net/forum?id=gerNCVqqtR",
                        True),
@@ -211,6 +224,20 @@ LIGHTGBM_PARAMS = [
     P("lightgbm.seed", "Random seed", "int", None, "Empty: 0. Training is deterministic for a given seed.", min=0, placeholder="0",
       advanced=True),
 ]
+
+
+def _rnn_params(key: str) -> list[dict]:
+    """Settings of the neuralforecast recurrent models (py_deep.lstm/rnn/gru/deepar_forecast read these keys)."""
+    py = ("python",)
+    return [P(f"{key}.max_steps", "Training steps", "int", 500, "Number of training steps (mini-batches).", min=10, max=20000,
+              engines=py),
+            P(f"{key}.hidden_size", "Hidden units", "int", 128, "Units in each recurrent layer.", min=4, max=1024, engines=py,
+              advanced=True),
+            P(f"{key}.n_layers", "Recurrent layers", "int", 2, "Number of stacked recurrent layers.", min=1, max=6, engines=py,
+              advanced=True),
+            P(f"{key}.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1, step=0.0001,
+              engines=py, advanced=True)]
+
 
 PY = "python"
 R = "r"
@@ -833,6 +860,47 @@ MODELS: dict[str, dict] = {
                    P("nbeats.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1, step=0.0001,
                      engines=("python",), advanced=True)],
         "refs": ["oreshkin2020"], "cost": "Similar to N-HiTS; NN5 weekly, 111 series, 200 steps: tens of seconds on the CPU.",
+    },
+    **{key: {
+        "name": f"{label} (deep learning, recurrent)", "group": "kuresel", "task": "global",
+        "summary": f"A global recurrent neural network ({label}) trained on all series at once.",
+        "how": f"Windows of the last 'lag' observations of every series are robust-scaled and read step by step by a "
+               f"{n_layers_txt} encoder ({cell}). An MLP decoder turns the final state into the whole horizon at once "
+               "(neuralforecast's default, no recursion). Trained with Adam on MAE for a fixed number of steps; the seed fixes the "
+               "result on one machine.",
+        "use": use,
+        "caution": "Takes seconds to minutes on the CPU. Results can vary slightly between machines (floating point in PyTorch). "
+                   "Series shorter than the window are zero-padded at the start.",
+        "engines": {PY: f"Calls neuralforecast.models.{cls} (requires torch and neuralforecast, optional extras). Not in the R or C++ "
+                        "engine, and not in the browser edition."},
+        "params": _rnn_params(key),
+        "refs": refs, "cost": cost,
+    } for key, label, cls, cell, n_layers_txt, use, refs, cost in (
+        ("lstm", "LSTM", "LSTM", "long short-term memory cells with input, forget and output gates", "two-layer",
+         "The classic recurrent forecaster; compare it with N-BEATS/N-HiTS and with the statistical methods.",
+         ["hochreiter1997", "hewamalage2021"], "Synthetic test, 20 series of 60, 300 steps: about 12 s on the CPU."),
+        ("rnn", "Elman RNN", "RNN", "plain tanh units, no gates", "two-layer",
+         "The simplest recurrent network; a baseline that shows what the gates of LSTM and GRU add.",
+         ["elman1990", "hewamalage2021"], "Synthetic test, 20 series of 60, 300 steps: about 6 s on the CPU."),
+        ("gru", "GRU", "GRU", "gated recurrent units with update and reset gates", "two-layer",
+         "A lighter gated alternative to LSTM, often as accurate.",
+         ["cho2014", "hewamalage2021"], "Synthetic test, 20 series of 60, 300 steps: about 15 s on the CPU."),
+    )},
+    "deepar": {
+        "name": "DeepAR (deep learning, recurrent)", "group": "kuresel", "task": "global",
+        "summary": "A global autoregressive LSTM that forecasts a probability distribution; the point forecast is its median.",
+        "how": "Windows of the last 'lag' observations of every series are robust-scaled; a two-layer LSTM is fed the previous value at "
+               "each step and outputs the parameters of a Student-t distribution (neuralforecast's default). Forecasts are made by "
+               "sampling 100 paths step by step, each feeding its own draw back in; the median of the paths is the point forecast. "
+               "Trained by maximum likelihood with Adam for a fixed number of steps; the seed fixes the result on one machine.",
+        "use": "The recurrent model of the Monash archive study (there run with GluonTS); compare it with LSTM and N-BEATS.",
+        "caution": "The slowest of the deep models here, because of the sampled paths (about 100 s for 20 short series and 300 steps). "
+                   "This is neuralforecast's DeepAR, not the GluonTS version used in the Monash study, so its scores will not match "
+                   "those published values. Results can vary slightly between machines.",
+        "engines": {PY: "Calls neuralforecast.models.DeepAR (requires torch and neuralforecast, optional extras). Not in the R or C++ "
+                        "engine, and not in the browser edition."},
+        "params": _rnn_params("deepar"),
+        "refs": ["salinas2020", "godahewa2021"], "cost": "Synthetic test, 20 series of 60, 300 steps: about 100 s on the CPU.",
     },
     "chronos": {
         "name": "Chronos-Bolt (foundation model)", "group": "kuresel", "task": "global",
