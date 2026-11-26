@@ -24,10 +24,11 @@ sec "SGE: queues and nodes"
 command -v qconf >/dev/null 2>&1 && { echo "queues: $(qconf -sql 2>/dev/null | tr '\n' ' ')"; echo "parallel environments: $(qconf -spl 2>/dev/null | tr '\n' ' ')"; }
 command -v qhost >/dev/null 2>&1 && qhost 2>/dev/null | head -30
 command -v qquota >/dev/null 2>&1 && qquota 2>/dev/null | head -10
+command -v qstat >/dev/null 2>&1 && { echo "slots used/reserved/total per queue instance:"; qstat -f -q all.q 2>/dev/null | grep '@' | awk '{print "  " $1, $3, $4}'; }
+command -v qconf >/dev/null 2>&1 && { echo "exclusive / binding resources:"; qconf -sc 2>/dev/null | grep -iE 'excl|bind' ; qconf -sp smp 2>/dev/null | grep -E 'slots|allocation_rule'; }
 
 sec "free space"
 df -h "$HOME" | tail -1
-du -sh "$HOME" 2>/dev/null | tail -1
 
 sec "network (HTTP status of a HEAD request; 000 = not reachable, any other code = reachable)"
 for u in https://conda.anaconda.org/conda-forge/noarch/repodata.json.bz2 https://zenodo.org/records/4656125 https://cloud.r-project.org/ https://github.com; do
