@@ -113,6 +113,12 @@ REFS = {
     "hewamalage2021": _ref("Hewamalage, H., Bergmeir, C., & Bandara, K. (2021). Recurrent neural networks for time series forecasting: "
                            "current status and future directions. International Journal of Forecasting, 37(1), 388–427.",
                            "https://doi.org/10.1016/j.ijforecast.2020.06.008"),
+    "vandenoord2016": _ref("van den Oord, A., Dieleman, S., Zen, H., Simonyan, K., Vinyals, O., Graves, A., Kalchbrenner, N., Senior, A., "
+                           "& Kavukcuoglu, K. (2016). WaveNet: A generative model for raw audio. arXiv:1609.03499.",
+                           "https://arxiv.org/abs/1609.03499"),
+    "alexandrov2020": _ref("Alexandrov, A., Benidis, K., Bohlke-Schneider, M., Flunkert, V., Gasthaus, J., Januschowski, T., et al. (2020). "
+                           "GluonTS: Probabilistic and neural time series modeling in Python. Journal of Machine Learning Research, "
+                           "21(116), 1–6.", "https://jmlr.org/papers/v21/19-820.html"),
     "ansari2024": _ref("Ansari, A. F., Stella, L., Turkmen, A. C., Zhang, X., Mercado, P., Shen, H., et al. (2024). Chronos: Learning the "
                        "language of time series. Transactions on Machine Learning Research.", "https://openreview.net/forum?id=gerNCVqqtR",
                        True),
@@ -893,15 +899,57 @@ MODELS: dict[str, dict] = {
                "each step and outputs the parameters of a Student-t distribution (neuralforecast's default). Forecasts are made by "
                "sampling 100 paths step by step, each feeding its own draw back in; the median of the paths is the point forecast. "
                "Trained by maximum likelihood with Adam for a fixed number of steps; the seed fixes the result on one machine.",
-        "use": "The recurrent model of the Monash archive study (there run with GluonTS); compare it with LSTM and N-BEATS.",
-        "caution": "The slowest of the deep models here, because of the sampled paths (about 100 s for 20 short series and 300 steps). "
-                   "This is neuralforecast's DeepAR, not the GluonTS version used in the Monash study, so its scores will not match "
-                   "those published values. Results can vary slightly between machines.",
+        "use": "A probabilistic recurrent model; compare it with LSTM and N-BEATS, and with DeepAR (GluonTS), the library the "
+               "Monash archive study used.",
+        "caution": "One of the slowest deep models here, because of the sampled paths (about 100 s for 20 short series and 300 "
+                   "steps). This is neuralforecast's DeepAR; its scores will not match the published Monash values. Results can "
+                   "vary slightly between machines.",
         "engines": {PY: "Calls neuralforecast.models.DeepAR (requires torch and neuralforecast, optional extras). Not in the R or C++ "
                         "engine, and not in the browser edition."},
         "params": _rnn_params("deepar"),
         "refs": ["salinas2020", "godahewa2021"], "cost": "Synthetic test, 20 series of 60, 300 steps: about 100 s on the CPU.",
     },
+    **{key: {
+        "name": f"{label} (GluonTS)", "group": "kuresel", "task": "global",
+        "summary": summary,
+        "how": how + " Called as in the Monash archive script: the library defaults, a dummy start date, the dataset's frequency "
+                     "(inferred from the shortest seasonal period: 24 hourly, 7 daily, 12 monthly, ...), and the median of 100 "
+                     "sample paths as the point forecast. Trained with Adam for a number of epochs of 50 batches; GluonTS keeps "
+                     "the epoch with the lowest training loss. The seed fixes the result on one machine.",
+        "use": use,
+        "caution": "The Monash study used GluonTS 0.8 on MXNet; this is the PyTorch GluonTS, so scores "
+                   "will be close to, not equal to, the published ones. " + caution,
+        "engines": {PY: f"Calls {cls} (requires gluonts[torch], an optional extra). Not in the R or C++ engine, and not in the "
+                        "browser edition."},
+        "params": [P(f"{key}.epochs", "Epochs", "int", 100, "Training epochs of 50 batches each (GluonTS default 100).", min=1,
+                     max=1000, engines=("python",)),
+                   P(f"{key}.learning_rate", "Learning rate", "float", 0.001, "Adam learning rate.", min=1e-5, max=0.1,
+                     step=0.0001, engines=("python",), advanced=True)],
+        "refs": refs + ["alexandrov2020", "godahewa2021"], "cost": cost,
+    } for key, label, cls, summary, how, use, caution, refs, cost in (
+        ("deepar_gluonts", "DeepAR", "gluonts.torch.model.deepar.DeepAREstimator",
+         "The DeepAR of the Monash archive study: a global autoregressive LSTM forecasting a Student-t distribution.",
+         "A two-layer LSTM (40 units) reads the last 'lag' values of each mean-scaled series, together with lagged values and "
+         "calendar features chosen from the frequency, and outputs a Student-t distribution for the next step; forecasts are "
+         "sampled step by step.",
+         "Compare it with DeepAR (neuralforecast): the same model in two libraries.",
+         "The slowest of the three (about 110 s for 20 short series and 100 epochs).",
+         ["salinas2020"], "Synthetic test, 20 series of 60, 30 epochs: about 33 s on the CPU."),
+        ("feed_forward", "Feed-forward network (FFNN)", "gluonts.torch.model.simple_feedforward.SimpleFeedForwardEstimator",
+         "The FFNN of the Monash archive study: a multilayer perceptron from the last 'lag' values to a forecast distribution.",
+         "The last 'lag' values of each mean-scaled series go through fully connected layers (GluonTS default 20, 20) that "
+         "output a Student-t distribution for every step of the horizon at once.",
+         "The simplest neural baseline of the study; fast.", "",
+         [], "Synthetic test, 20 series of 60, 30 epochs: about 10 s on the CPU."),
+        ("wavenet", "WaveNet", "gluonts.torch.model.wavenet.WaveNetEstimator",
+         "The WaveNet of the Monash archive study: dilated causal convolutions over binned values.",
+         "Values are mean-scaled and split into 1024 bins; stacks of dilated causal convolutions learn the distribution of the "
+         "next bin, with the seasonal period and calendar features as inputs, and forecasts are sampled step by step. It "
+         "chooses its own receptive field, so 'lag' is not used.",
+         "A convolutional alternative to the recurrent models.",
+         "'lag' is not used. About 50 s for 20 short series and 30 epochs.",
+         ["vandenoord2016"], "Synthetic test, 20 series of 60, 30 epochs: about 50 s on the CPU."),
+    )},
     "chronos": {
         "name": "Chronos-Bolt (foundation model)", "group": "kuresel", "task": "global",
         "summary": "A pretrained time-series foundation model used zero-shot: no training on your data.",
