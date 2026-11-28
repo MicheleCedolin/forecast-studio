@@ -30,6 +30,7 @@ import numpy as np
 
 from . import py_deep as DL
 from . import py_global as G
+from . import py_gluonts as GL
 from . import py_models as M
 from . import py_sf as S
 from .base import Engine, EngineCancelled, EngineError, EngineJob, EngineResult, ProgressFn
@@ -176,11 +177,11 @@ class PythonEngine(Engine):
     name = "python"
     LOCAL_METHODS = NATIVE_LOCAL + tuple(SF_LOCAL)          # üst küme; `methods()` kuruluma göre süzer
     GLOBAL_METHODS = ("pooled_regression", "catboost", "lightgbm", "lightgbm_feat", "lightgbm_direct", "nhits", "nbeats",
-                      "chronos")
+                      "lstm", "rnn", "gru", "deepar", "deepar_gluonts", "feed_forward", "wavenet", "chronos")
     # Bellek: pooled_regression akış hâlinde (tasarım matrisi yok); catboost float32 matris + Pool kopyası;
     # lightgbm float64 matris + kutulanmış Dataset (matrisin yaklaşık 1/8'i).
     MEMORY_FACTOR = {"pooled_regression": None, "catboost": 1.2, "lightgbm": 1.5, "lightgbm_feat": 2.0, "lightgbm_direct": 2.0, "nhits": None, "nbeats": None,
-                     "chronos": None}
+                     "lstm": None, "rnn": None, "gru": None, "deepar": None, "deepar_gluonts": None, "feed_forward": None, "wavenet": None, "chronos": None}
 
     def methods(self) -> dict[str, tuple[str, ...]]:
         local = list(NATIVE_LOCAL)
@@ -188,7 +189,8 @@ class PythonEngine(Engine):
             local += [k for k, cls in SF_LOCAL.items() if S.has_model(cls) and not S.missing_requirements(k)]
         glob = (["pooled_regression"] + (["catboost"] if G.catboost_available() else [])
                 + (["lightgbm", "lightgbm_feat", "lightgbm_direct"] if G.lightgbm_available() else [])
-                + (["nhits", "nbeats"] if DL.nhits_available() else []) + (["chronos"] if DL.chronos_available() else []))
+                + (["nhits", "nbeats", "lstm", "rnn", "gru", "deepar"] if DL.nhits_available() else [])
+                + (list(GL.METHODS) if GL.available() else []) +(["chronos"] if DL.chronos_available() else []))
         return {"local": tuple(local), "global": tuple(glob)}
 
     def versions(self) -> dict:
@@ -202,6 +204,8 @@ class PythonEngine(Engine):
             import lightgbm
             v["lightgbm"] = lightgbm.__version__
         v.update(DL.versions())
+        if GL.version():
+            v["gluonts"] = GL.version()
         return v
 
     def available(self) -> tuple[bool, str]:
@@ -346,6 +350,17 @@ class PythonEngine(Engine):
             elif job.method == "nbeats":
                 f = DL.nbeats_forecast(job.train, H, lag, (job.params or {}).get("nbeats"), job.seed, job.workers)
                 return f, [], ["N-BEATS: one global network (neuralforecast); input window = lag."]
+            elif job.method in ("lstm", "rnn", "gru", "deepar"):
+                fn = {"lstm": DL.lstm_forecast, "rnn": DL.rnn_forecast, "gru": DL.gru_forecast,
+                      "deepar": DL.deepar_forecast}[job.method]
+                f = fn(job.train, H, lag, (job.params or {}).get(job.method), job.seed, job.workers)
+                label = {"lstm": "LSTM", "rnn": "Elman RNN", "gru": "GRU", "deepar": "DeepAR"}[job.method]
+                extra = " Point forecast = median of the sampled paths." if job.method == "deepar" else ""
+                return f, [], [f"{label}: one global recurrent network (neuralforecast); input window = lag.{extra}"]
+            elif job.method in GL.METHODS:
+                f, notes = GL.forecast(job.method, job.train, H, lag, job.seasonality, (job.params or {}).get(job.method),
+                                       job.seed, job.workers)
+                return f, [], notes
             elif job.method == "chronos":
                 f = DL.chronos_forecast(job.train, H, (job.params or {}).get("chronos"), job.workers)
                 return f, [], ["Chronos-Bolt, zero-shot (no training); lag is not used. Its pretraining data include "

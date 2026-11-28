@@ -20,8 +20,9 @@ dependencies = [
 # Python motorunun isteğe bağlı yöntemleri: statsforecast modelleri ve global CatBoost. scikit-learn: statsforecast'ın MFLES
 # modeli (auto_mfles) onu gerektirir ama kendi bağımlılıklarında bildirmez (kullanıcı makinesinde ImportError ile görüldü).
 pyengine = ["statsforecast>=2.0", "catboost>=1.2", "lightgbm>=4.0", "scikit-learn>=1.3"]
-# Derin modeller (Python motoru: nhits, chronos). CPU PyTorch için: pip install torch --index-url https://download.pytorch.org/whl/cpu
-deep = ["torch>=2.2", "neuralforecast>=3.0", "chronos-forecasting>=2.0"]
+# Derin modeller (Python motoru: nhits, nbeats, lstm, rnn, gru, deepar, deepar_gluonts, feed_forward, wavenet, chronos).
+# CPU PyTorch için: pip install torch --index-url https://download.pytorch.org/whl/cpu
+deep = ["torch>=2.2", "neuralforecast>=3.0", "gluonts[torch]>=0.16", "chronos-forecasting>=2.0"]
 dev = ["pytest>=8.0"]
 
 [tool.setuptools.packages.find]
