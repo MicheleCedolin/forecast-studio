@@ -344,7 +344,7 @@ def ratios(out: Path, summ: list[dict], order: dict, names: dict) -> list[str]:
         by_ratio.setdefault((r["method"], r["ratio"]), []).append(r["value"])
     methods = sorted({m for _, m in pairs})
     lines = []
-    for lvl in sorted({1, top}):
+    for lvl in sorted({1} | {p for _, _, e, p in med if e != "cpp"}):
         engines = [e for e in ENGINES if any(k[2] == e and k[3] == lvl for k in med)]
         if not engines:
             continue
