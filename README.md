@@ -1,173 +1,152 @@
 # Forecast Studio
 
-A Python application, distributed with Docker, that lets you choose and run local (R), global (R) and deep (PyTorch GluonTS)
-forecasting models on time series in TSF (Monash) format, and that produces error measures and the selected analyses automatically.
-This repository contains **Phase A** (core), **Phase B** (R engine, runner, Docker), the first part of **Phase C** (Python engine; local work without Docker) and the local interface (Phase F). PyTorch and WRMSSE belong to later phases.
+Forecast Studio runs statistical, machine-learning and deep forecasting methods on collections of time series in the
+Monash `.tsf` format and reports the same error measures for every method. The same run can be started from a desktop
+interface, a page in the browser, the command line or a batch job on a cluster, and each run writes its forecasts,
+errors per series and a `manifest.json` that records everything needed to repeat it.
 
-## Status
+Methods run on three engines:
 
-| Phase | Content | Status |
-|---|---|---|
-| A | TSF reader/writer, data catalogue, Excel template + converter, Python metrics module, CLI, tests | **Done** |
-| B | R engine (corrected driver, fallback counter), runner + manifest, memory/time estimate, Dockerfile/compose, Windows scripts, golden tests | **Coded**; real R and Docker verification is on the user's machine (`doctor`, `golden-test`) |
-| C | Python engine: built-in ses/theta/naive/snaive/pooled regression (verified against R) + statsforecast (ets/arima/dhr_arima; TBATS disabled; C3: intermittent demand Croston/SBA/TSB/ADIDA/IMAPA and AutoTheta/AutoCES/Holt-Winters/MSTL/AutoMFLES) + CatBoost | **Coded**; statsforecast/catboost verification is on the user's machine (`golden`) |
-| C4 | M3/M4 benchmarks drift, Naive2, Comb S-H-D (numpy), DOTM and SCUM (statsforecast); optional measures RMSSE, MSE, MAPE, MAAPE, MedAE, RMSLE, ME, PBias; `ranking.py` + `rank` command (Friedman, Nemenyi CD, AvgRelMAE, OWA, bootstrap rank stability) | **Coded and unit-tested** (2026-11-22); see docs/RESEARCH_MODELS_METRICS.md for what to add next |
-| C5 | `reliability.py` + `reliability` command: ranking reliability across tasks with incomplete model coverage (common-support ranks, family-balanced scores, task-balanced Bradley-Terry with task bootstrap, permutation Skillings-Mack, Kendall's W, cross-metric selection regret, leave-one-family-out) | **Coded and tested** (2026-11-22); reproduces the manuscript's Bradley-Terry ordering and Skillings-Mack statistic (`tests/test_reliability.py`). Command line only; the P/S/X evidence screen is not ported |
-| C6 | `instability.py` + `instability` command: metric disagreement and selection regret per series (measures that are equivalent inside a series count once), the aggregation effect (task-level concordance of such measures), six built-in series features, within-task feature association pooled over tasks | **Coded and tested** (2026-11-22); produces the per-series values of manuscript Section 5.5 (`tests/test_instability.py`). Built-in features approximate R's tsfeatures (acf1, CV, level identical; entropy and trend approximate); R tables can be passed with `--features`. Command line only |
-| D | Deep models: the research report recommends `neuralforecast` (N-HiTS, N-BEATS) and one foundation model (Chronos-Bolt / Chronos-2) over GluonTS | – |
-| E | WRMSSE (M5), data features (tsfeatures/catch22/lambda), rolling origin | – |
-| F | Local interface (in the browser; standard library only): data/model selection, margin-note explanations, editable parameters, pre-run check, progress/cancel, result charts, history and comparison, Excel upload | **Coded** (docs/APP.md) |
+| Engine | What it is | Methods |
+|:--|:--|--:|
+| `cpp` | **tsfcore**, a C++17 library with a plain C interface (`cpp/`). Ports of R `forecast` (ETS, auto ARIMA, TBATS, BATS, STL, bagged ETS, thief, MAPA, …) and of statsforecast models, checked series by series against their reference (`cpp/README.md`). Multi-threaded. Also compiled to WebAssembly for the browser page. | 50 |
+| `python` | statsforecast, LightGBM, CatBoost, neuralforecast / GluonTS (N-HiTS, N-BEATS, DeepAR, LSTM, GRU, RNN, FFNN, WaveNet), Chronos, and built-in ports of R's ses / theta / pooled regression | 55 |
+| `r` | Rscript worker calling `forecast`, `thief`, `MAPA`, `smooth`, `tsintermittent` and `forecTheta` (`src/tsfstudio/r/`) | 39 |
 
-## Claude Code agents
-`.claude/agents/` defines three project agents for Claude Code: `test-manager` (runs and triages the test suite),
-`ui-design-reviewer` (evaluates the web interface; latest report: `docs/UI_REVIEW.md`) and `forecasting-researcher`
-(alternative models, error measures and ranking methods; latest report: `docs/RESEARCH_MODELS_METRICS.md`).
+Together these are 60 methods (45 local, 15 global). `python -m tsfstudio engines` lists what is available on a
+machine; `src/tsfstudio/app/models_info.py` holds every method's engines, parameters and references.
 
-## Installation and tests
+## Editions
 
-```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-make test            # needs neither R nor torch
-```
+- **Desktop interface:** a local web interface served by Python, reachable from this computer only (`docs/APP.md`).
+  You choose data and methods, see an estimate and a pre-run check, follow progress, and compare results, charts and
+  history. Windows users can use the self-contained package from the
+  [releases page](https://github.com/MicheleCedolin/forecast-studio/releases) and need no Python installation.
+- **Browser page (`web/`):** tsfcore compiled to WebAssembly. The page runs the C++ methods (without CatBoost and
+  LightGBM) on the example datasets or on a `.tsf` file of the user's, and the data never leaves the device.
+  `.github/workflows/pages.yml` builds it and publishes it with GitHub Pages.
+- **Command line:** `python -m tsfstudio run | estimate | sweep | rank | reliability | instability | …`.
+- **Cluster:** batch runs over datasets × methods with SGE or SLURM scripts, and an engine speed study (`docs/HPC.md`,
+  `docs/HPC_SPEED.md`).
 
-## Interface (running it as an application)
+## What a run produces
 
-```powershell
-.\ForecastStudio.bat                                  # or: .venv\Scripts\python.exe -m tsfstudio app
-```
-`http://127.0.0.1:8765/` opens in the browser (this computer only; closed to the outside network). The interface is in English. Details: `docs/APP.md`.
+- **Point measures:** SMAPE, mSMAPE, MASE, MAE, RMSE, WAPE, nRMSE, as defined in the original R code. Optional:
+  RMSSE, MSE, MAPE, MAAPE, MedAE, RMSLE, ME, PBias, and WRMSSE for M5. See `docs/METRICS.md`.
+- **Prediction intervals:** split-conformal intervals for every engine and method, with Coverage, MSIS and WQL.
+- **Rolling-origin evaluation:** several forecast origins, each with its own fit, so a global model never sees its
+  test window.
+- **Series features:** catch22, R `tsfeatures` (as called in the study), the demand class (ADI / CV²) and the Box-Cox λ,
+  plus a 2-D / 3-D PCA map of the series coloured by a feature, by the error, or by the best method.
+- **Ranking analyses** (command line): Friedman and Nemenyi tests, AvgRelMAE, OWA and bootstrap rank stability within a
+  task (`rank`); ranking reliability across tasks with incomplete method coverage (`reliability`); disagreement between
+  measures inside single series (`instability`).
+- **Files:** `runs/<data>__<engine>-<method>__<time>/` holds `forecasts.csv`, `test_actuals.csv`,
+  `errors_per_series.csv`, `summary.csv`, `metrics.xlsx`, `fallbacks.csv` and `manifest.json`. The manifest records the
+  configuration, seed, software versions, the SHA-256 of the data file, skipped series and fallback counts.
 
-## Quick start A: no Docker, local Python (Windows; no administrator rights needed)
+## Installation
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\setup_native.ps1   # .venv + packages + doctor + golden
-.\scripts\windows\tsfs.ps1 run --dataset nn5_weekly --method theta           # default engine: python
-.\scripts\windows\tsfs.ps1 golden                                            # comparison with your own R results
-```
-The Python engine does not need R (docs/PYTHON_ENGINE.md). **Python 3.12 is recommended** (`py install 3.12`); very new versions such as 3.15 lack ready-made wheels for some packages and the installation then requires a C++ compiler. Put the project in a folder outside OneDrive (so that `.venv` and `data\tsf`, ~2 GB, are not synchronised). The R engine works only in Docker (below) or locally if R is installed.
-
-## Quick start B: Docker (R engine + Python engine)
-
-Details: `docs/DOCKER_WINDOWS.md`.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1      # check + image + doctor
-.\scripts\windows\run.ps1 estimate --dataset nn5_weekly --method tbats  # memory/time estimate without running
-.\scripts\windows\run.ps1 run --dataset nn5_weekly --engine r --method ets
-.\scripts\windows\golden-test.ps1                                       # does the R engine reproduce your R output?
-```
-
-Outputs are written to `runs/<data>__<engine>-<method>__<time>/`: `forecasts.csv/.xlsx`, `test_actuals.csv`, `metrics.xlsx`
-(Errors_Per_Series, Summary, Run_Info), `fallbacks.csv`, `manifest.json`.
-
-## Data package
-
-Put all .tsf files into **a single folder** (`data/tsf/`): the 24 files in the Drive folder `tsf_data` + the 17 files in `not used`
-+ the two M5 files (`m5_daily_dataset.tsf`, `m5_item_state_daily_dataset.tsf`) = 43 files, about 1.98 GB.
+Python ≥ 3.10 (3.11 or 3.12 recommended).
 
 ```bash
-make data-check      # compares file names and byte sizes with the catalogue
-make index           # produces the summary of number of series, length, share of missing/zero (_index.json)
-make hash            # SHA256SUMS.txt (data fingerprint for experiment manifests)
+python -m venv .venv && . .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e ".[pyengine,dev]"                      # core + statsforecast, LightGBM, CatBoost
+pip install -e ".[deep]"                              # optional: deep and foundation models (PyTorch)
+bash cpp/build.sh                                     # optional: the C++ engine (Windows: cpp\build.ps1)
+python -m tsfstudio engines                           # which engines and methods are available here
+make test
 ```
 
-The catalogue (`src/tsfstudio/data/catalog.yaml`) extracts the lag, horizon, integer conversion and the lists of methods used in the study
-from `reference/experiments/fixed_horizon.R` and `deep_learning_experiments.py` (`tools/build_catalog.py`).
-Entries marked `lag_origin: suggested` (M5, sample, london_smart_meters) are not in the study; they are suggestions.
-Datasets mentioned in your code but not in Drive: `kaggle_web_traffic_daily`, `saugeen_river_flow`, `sunspot`, `us_births`.
+- **R engine:** needs R with `forecast` and `jsonlite`; the other R packages are optional, and each enables the
+  methods that use it. On Windows the Docker image provides R (`docs/DOCKER_WINDOWS.md`). On a cluster without a usable
+  R, `scripts/hpc/setup_r.sh` installs it from conda-forge.
+- **Old Linux systems** (CentOS 7, g++ 4.8): `scripts/hpc/setup_conda.sh` takes the compiler, CMake and Python from
+  conda-forge and builds tsfcore (`docs/HPC.md`).
 
-## Batch runs on a cluster (HPC)
-
-`python -m tsfstudio sweep` runs every chosen dataset with every chosen C++ method in turn and records, per task, the
-error measures, computation time and memory, and per series the forecasts and errors; a stopped job continues where it
-ended. Set-up, the SLURM script, the time estimate and the output tables are in **docs/HPC.md**.
+## Quick start
 
 ```bash
-bash scripts/hpc/setup.sh                                                    # login node: .venv + tsfcore.so + checks
-python -m tsfstudio sweep --out results/sweep --methods study --dry-run      # the plan
-PROBE=20 sbatch --time=02:00:00 scripts/hpc/sweep.sbatch                     # projected time from 20 series per dataset
-sbatch scripts/hpc/sweep.sbatch                                              # the run (32 cores: 4 tasks at a time x 8 threads)
-qsub scripts/hpc/sweep.sge                                                   # the same on SGE (old systems: setup_conda.sh first)
-bash scripts/hpc/run_sweep.sh                                                # the same on a machine without a scheduler
+python -m tsfstudio app                                              # the interface: http://127.0.0.1:8765/
+python -m tsfstudio run --dataset nn5_weekly --engine cpp --method ets
+python -m tsfstudio run --dataset nn5_daily --engine python --method auto_theta --workers 4
+python -m tsfstudio estimate --dataset m4_monthly --method arima      # time and memory estimate before a long run
 ```
 
-## Loading data from Excel
+Windows: double-click `ForecastStudio.bat`, or use `scripts\windows\tsfs.ps1 <command>`.
 
-```bash
-python -m tsfstudio template template.xlsx               # Instructions + Meta + Veri_Uzun + Veri_Genis
-python -m tsfstudio convert mydata.xlsx mydata.tsf --fill-gaps
-```
+## Data
 
-The long format is `series_name | date | value | [constant attributes]`, the wide format is `date | series1 | series2 ...`.
-Errors are reported with the Excel cell address (`Veri_Uzun!C7`): first cell errors, and once those are fixed, structural errors (duplicate dates,
-gaps, irregular frequency). Monthly/quarterly/yearly dates are moved to the 1st day of the period. Non-ASCII characters are converted to ASCII.
-(The data sheet names `Veri_Uzun` = long data and `Veri_Genis` = wide data are kept for compatibility with files made earlier.)
+Put the `.tsf` files in one folder, `data/tsf/`, or point `TSFSTUDIO_DATA_DIR` to another one. The catalogue
+`src/tsfstudio/data/catalog.yaml` gives each dataset's file name, byte size, lag, horizon and the methods used in the
+study; `make data-check` compares the folder with it. The files are those of the Monash archive (Godahewa et al.,
+2021) plus two M5 files. `web/data/` holds nine small examples for the browser page.
 
-## Ranking reliability across tasks
+Excel input: `python -m tsfstudio template template.xlsx` writes a template, and
+`python -m tsfstudio convert mydata.xlsx mydata.tsf --fill-gaps` converts a filled one. Long format
+(`series_name | date | value`) and wide format (`date | series1 | series2 …`) are accepted. Errors are reported with
+their cell address.
 
-```powershell
-# one run folder per task and model; a model may be missing on some tasks
-.\scripts\windows\tsfs.ps1 reliability --run nn5_weekly:ets=runs\... --run nn5_weekly:theta=runs\... --run m3_monthly:ets=runs\... --out reliability_out
-# or from a table of mean losses with the columns task, metric, model, loss
-.\scripts\windows\tsfs.ps1 reliability --losses losses.csv
-```
-Prints the task-balanced Bradley-Terry ordering with each model's coverage, P(first) and P(top k); the Skillings-Mack test;
-Kendall's W and selection regret per task; and the ordering after dropping each metric family. `rank` is the within-task
-counterpart (blocks = series). The manuscript draft is in `manuscript/Manuscript_v2.md`.
+## Validation
 
-## Where do the measures disagree?
+Every port is compared with its reference implementation on real data, and the comparisons are tests:
 
-```powershell
-# at least three models per task; the data file is taken from the run manifest
-.\scripts\windows\tsfs.ps1 instability --run nn5_weekly:ets=runs\... --run nn5_weekly:theta=runs\... --run nn5_weekly:ses=runs\... --out instability_out
-# with features computed elsewhere (first column = series name), e.g. R tsfeatures
-.\scripts\windows\tsfs.ps1 instability --run ... --features nn5_weekly=my_features.csv
-```
-For each task it prints how much the measures disagree inside single series, whether measures that are equivalent
-inside a series (MAE, MASE, WAPE; or RMSE, MSE, RMSSE) still rank the models differently after averaging over series,
-and how series features relate to the disagreement. With five or more tasks the correlations are pooled with tasks as
-the units. The analysis behind manuscript Section 5.5 is documented in `manuscript/analysis/README.md`.
+- **Measures:** against the study's R error files, to machine precision (`docs/VALIDATION.md`).
+- **C++ engine:** each method series by series against R `forecast` 9.0.2 or statsforecast 2.1.1. For example, auto
+  ETS, auto ARIMA and TBATS select the same model as R on all NN5 series. Methods, data and differences are listed in
+  `cpp/README.md`; the checks are in `tests/test_cpp_engine.py` and `tools/r_reference/`.
+- **Engines against each other:** `tools/compare_engines.py` runs one method on the C++, Python and R engines and
+  reports the forecast differences, fallbacks and mean MASE.
+- **Linux and cluster builds:** `qsub scripts/hpc/check.sge` repeats the agreement checks on a compute node.
 
-## Structure
+## Documentation
+
+| File | Content |
+|:--|:--|
+| `docs/APP.md` | the desktop interface: use, security, limits |
+| `docs/METRICS.md` | definitions of the measures, differences from the original R code |
+| `docs/PYTHON_ENGINE.md` | Python engine: methods and their relation to R |
+| `docs/CHANGES_R.md` | changes to the original R code, with reasons |
+| `docs/VALIDATION.md` | golden tests: what is compared, how, results |
+| `cpp/README.md` | tsfcore: build, every ported method and its check |
+| `docs/HPC.md`, `docs/HPC_SPEED.md` | cluster set-up, batch runs, speed study |
+| `docs/DOCKER_WINDOWS.md` | Docker on Windows (R engine) |
+| `docs/RESEARCH_MODELS_METRICS.md`, `docs/UI_REVIEW*.md` | research notes on methods and measures; reviews of the interface |
+
+## Repository layout
 
 ```
 src/tsfstudio/
-  tsf/reader.py, writer.py   Monash format (compatible with Python ≥ 3.12; byte-level round-trip test on the M5 files)
-  seasonality.py             frequency, seasonality and timestamp rules (identical to the R code)
-  catalog.py, data/catalog.yaml
-  metrics.py                 SMAPE, mSMAPE, MASE, MAE, RMSE, WAPE, nRMSE  (docs/METRICS.md)
-  excel/template.py, converter.py
-  engines/                   Engine interface; py_engine.py (Python), py_models.py/py_global.py/py_sf.py, r_engine.py (Rscript), baseline.py, registry.py
-  golden.py                  compares engine forecasts with your own R outputs
-  r/worker.R, r/lib/*.R      R worker + corrected original models (docs/CHANGES_R.md)
-  runner.py                  split, missing-value policy, engine, measures, outputs, manifest
-  estimate.py                memory (cgroup) and time (NN5 priors / trial run) estimate
-  sweep.py                   batch runs for clusters: datasets x methods, isolation per task, continuing, report (docs/HPC.md)
-  cli.py                     data-check, index, hash, template, convert, engines, estimate, run, sweep, doctor, golden, app
-  app/                       local interface: server.py (http.server), service.py (business logic), models_info.py (model/parameter/reference schema), static/
-reference/                   the user's original R/Python code (NOT MODIFIED)
-tools/                       catalogue builder, M5 TSF production/verification scripts
-docs/METRICS.md              definitions, differences from the original, problems fixed
-docs/CHANGES_R.md            changes in the R code (line-by-line rationale)
-docs/PYTHON_ENGINE.md        Python engine: method table, relation to R, deliberate differences
-docs/APP.md                  interface: use, security, limits, references
-docs/DOCKER_WINDOWS.md       installation, .wslconfig, troubleshooting
-docs/VALIDATION.md           golden tests: what, how, results
-docs/HPC.md                  cluster runs: set-up, SLURM script, time estimate, outputs, agreement on Linux
-Dockerfile, docker-compose.yml, docker/, scripts/windows/, scripts/hpc/ (setup.sh, setup_conda.sh, sweep.sge, submit_datasets.sh, sweep.sbatch, run_sweep.sh)
+  tsf/                 Monash .tsf reader and writer
+  catalog.py, data/    dataset catalogue
+  metrics.py, intervals.py, wrmsse.py      error measures, conformal intervals, WRMSSE
+  features.py, tsfeat.py                   series features (catch22, tsfeatures, demand class)
+  engines/             cpp_engine.py (tsfcore via ctypes), py_*.py (Python), r_engine.py (Rscript), registry.py
+  r/                   R worker and model library
+  runner.py            split, missing values, engine call, measures, outputs, manifest
+  sweep.py             batch runs for clusters
+  ranking.py, reliability.py, instability.py   ranking analyses
+  app/                 desktop interface: server, service, models_info.py, static/
+  cli.py               command line
+cpp/                   tsfcore sources, build scripts (native and WebAssembly), README
+web/                   browser page (WebAssembly)
+tools/                 validation, comparison, benchmark and packaging scripts
+scripts/hpc/, scripts/windows/      cluster and Windows launchers
+tests/                 unit, golden and engine-agreement tests
+reference/             the original R / Python code of the study (unchanged)
+manuscript/            papers that use the software
 ```
 
-Language note: the interface, the run messages and the CLI output are in English. Source comments, the older documents (`docs/METRICS.md`, `docs/CHANGES_R.md`, `docs/PYTHON_ENGINE.md`, `docs/VALIDATION.md`, `docs/DOCKER_WINDOWS.md`) and the Windows set-up scripts are still in Turkish.
+Some source comments and the Windows set-up scripts are still in Turkish.
 
-## Reproducibility
+## Licence and citation
 
-The data fingerprint (`make hash`), the source of the catalogue defaults (`tools/build_catalog.py`), fixed version limits
-(`pyproject.toml`) and hand-computed tests of the measures are in the repository. Every run is written to `manifest.json` with its configuration, seed, R/package versions, data SHA-256, skipped series, fallback counts and warnings.
-On the R side, the fixed tag `rocker/r-ver:4.5.1` ties CRAN to the date on which that version was released.
+GNU General Public License v3.0 (`LICENSE`); third-party notices in `NOTICE`. A software paper describing Forecast
+Studio is in preparation; until it is published, please cite the repository and the release you used.
 
 ## References
 
 - Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., Montero-Manso, P. (2021). Monash Time Series Forecasting Archive. NeurIPS Datasets and Benchmarks.
+- Hyndman, R. J., Khandakar, Y. (2008). Automatic time series forecasting: the forecast package for R. Journal of Statistical Software, 27(3).
 - Hyndman, R. J., Koehler, A. B. (2006). Another look at measures of forecast accuracy. International Journal of Forecasting, 22(4).
 - Makridakis, S., Spiliotis, E., Assimakopoulos, V. (2022). M5 accuracy competition: Results, findings, and conclusions. International Journal of Forecasting, 38(4).
