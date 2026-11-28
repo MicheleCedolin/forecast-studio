@@ -1,0 +1,1255 @@
+[
+ {
+  "name": "tslm__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__m1_yearly",
+  "file": "/home/user/forecast-studio/web/data/m1_yearly_dataset.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=m1_yearly",
+   "horizon=6",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__m1_quarterly",
+  "file": "/home/user/forecast-studio/web/data/m1_quarterly_dataset.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=m1_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__m1_monthly",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__tourism_quarterly",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__nn5_weekly",
+  "file": "/home/user/forecast-studio/web/data/nn5_weekly_dataset.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=nn5_weekly",
+   "horizon=8",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__hospital",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=hospital",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__car_parts",
+  "file": "/home/user/forecast-studio/web/data/car_parts_dataset_without_missing_values.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=car_parts",
+   "horizon=12",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__covid_deaths",
+  "file": "/home/user/forecast-studio/web/data/covid_deaths_dataset.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=covid_deaths",
+   "horizon=30",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tslm__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=tslm",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "stm__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=stm",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "otm__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=otm",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dstm__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=dstm",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "theta__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=theta",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "ets__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=ets",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "arima__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=arima",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "bats__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=bats",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "tbats__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=tbats",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "struct_ts__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=struct_ts",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "nnetar__nn5_daily",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=nnetar",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "max_series=30",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dshw__nn5_daily_7_28",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=dshw",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "seasonality=7,28",
+   "max_series=111",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dshw__nn5_daily_7_364",
+  "file": "/home/user/forecast-studio/web/data/nn5_daily_dataset_without_missing_values.tsf",
+  "config": [
+   "method=dshw",
+   "dataset_id=nn5_daily",
+   "horizon=56",
+   "seasonality=7,364",
+   "max_series=111",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dshw__m1_monthly_3_12",
+  "file": "/home/user/forecast-studio/web/data/m1_monthly_dataset.tsf",
+  "config": [
+   "method=dshw",
+   "dataset_id=m1_monthly",
+   "horizon=18",
+   "seasonality=3,12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dshw__hospital_3_12",
+  "file": "/home/user/forecast-studio/web/data/hospital_dataset.tsf",
+  "config": [
+   "method=dshw",
+   "dataset_id=hospital",
+   "horizon=12",
+   "seasonality=3,12",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ },
+ {
+  "name": "dshw__tourism_quarterly_2_4",
+  "file": "/home/user/forecast-studio/web/data/tourism_quarterly_dataset.tsf",
+  "config": [
+   "method=dshw",
+   "dataset_id=tourism_quarterly",
+   "horizon=8",
+   "seasonality=2,4",
+   "max_series=100",
+   "threads=1",
+   "eol=lf"
+  ]
+ }
+]

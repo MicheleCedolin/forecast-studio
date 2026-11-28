@@ -42,3 +42,4 @@ data/ranking_study/
 third_party/
 web/tsfcore.js
 web/tsfcore.wasm
+wasm_work/
