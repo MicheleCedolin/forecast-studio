@@ -1,74 +1,86 @@
-# Python motoru (`--engine python`)
+# Python engine (`--engine python`)
 
-R veya Docker gerektirmez. Yerel Windows/Linux/macOS'ta `pip` ile çalışır.
+Needs neither R nor Docker. Runs with `pip` on a local Windows/Linux/macOS machine.
 
-| Yöntem | Tür | Gerekli | R karşılığı | R ile ilişki | Doğrulama |
+## Methods of the original R study
+
+This table covers only the methods that have a counterpart in the original R study (`src/tsfstudio/r/lib/local_models.R`,
+`global_models.R`). The full list of Python-engine methods is under [All methods](#all-methods) below; the source of truth is the
+`engines` field of each model in `src/tsfstudio/app/models_info.py`. `python -m tsfstudio engines` shows which methods are unavailable on a
+machine because a package is missing, and `python -m tsfstudio doctor` runs a short live test of every available method.
+
+| Method | Type | Needs | R counterpart | Relation to R | Validation |
 |---|---|---|---|---|---|
-| `naive`, `snaive` | yerel | – | `snaive(msts)` | aynı (frekans = `floor(max(periyot))`) | birim test |
-| `ses` | yerel | – | `forecast::ses` | **aynı algoritma** (ML, α ∈ [1e-4, 0.9999], başlangıç düzeyi kapalı formda) | NN5 altın: ortanca fark ~4×10⁻⁶ |
-| `theta` | yerel | – | `forecast::thetaf` | **aynı algoritma** (ACF mevsim sınaması, çarpımsal ayrıştırma, SES + yarım eğim) | NN5 altın: ortanca fark ~4–8×10⁻⁶ |
-| `pooled_regression` | global | – | `glm` | **aynı sonuç** (akış hâlinde QR; M5 L12 için bile bellek sorunu yok) | NN5 altın: 5×10⁻¹⁵ |
-| `ets` | yerel | statsforecast | `forecast::ets` | benzer, **aynı değil** (AutoETS); frekans > 24 → mevsimsiz (R gibi) | kullanıcı makinesinde `golden` |
-| `arima` | yerel | statsforecast | `auto.arima` | benzer (AutoARIMA); R zinciri: log → ham → mevsimsiz; `allowdrift`, `approximation` R gibi | `golden` |
-| `dhr_arima` | yerel | statsforecast | `auto.arima(xreg=fourier)` | benzer; Fourier K=1 skaler, çok mevsimli veride her periyoda uygulanır (R hata verebilir) | `golden` |
-| ~~`tbats`~~ | – | **devre dışı** (kullanıcı kararı, 2026-11-03) | `forecast::tbats` (R motorunda çalışır) | statsforecast `AutoTBATS` R'dan farklı model buldu (8 seri: ortanca tahmin farkı %3,1) | adaptör `py_sf.forecast_tbats` durur |
-| `catboost` | global | catboost | `catboost.train` | aynı çekirdek ve varsayılanlar; `random_seed` varsayılanı 0 (R gibi) | `golden` yok (R'da NN5 CatBoost çıktınız yok) |
+| `naive`, `snaive` | local | – | `snaive(msts)` | same (frequency = `floor(max(period))`) | unit test |
+| `ses` | local | – | `forecast::ses` | **same algorithm** (ML, α ∈ [1e-4, 0.9999], initial level in closed form) | NN5 golden: median difference ~4×10⁻⁶ |
+| `theta` | local | – | `forecast::thetaf` | **same algorithm** (ACF seasonality test, multiplicative decomposition, SES + half slope) | NN5 golden: median difference ~4–8×10⁻⁶ |
+| `pooled_regression` | global | – | `glm` | **same result** (streaming QR; no memory problem even for M5 L12) | NN5 golden: 5×10⁻¹⁵ |
+| `ets` | local | statsforecast | `forecast::ets` | similar, **not identical** (AutoETS); frequency > 24 → non-seasonal (as in R) | `golden` on the user's machine (VALIDATION 1c) |
+| `arima` | local | statsforecast | `auto.arima` | similar (AutoARIMA); R chain: log → raw → non-seasonal; `allowdrift`, `approximation` as in R | `golden` (VALIDATION 1c) |
+| `dhr_arima` | local | statsforecast | `auto.arima(xreg=fourier)` | similar; Fourier K=1 scalar, applied to every period on multi-seasonal data (R may fail) | `golden` (VALIDATION 1c) |
+| `tbats` | local | statsforecast | `forecast::tbats` | **not the same model** (AutoTBATS); periods rounded to integers. Disabled on 2026-11-03 (user decision), offered again since 2026-11-25 so that every C++ method has its Python library counterpart; the interface states the difference | NN5 weekly, 8 series: median forecast difference 3.1%. For R's TBATS use the R or the C++ engine |
+| `catboost` | global | catboost | `catboost.train` | same core and defaults; `random_seed` default 0 (as in R) | no `golden` (there is no R CatBoost output for NN5); the C++ engine gives bit-identical forecasts (`cpp/README.md`, row 6b) |
 
-"Kurulu değil" yöntemler listede görünmez ve çağrılırsa açık bir hata verir.
+Methods that are "not installed" do not appear in the list and give a clear error if called.
 
-## Python'a özgü modeller (R karşılığı yok) — statsforecast
-Amaç R'ı Python'a çevirmek değil (kullanıcı kararı, 2026-11-03); bunlar statsforecast'ın kendi modelleridir ve `golden` ile sınanamaz.
-Doğrulama: `doctor` (çalışıyor mu, sonlu mu, yedek var mı) ve kendi verinizde sonuçların incelenmesi. **Varsayılan değerlerden
-"bizim seçimimiz" olarak işaretlenenler kanıtlı öneri değildir; verinizde ayarlayın.** Parametreler `--param anahtar=değer` ile verilir.
+## statsforecast models of phase C3 (intermittent demand and further classical models)
+The goal is not to translate R into Python (user decision, 2026-11-03); these are statsforecast's own models and cannot be tested with `golden`
+(there are no R outputs of the study for them). Since 2026-11-25 the R engine has R library counterparts for `croston_classic`, `croston_sba`,
+`croston_optimized`, `tsb`, `imapa`, `auto_ces` and `holt_winters` (`src/tsfstudio/r/lib/extra_models.R`); these are other implementations,
+and their differences are stated in `models_info.py` (`R_NOTES`). `adida`, `auto_theta`, `mstl` and `auto_mfles` have no R counterpart.
+Validation: `doctor` (does it run, is it finite, is there a fallback), the C++ ports listed in `cpp/README.md`, and inspection of the results on
+your own data. **Defaults marked "our choice" are not evidence-based recommendations; tune them on your data.** Parameters are passed with
+`--param key=value`.
 
-| Yöntem | Sınıf | Parametreler (varsayılan) | Not |
+| Method | Class | Parameters (default) | Note |
 |---|---|---|---|
-| `croston_classic` | `CrostonClassic` | – | Düz (sabit) tahmin: talep boyutu / talep aralığı |
-| `croston_sba` | `CrostonSBA` | – | Croston'a Syntetos–Boylan sapma düzeltmesi |
-| `croston_optimized` | `CrostonOptimized` | – | Düzleştirme parametresi kütüphanede optimize edilir |
-| `tsb` | `TSB` | `alpha_d`=0,1; `alpha_p`=0,1 (bizim seçimimiz) | Talep olasılığını her dönem günceller (eskime riskine duyarlı) |
-| `adida` | `ADIDA` | – | Zamansal toplulaştırma + ayrıştırma |
-| `imapa` | `IMAPA` | – | Çoklu toplulaştırma (aralıklı MAPA) |
-| `auto_theta` | `AutoTheta` | `decomposition_type`="multiplicative" | Theta varyantlarından otomatik seçim. Sıfır/negatif değer varsa toplamsala geçer (not düşer). Dönem için ≥ 2 dönem veri yoksa mevsimsiz |
-| `auto_ces` | `AutoCES` | `model`="Z", `max_season`=24 (bizim seçimimiz) | Karmaşık üstel düzleştirme. Dönem > `max_season` ise mevsimsiz (R `ets` kuralına benzer; değiştirilebilir) |
-| `holt_winters` | `HoltWinters` | `error_type`="A", `max_season`=24 (bizim seçimimiz) | Mevsimsizse Holt'a iner (not düşer). `error_type="M"` için tüm değerler > 0 |
-| `mstl` | `MSTL` | – | Çok mevsimli ayrıştırma; dönemler tam sayıya yuvarlanır, ≥ 2 ve en az iki dönem veri olanlar kullanılır; hiçbiri yoksa seri yedeğe düşer (yıllık veride bu beklenir). Trend tahmincisi kütüphane varsayılanı (AutoETS, mevsimsiz) |
-| `auto_mfles` | `AutoMFLES` | `n_windows`=2, `metric`="smape" | **scikit-learn gerekir** (statsforecast bildirmez; kurulu değilse yöntem listede görünmez). `test_size` = ufuk (kütüphane zorunlu kılar); hakemli referansı yok/doğrulanmadı |
+| `croston_classic` | `CrostonClassic` | – | Flat (constant) forecast: demand size / demand interval |
+| `croston_sba` | `CrostonSBA` | – | Croston with the Syntetos–Boylan bias correction |
+| `croston_optimized` | `CrostonOptimized` | – | The smoothing parameter is optimised by the library |
+| `tsb` | `TSB` | `alpha_d`=0.1; `alpha_p`=0.1 (our choice) | Updates the demand probability every period (sensitive to obsolescence risk) |
+| `adida` | `ADIDA` | – | Temporal aggregation + disaggregation |
+| `imapa` | `IMAPA` | – | Multiple aggregation (intermittent MAPA) |
+| `auto_theta` | `AutoTheta` | `decomposition_type`="multiplicative" | Automatic choice among Theta variants. Switches to additive if there are zero/negative values (a note is written). Non-seasonal if there are fewer than 2 seasons of data |
+| `auto_ces` | `AutoCES` | `model`="Z", `max_season`=24 (our choice) | Complex exponential smoothing. Non-seasonal if the period > `max_season` (similar to the R `ets` rule; can be changed) |
+| `holt_winters` | `HoltWinters` | `error_type`="A", `max_season`=24 (our choice) | Falls back to Holt if non-seasonal (a note is written). `error_type="M"` needs all values > 0 |
+| `mstl` | `MSTL` | – | Multi-seasonal decomposition; periods are rounded to integers, those ≥ 2 with at least two seasons of data are used; if none remains the series gets the fallback (expected for yearly data). The trend forecaster is the library default (AutoETS, non-seasonal) |
+| `auto_mfles` | `AutoMFLES` | `n_windows`=2, `metric`="smape" | **Needs scikit-learn** (statsforecast does not declare it; if it is not installed the method is not listed). `test_size` = horizon (required by the library); no peer-reviewed reference / not validated |
 
-* **Sessiz atma yok:** bu modellerde sürümünüzün tanımadığı bir anahtar hata verir (seri yedeğe düşer, nedeni yazılır).
-* **Sıfırlar:** hep sıfır olan seride aralıklı modeller doğrudan 0 tahmin eder (kütüphane 0/0 üretebilir).
-* **Ölçüt uyarısı:** aralıklı serilerde sMAPE/MAPE tanımsız ya da yanıltıcıdır; ölçek tabanlı ölçüler (MASE, RMSSE ve M5'te WRMSSE)
-  kullanın. Eğitim kesiminin tamamı sıfırsa MASE paydası sıfırdır.
-* **Süre:** yeni yöntemler için süre öncülü yok; `estimate`/koşu önce küçük bir seri örneğiyle denenmelidir (özellikle `auto_mfles`, `auto_ces`, `mstl`).
-* **Kaynaklar (makalede kullanmadan önce künyeleri doğrulayın):** Croston (1972), *ORQ* 23(3); Syntetos & Boylan (2005), *IJF* 21(2);
-  Teunter, Syntetos & Babai (2011), *EJOR* 214(3) [TSB]; Nikolopoulos vd. (2011), *JORS* 62(3) [ADIDA]; Petropoulos & Kourentzes (2015),
+* **No silent dropping:** for these models, a key that your version does not recognise raises an error (the series gets the fallback and the reason is written).
+* **Zeros:** on an all-zero series the intermittent models forecast 0 directly (the library can produce 0/0).
+* **Measure warning:** on intermittent series sMAPE/MAPE are undefined or misleading; use scale-based measures (MASE, RMSSE and, for M5, WRMSSE).
+  If the whole training part is zero, the MASE denominator is zero.
+* **Run time:** there are no run-time priors for the new methods; try `estimate`/a run on a small sample of series first (especially `auto_mfles`, `auto_ces`, `mstl`).
+* **Sources (checked against bibliographic records; full citations in `models_info.py`, `REFS`):** Croston (1972), *ORQ* 23(3); Syntetos & Boylan (2005), *IJF* 21(2);
+  Teunter, Syntetos & Babai (2011), *EJOR* 214(3) [TSB]; Nikolopoulos et al. (2011), *JORS* 62(3) [ADIDA]; Petropoulos & Kourentzes (2015),
   *JORS* 66(6) [IMAPA]; Assimakopoulos & Nikolopoulos (2000), *IJF* 16(4) [Theta]; Svetunkov, Kourentzes & Ord (2022), *NRL* 69(8) [CES];
-  Winters (1960), *Management Science* 6(3); Bandara, Hyndman & Bergmeir (2021), arXiv:2107.13462 [MSTL]. Kütüphane: Nixtla StatsForecast (açık kaynak, Apache-2.0).
+  Winters (1960), *Management Science* 6(3); Bandara, Hyndman & Bergmeir (2025), *International Journal of Operational Research* 52(1), preprint arXiv:2107.13462 (2021) [MSTL].
+  Library: Nixtla StatsForecast (open source, Apache-2.0).
 
-## Tam sayıya yuvarlama ve aralıklı talep (önemli)
-Katalogda sayım verisi olan kümelerde (car_parts, M5, vb.) `integer_conversion: true` (kendi çalışmanızdaki gibi): tahminler yuvarlanır.
-Aralıklı talep yöntemleri ise düz bir talep **hızı** tahmin eder (ör. dönem başına 0,3 birim); yuvarlama bunu 0'a çevirir. İlk
-`car_parts` denemesinde (`croston_sba`, 100 seri) görülen buydu: tüm tahminler 0 → sMAPE = 2,0 ve WAPE = %100 (hepsi tam). Aralıklı talep
-yöntemleriyle `--integer-conversion off` kullanın; açık bırakırsanız koşucu uyarı yazar. Eski çalışmalarla karşılaştırma için `auto` (katalog) kalır.
+## Rounding to integers and intermittent demand (important)
+In the catalogue, datasets with count data (car_parts, M5, etc.) have `integer_conversion: true` (as in your own study): forecasts are rounded.
+Intermittent-demand methods, however, forecast a flat demand **rate** (e.g. 0.3 units per period); rounding turns this into 0. This is what
+the first `car_parts` trial showed (`croston_sba`, 100 series): all forecasts 0 → sMAPE = 2.0 and WAPE = 100% (all exact). Use
+`--integer-conversion off` with intermittent-demand methods; if you leave it on, the runner writes a warning. `auto` (catalogue) remains for comparison with earlier studies.
 
-**Ölçüt notu:** ortalama mutlak hata temelli ölçüler (MAE, MASE, WAPE) aralıklı seride ortanca tahmini (çoğu zaman 0) ödüllendirir; sıfır
-tahmini bu ölçülerde iyi görünebilir ama envanter açısından anlamsızdır (Hyndman, 2006, *Foresight* 4(4), 43–46; künyeyi doğrulayın).
-Aralıklı serilerde RMSE/RMSSE'ye ek olarak sapma (bias) ve envanter sonuçları (hizmet düzeyi, stok maliyeti) raporlanmalıdır; bu, proje
-temasının (doğruluk yerine karar etkisi) tam olarak gerektirdiği analizdir ve v1 dışında bıraktığımız envanter eklentisinin ilk adayıdır.
+**Measure note:** measures based on the mean absolute error (MAE, MASE, WAPE) reward the median forecast (often 0) on an intermittent series; a zero
+forecast can look good on these measures but is meaningless for inventory (Hyndman, 2006, *Foresight* 4(4), 43–46).
+On intermittent series, bias and inventory outcomes (service level, stock cost) should be reported in addition to RMSE/RMSSE; this is exactly the
+analysis the project theme (decision impact rather than accuracy) calls for, and the first candidate for the inventory extension left out of v1.
 
-## Bilinçli farklar
-* **Hata semantiği:** model hata verirse seri `snaive` alır ve **sayılır** (`fallbacks.csv`). Model NaN/Inf üretirse R bunu 0 yapar;
-  burada da yedek tahmine düşülür (0 uydurmak yerine). `na_replaced` Python motorunda her zaman 0'dır.
-* **SES α sınırı:** R'ın Nelder-Mead'i bazı serilerde (α optimumu alt sınırdaysa) daha yüksek hatalı bir noktada durur; Python tam optimumu bulur.
-  NN5'te 111 serinin 4–6'sında fark > 10⁻³ (en çok %17), **ama ortalama SMAPE/MASE'e etkisi < %0,4** (bkz. VALIDATION.md).
-* **DHR-ARIMA:** çok mevsimli `msts`'te R `fourier(K=1)` sürüme göre hata verip SNaive'e düşebilir; Python'da terim üretilir.
-* **ARIMA, mevsim > 200:** mevsimsize düşülür (`arima_max_season` ile değişir). R'ın bu konudaki davranışı doğrulanmadı.
-* **Paralellik:** `--workers N` ile süreç havuzu (Windows'ta `spawn`; R'daki `mclapply` Windows'ta paralel çalışmaz).
+## Deliberate differences
+* **Error semantics:** if the model fails, the series gets `snaive` and this is **counted** (`fallbacks.csv`). If the model produces NaN/Inf, R sets it to 0;
+  here the series also gets the fallback forecast (instead of inventing 0). `na_replaced` is always 0 in the Python engine.
+* **SES α bound:** on some series (where the α optimum is at the lower bound) R's Nelder-Mead stops at a point with a higher error; Python finds the true optimum.
+  On NN5, 4–6 of the 111 series differ by > 10⁻³ (at most 17%), **but the effect on mean SMAPE/MASE is < 0.4%** (see VALIDATION.md).
+* **DHR-ARIMA:** on a multi-seasonal `msts`, R `fourier(K=1)` may fail depending on the version and fall back to SNaive; Python produces the terms.
+* **ARIMA, season > 200:** falls back to non-seasonal (changed with `arima_max_season`). R's behaviour here has not been verified.
+* **Parallelism:** process pool with `--workers N` (`spawn` on Windows; R's `mclapply` does not run in parallel on Windows).
 
-## Doğrulama komutları
+## Validation commands
 ```powershell
-.\scripts\windows\tsfs.ps1 doctor     # her yöntemin canlı mini testi
-.\scripts\windows\tsfs.ps1 golden     # kendi R çıktılarınızla karşılaştırma (NN5 haftalık + günlük), --csv ile kaydeder
+.\scripts\windows\tsfs.ps1 doctor     # short live test of every method
+.\scripts\windows\tsfs.ps1 golden     # comparison with your own R outputs (NN5 weekly + daily), saved with --csv
 ```
 
 ## Added 2026-11-22: M3/M4 benchmarks and SCUM
@@ -83,3 +95,43 @@ temasının (doğruluk yerine karar etkisi) tam olarak gerektirdiği analizdir v
 
 Ranking tools for comparing several runs: `python -m tsfstudio rank --run ets=runs/<dir> --run theta=runs/<dir> ... --metric MASE`
 (mean ranks, Friedman, Nemenyi critical difference, bootstrap P(first) / P(top k) and Kendall tau). Module: `src/tsfstudio/ranking.py`.
+
+## All methods
+
+The 55 methods that `models_info.py` lists for the Python engine (`PythonEngine.LOCAL_METHODS` / `GLOBAL_METHODS` in
+`src/tsfstudio/engines/py_engine.py`). "Needs" names the Python packages beyond numpy/scipy; the extras are defined in `pyproject.toml`
+(`pyengine`: statsforecast, catboost, lightgbm, scikit-learn; `deep`: torch, neuralforecast, gluonts[torch], chronos-forecasting).
+"R engine" says whether the R engine also offers the method. "Validation" gives a recorded check or says "not recorded here"; rows of
+`cpp/README.md` compare the C++ port with this engine's forecasts.
+
+| Method | Type | Needs | R engine | Validation |
+|---|---|---|---|---|
+| `naive`, `snaive` | local | – | yes | unit test |
+| `ses`, `theta` | local | – | yes | NN5 golden (VALIDATION 1b, 1c) |
+| `drift`, `naive2`, `comb_shd` | local | – | yes | see the table "M3/M4 benchmarks" above (VALIDATION 1d) |
+| `pooled_regression` | global | – | yes | NN5 golden (VALIDATION 1b) |
+| `ets`, `arima`, `dhr_arima` | local | statsforecast | yes | VALIDATION 1c |
+| `tbats` | local | statsforecast | yes | NN5 weekly, 8 series: median forecast difference 3.1% from R |
+| `croston_classic`, `croston_sba`, `croston_optimized`, `tsb`, `imapa` | local (intermittent) | statsforecast | yes | C++ port bit-identical to this engine (`cpp/README.md`, row 4) |
+| `adida` | local (intermittent) | statsforecast | no | C++ port bit-identical to this engine (`cpp/README.md`, row 4) |
+| `zero_model` | local (intermittent) | statsforecast | no | C++ port bit-identical to this engine (`cpp/README.md`, row 7) |
+| `dotm`, `stm`, `otm`, `dstm` | local | statsforecast | yes | C++ port equal to this engine to machine precision (`cpp/README.md`, rows 4b, 8b) |
+| `auto_theta` | local | statsforecast | no | C++ port equal to this engine to machine precision (`cpp/README.md`, row 4b') |
+| `auto_ces` | local | statsforecast | yes | C++ port equal to this engine (`cpp/README.md`, row 4c) |
+| `holt_winters` | local | statsforecast | yes | differs from R by ~1% on every NN5 daily series (`cpp/README.md`, row 4a) |
+| `holt_ets` | local | statsforecast | yes | statsforecast's Holt differs from R by ~0.3% (`cpp/README.md`, row 7) |
+| `historic_average` | local | statsforecast | yes | C++ port bit-identical to this engine (`cpp/README.md`, row 7) |
+| `window_average`, `seasonal_window_average`, `seasonal_es` | local | statsforecast | no | C++ port bit-identical to this engine (`cpp/README.md`, row 7) |
+| `mstl` | local | statsforecast | no | decomposition equal to statsforecast in the C++ port (`cpp/README.md`, row 4e) |
+| `auto_mfles` | local | statsforecast, scikit-learn | no | C++ port equal to this engine to machine precision (`cpp/README.md`, row 4f) |
+| `scum` | local | statsforecast | yes | median identity test; against the C++ (R-based) variant: `cpp/README.md`, row 4d |
+| `comb_eat`, `comb_eat_median` | local | statsforecast | yes | not recorded here |
+| `stl_ets`, `stl_arima` | local | statsforecast | yes | decomposition bit-identical to R's `stl()` and to the C++ engine (`cpp/README.md`, row 7c); forecasts close to, not equal to, R |
+| `bagged_ets` | local | statsforecast | yes | bootstrap series equal to R's (`cpp/README.md`, row 7d); forecasts close to, not equal to, R |
+| `thief`, `mapa` | local | statsforecast | yes | not recorded here (R algorithm with statsforecast AutoETS; close to, not equal to, R) |
+| `catboost` | global | catboost | yes | C++ engine bit-identical (`cpp/README.md`, row 6b) |
+| `lightgbm`, `lightgbm_feat` | global | lightgbm | no | C++ engine bit-identical (`cpp/README.md`, rows 7b, 7g) |
+| `lightgbm_direct` | global | lightgbm | no | not recorded here |
+| `nhits`, `nbeats`, `lstm`, `rnn`, `gru`, `deepar` | global | torch, neuralforecast | no | not recorded here |
+| `deepar_gluonts`, `feed_forward`, `wavenet` | global | gluonts[torch] | no | not recorded here |
+| `chronos` | global | torch, chronos-forecasting | no | not recorded here |

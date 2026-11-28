@@ -1,37 +1,47 @@
-# R kodundaki değişiklikler
+# Changes to the R code
 
-Kaynaklar `reference/` altında **değiştirilmeden** durur. `src/tsfstudio/r/` altındaki kopyalar modelleme kararlarını
-(model çağrıları, parametreler, normalizasyon, özyineleme) korur; yalnızca aşağıdaki noktalar farklıdır.
+The sources under `reference/` are kept **unchanged**. The copies under `src/tsfstudio/r/` keep the modelling decisions
+(model calls, parameters, normalisation, recursion); only the points below differ.
 
-| # | Orijinal | Düzeltme | Sonuca etkisi |
+| # | Original | Change | Effect on results |
 |---|---|---|---|
-| 1 | `tryCatch(..., error = function(e) SNaive)` sessizdi | Her geri dönüş sayılır ve mesajı kaydedilir (`fallbacks.csv`, manifest) | Tahminler aynı; yalnızca raporlanır. Yedek oranı >%50 ise uyarı |
-| 2 | NA tahminler sessizce 0 | Aynı davranış korunur ama sayılır (`na_replaced`) | Aynı |
-| 3 | `warning(e)` günlüğü dolduruyordu | Kaldırıldı; mesaj yedek kaydında | Yok |
-| 4 | `create_input_matrix`: döngü içi `rbind` (karesel), `print(i)` | Gömülü matrisler listede toplanıp tek `rbind` ile birleştirilir | Özdeş matris, çok daha hızlı |
-| 5 | Çok kısa seride anlaşılmaz hata | Hangi serinin sorunlu olduğunu söyleyen hata | Yok |
-| 6 | Büyük veride (M5) bellek patlaması | İsteğe bağlı `max_obs` (varsayılan kapalı = orijinal): her serinin son `max_obs` gözlemi; ortalama normalizasyonu bu pencere üzerinden | Varsayılanda yok |
-| 7 | CatBoost `catboost.train` varsayılanlarıyla çalışıyordu | `params.catboost` ile geçersiz kılınabilir (boş = aynı varsayılanlar) | Varsayılanda yok |
-| 8 | Dosya başında `set.seed(1)` | Tohum `job.seed` ile her koşuda açıkça ayarlanır (varsayılan 1) | Varsayılanda yok |
-| 9 | `forecast_horizon <- 1` üzerine yazma, `rolling_origin.R` kaynaklanınca örnek koşma, `os.system("rm")`, sabit `BASE_DIR`, `distutils.strtobool` | Taşınmadı; yerine işçi protokolü ve Python tarafı | Yok |
+| 1 | `tryCatch(..., error = function(e) SNaive)` was silent | Every fallback is counted and its message recorded (`fallbacks.csv`, manifest) | Forecasts unchanged; only reported. Warning if the fallback rate is >50% |
+| 2 | NA forecasts silently set to 0 | Same behaviour kept, but counted (`na_replaced`) | None |
+| 3 | `warning(e)` filled the log | Removed; the message is in the fallback record | None |
+| 4 | `create_input_matrix`: `rbind` inside the loop (quadratic), `print(i)` | Embedded matrices are collected in a list and joined with a single `rbind` | Identical matrix, much faster |
+| 5 | Unclear error on a very short series | An error that names the problem series | None |
+| 6 | Memory blow-up on large data (M5) | Optional `max_obs` (default off = original): the last `max_obs` observations of each series; mean normalisation over this window | None by default |
+| 7 | CatBoost ran with the `catboost.train` defaults | Can be overridden with `params.catboost` (empty = the same defaults) | None by default |
+| 8 | `set.seed(1)` at the top of the file | The seed is set explicitly for every run with `job.seed` (default 1) | None by default |
+| 9 | Overwriting `forecast_horizon <- 1`, example runs when `rolling_origin.R` is sourced, `os.system("rm")`, fixed `BASE_DIR`, `distutils.strtobool` | Not carried over; replaced by the worker protocol and the Python side | None |
 
-## DHR-ARIMA ile ilgili açık nokta
+## Open point on DHR-ARIMA
 
-Orijinal çağrı `fourier(ts, K = 1)` skaler K kullanır. Çok mevsimli `msts` (ör. saatlik: 24, 168, 8766) için `forecast`
-paketinde K, mevsim sayısı kadar uzunlukta olmalıdır; aksi hâlde hata → **sessizce SNaive**. İşçi orijinal davranışı
-korur ve `params.fourier_k` / `params.fourier_k_per_period` ile değiştirmeye izin verir. Kendi paket sürümlerinizde bunun
-olup olmadığını `fallbacks.csv` gösterir; olursa çok mevsimli verideki DHR-ARIMA sonuçlarının bir kısmı aslında SNaive'dir.
+The original call `fourier(ts, K = 1)` uses a scalar K. For a multi-seasonal `msts` (e.g. hourly: 24, 168, 8766), the `forecast`
+package requires K to have one entry per seasonal period; otherwise it fails → **silently SNaive**. The worker keeps the original
+behaviour and allows changing it with `params.fourier_k` / `params.fourier_k_per_period`. Whether this happens with your package
+versions is shown in `fallbacks.csv`; if it does, part of the DHR-ARIMA results on multi-seasonal data are in fact SNaive.
 
-## Python tarafı ile fark
+## Difference from the Python side
 
-`PythonBaselineEngine.snaive` ilk mevsimsel periyodu kullanır; R'daki `snaive(msts)` ise `floor(max(periyot))` frekansını.
-Çok mevsimli veride sonuçlar farklıdır; karşılaştırmada R motoru referanstır.
+`PythonBaselineEngine.snaive` (engine `python-baseline`) uses the first seasonal period; R's `snaive(msts)` uses the frequency `floor(max(period))`.
+Results differ on multi-seasonal data; for comparisons the R engine is the reference.
 
-## Python motorundaki karşılıklar
-Ayrıntı: `docs/PYTHON_ENGINE.md`. Özet: SES, Theta ve havuzlu regresyon R algoritmasıyla birebir uygulanmıştır (NN5 altın testleri);
-ETS/ARIMA/TBATS/DHR-ARIMA statsforecast ile benzer-ama-aynı-değil karşılıklardır. Python motorunda NaN/Inf çıktı 0 yapılmaz,
-yedek tahmine düşülür; DHR-ARIMA'da skaler K çok mevsimli veride her periyoda uygulanır.
+## Counterparts in the Python engine
+Details: `docs/PYTHON_ENGINE.md`. Summary: SES, Theta and pooled regression are implemented with exactly the R algorithm (NN5 golden tests);
+ETS/ARIMA/TBATS/DHR-ARIMA are similar-but-not-identical counterparts through statsforecast. In the Python engine NaN/Inf output is not set to 0;
+the series gets the fallback forecast instead. In DHR-ARIMA a scalar K is applied to every period on multi-seasonal data.
+The C++ engine (`cpp/README.md`) ports the R calls of ets, arima, dhr_arima and tbats and reproduces the R forecasts to rounding
+(`src/tsfstudio/app/models_info.py`, `CPP_NOTES`).
 
-### TBATS dönemleri (Python motoru)
-R `tbats()` gerçek değerli dönemleri (ör. 52,18; 365,25) kabul eder. statsforecast `AutoTBATS(season_length: int | list[int])` belgeye göre
-tam sayı ister; adaptör dönemleri en yakın tam sayıya yuvarlar (52,18 → 52; 365,25 → 365). Bu bilinçli bir farktır; etkisi `golden` ile ölçülür.
+### TBATS periods (Python engine)
+R `tbats()` accepts real-valued periods (e.g. 52.18; 365.25). According to its documentation, statsforecast `AutoTBATS(season_length: int | list[int])`
+requires integers; the adapter rounds the periods to the nearest integer (52.18 → 52; 365.25 → 365). This is a deliberate difference; its effect is measured with `golden`.
+
+## Methods added to the R engine (2026-11-25)
+`src/tsfstudio/r/lib/extra_models.R` adds 30 local methods to the nine of the original study (`local_models.R`, `global_models.R`), which
+gives the R engine 39 methods. They are not copies of the original code: each is the R counterpart of a method that the C++ and Python
+engines offer, either the R call that the C++ method ports ("REFERENCE") or an R library function for the same method ("LIBRARY",
+forecasts close to but not equal to the other engines). Unlike `local_models.R`, these functions do not catch errors; `worker.R` records
+the failure and gives the series the seasonal naive forecast, the same rule as the C++ and Python engines. Methods that need R packages
+beyond `forecast` (`extra_packages`: thief, MAPA, smooth, tsintermittent, forecTheta) are listed only when those packages are installed.
